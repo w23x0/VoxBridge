@@ -10,6 +10,7 @@ use std::sync::Arc;
 use serde::Serialize;
 use serde_json::Value;
 use vox_core::event::Pipeline;
+use vox_core::catalog;
 use vox_core::settings::{ModelProvider, Settings};
 
 use crate::dto::{SettingsDto, SnapshotDto};
@@ -437,10 +438,8 @@ pub fn open_dashscope_console(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn open_provider_console(provider: String) -> Result<(), String> {
-    let url = match parse_provider(&provider)? {
-        ModelProvider::Aliyun => "https://bailian.console.aliyun.com/?apiKey=1",
-        ModelProvider::Gemini => "https://aistudio.google.com/apikey",
-    };
+    let provider = parse_provider(&provider)?;
+    let url = catalog::provider_info(provider).console_url;
     tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| format!("打开浏览器失败：{e}"))
 }
 
@@ -476,11 +475,7 @@ fn parse_pipeline(name: &str) -> Result<Pipeline, String> {
 }
 
 fn parse_provider(name: &str) -> Result<ModelProvider, String> {
-    match name {
-        "aliyun" => Ok(ModelProvider::Aliyun),
-        "gemini" => Ok(ModelProvider::Gemini),
-        _ => Err(format!("未知模型服务商：{name}")),
-    }
+    ModelProvider::from_id(name).ok_or_else(|| format!("未知模型服务商：{name}"))
 }
 
 /// 深合并 `patch` 到 `base` 上。
@@ -634,9 +629,10 @@ mod tests {
     }
 
     #[test]
-    fn parse_provider_accepts_both_catalog_ids() {
-        assert_eq!(parse_provider("aliyun").unwrap(), ModelProvider::Aliyun);
-        assert_eq!(parse_provider("gemini").unwrap(), ModelProvider::Gemini);
+    fn parse_provider_accepts_catalog_ids() {
+        for provider in vox_core::settings::ModelProvider::ALL {
+            assert_eq!(parse_provider(provider.as_id()).unwrap(), provider);
+        }
         assert!(parse_provider("other").is_err());
     }
 }

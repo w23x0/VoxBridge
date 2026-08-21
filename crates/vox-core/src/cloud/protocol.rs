@@ -205,6 +205,8 @@ pub enum ServerEvent {
     /// 服务端回报的**源文识别语种**。自动识别（`source_language` 为 None）时才有；
     /// 只给用户看识别到了什么语言，不改任何行为。
     SourceDetected { language: String },
+    /// 源文转写的增量文本（GPT translation 开启 input transcription 时）。
+    SourceTranscriptDelta { text: String },
     /// 一段译文语音（已解出的 PCM16LE 24 kHz 单声道字节）。
     AudioDelta { pcm: Vec<u8> },
     /// 服务端 VAD 在上传音频时间线上检测到语音开始。

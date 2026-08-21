@@ -1,0 +1,43 @@
+{
+  "schema_version": 2,
+  "verified_at": "2026-08-22",
+  "provider": {
+    "id": "gpt",
+    "label": {
+      "zh": "OpenAI GPT",
+      "en": "OpenAI GPT",
+      "ja": "OpenAI GPT"
+    },
+    "console_url": "https://platform.openai.com/api-keys"
+  },
+  "model": {
+    "id": "gpt-realtime-translate",
+    "label": {
+      "zh": "GPT Realtime Translate",
+      "en": "GPT Realtime Translate",
+      "ja": "GPT Realtime Translate"
+    }
+  },
+  "api": {
+    "websocket_endpoint": "wss://api.openai.com/v1/realtime/translations",
+    "input_sample_rate": 24000,
+    "output_sample_rate": 24000,
+    "api_key_placeholder": "sk-...",
+    "auth_header": "Authorization: Bearer <API_KEY>",
+    "input_audio": "PCM16LE / 24000 Hz / mono",
+    "output_audio": "PCM16LE / 24000 Hz / mono"
+  },
+  "capabilities": {
+    "languages": "70+ input, 13 output",
+    "voice_selection": false,
+    "voice_clone": false,
+    "source_language": false,
+    "hot_update_language": true
+  },
+  "docs": {
+    "translation": "https://developers.openai.com/api/docs/guides/realtime-translation",
+    "realtime": "https://developers.openai.com/api/reference/resources/realtime/",
+    "model": "https://developers.openai.com/api/docs/models/gpt-realtime-translate",
+    "api_keys": "https://platform.openai.com/api-keys"
+  }
+}

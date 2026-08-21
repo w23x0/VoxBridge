@@ -15,7 +15,9 @@ export function ProvidersPage() {
   const { api, snapshot, reload } = useStore();
   const toast = useToast();
   const { uiLang, t } = useLang();
-  const [provider, setProvider] = useState<ModelProvider>("gemini");
+  const [provider, setProvider] = useState<ModelProvider>(
+    catalog.providerIds()[0] ?? "aliyun",
+  );
   const [hasDraft, setHasDraft] = useState(false);
   const [busy, setBusy] = useState<"save" | "clear" | null>(null);
   const [armed, setArmed] = useState(false);
@@ -25,7 +27,7 @@ export function ProvidersPage() {
 
   const loading = snapshot === null;
   const hasKey = snapshot?.api_keys[provider] ?? false;
-  const isGemini = provider === "gemini";
+  const supportsVoiceSelection = catalog.supportsVoiceSelection(provider);
 
   useEffect(() => {
     if (input.current) input.current.value = "";
@@ -84,10 +86,10 @@ export function ProvidersPage() {
   const voices = orderedVoices(uiLang, null, [], t("catalog.customVoiceSuffix"));
   const allLanguages = catalog.languageOptions(uiLang);
   const audioLanguages = allLanguages.filter((language) =>
-    catalog.supportsAudioOutput(language.value, "aliyun"),
+    catalog.supportsAudioOutput(language.value, provider),
   );
   const textOnlyLanguages = allLanguages.filter(
-    (language) => !catalog.supportsAudioOutput(language.value, "aliyun"),
+    (language) => !catalog.supportsAudioOutput(language.value, provider),
   );
 
   return (
@@ -133,9 +135,7 @@ export function ProvidersPage() {
             placeholder={
               hasKey
                 ? t("providersPage.overwritePlaceholder")
-                : isGemini
-                  ? "AIza..."
-                  : "sk-..."
+                : catalog.providerApiKeyPlaceholder(provider)
             }
             autoComplete="off"
             spellCheck={false}
@@ -168,9 +168,7 @@ export function ProvidersPage() {
             onClick={() => void api.openProviderConsole(provider)}
           >
             <IconExternal size={15} />
-            {isGemini
-              ? t("providersPage.consoleGemini")
-              : t("providersPage.consoleAliyun")}
+            {t("providersPage.openConsole")}
           </button>
           {hasKey ? (
             armed ? (
@@ -228,16 +226,16 @@ export function ProvidersPage() {
                 {catalog.modelLabel(catalog.defaultModelForProvider(provider), uiLang)}
               </span>
               <span className="hint mono">
-                {isGemini ? catalog.GEMINI_MODEL_NAME : catalog.DEFAULT_MODEL_NAME}
+                {catalog.defaultModelForProvider(provider)}
               </span>
             </div>
           </div>
 
-          {isGemini ? (
+          {!supportsVoiceSelection ? (
             <div className="input-grid-3">
               <div className="sub-card">
                 <div className="sub-card-head">{t("providersPage.language")}</div>
-                <div className="si-title">70+</div>
+                <div className="si-title">{t("providersPage.autoLanguageCount")}</div>
                 <div className="hint">{t("providersPage.realtimeInterp")}</div>
               </div>
               <div className="sub-card">

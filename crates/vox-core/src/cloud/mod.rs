@@ -10,6 +10,7 @@
 //! - 没连上时来的音频直接丢，不排队——排队只会在重连后灌一堆过时的话。
 
 pub mod gemini;
+pub mod gpt;
 pub mod protocol;
 
 pub use protocol::{
@@ -114,6 +115,7 @@ pub struct Session {
 enum SessionDecoder {
     Aliyun(Decoder),
     Gemini(gemini::Decoder),
+    Gpt(gpt::Decoder),
 }
 
 impl SessionDecoder {
@@ -121,6 +123,7 @@ impl SessionDecoder {
         match self {
             Self::Aliyun(decoder) => decoder.pending(),
             Self::Gemini(decoder) => decoder.pending(),
+            Self::Gpt(decoder) => decoder.pending(),
         }
     }
 
@@ -128,6 +131,7 @@ impl SessionDecoder {
         match self {
             Self::Aliyun(decoder) => decoder.reset(),
             Self::Gemini(decoder) => decoder.reset(),
+            Self::Gpt(decoder) => decoder.reset(),
         }
     }
 }
@@ -149,6 +153,7 @@ impl Session {
             decoder: match provider {
                 ModelProvider::Aliyun => SessionDecoder::Aliyun(Decoder::new()),
                 ModelProvider::Gemini => SessionDecoder::Gemini(gemini::Decoder::new()),
+                ModelProvider::Gpt => SessionDecoder::Gpt(gpt::Decoder::new()),
             },
             seq: 0,
             handshaken: false,
@@ -157,6 +162,14 @@ impl Session {
 
     pub fn params(&self) -> &SessionParams {
         &self.params
+    }
+
+    /// The sample rate the pipeline should upload at for this provider.
+    pub fn input_sample_rate(&self) -> u32 {
+        match self.provider {
+            ModelProvider::Aliyun | ModelProvider::Gemini => INPUT_SAMPLE_RATE,
+            ModelProvider::Gpt => gpt::input_sample_rate(),
+        }
     }
 
     /// 当前这轮还没说完的半句（重连后要不要接着显示由上层决定）。
@@ -173,6 +186,10 @@ impl Session {
             ModelProvider::Gemini => ConnectRequest {
                 url: gemini::endpoint_url(&self.api_key),
                 auth_header: String::new(),
+            },
+            ModelProvider::Gpt => ConnectRequest {
+                url: gpt::endpoint_url(),
+                auth_header: protocol::auth_header_value(&self.api_key),
             },
         }
     }
@@ -192,6 +209,7 @@ impl Session {
                 event.to_json(&id)
             }
             ModelProvider::Gemini => gemini::setup_frame(&self.params),
+            ModelProvider::Gpt => gpt::session_update(&self.params),
         }
     }
 
@@ -214,7 +232,20 @@ impl Session {
                 ClientEvent::AppendAudio(pcm).to_json(&id)
             }
             ModelProvider::Gemini => gemini::audio_frame(&pcm),
+            ModelProvider::Gpt => gpt::audio_frame(&pcm),
         })
+    }
+
+    /// For providers that support graceful protocol-level close, returns the frame
+    /// the shell should send before closing the WebSocket.
+    pub fn close_frame(&self) -> Option<String> {
+        if !self.handshaken {
+            return None;
+        }
+        match self.provider {
+            ModelProvider::Gpt => Some(gpt::close_frame()),
+            _ => None,
+        }
     }
 
     /// 热更新。真有东西变了才返回要发的帧，白改不发（省一次往返）。
@@ -246,14 +277,18 @@ impl Session {
         if !self.handshaken {
             return None;
         }
+        if !crate::catalog::supports_hot_update_language(self.provider) {
+            return None;
+        }
         match self.provider {
             ModelProvider::Aliyun => {
                 let event = ClientEvent::SessionUpdate(Box::new(self.params.clone()));
                 let id = self.next_event_id(now_ms);
                 Some(event.to_json(&id))
             }
-            // Gemini's setup message is only valid as the first frame. The
-            // runtime asks the user to restart when its target language changes.
+            ModelProvider::Gpt => Some(gpt::session_update(&self.params)),
+            // Gemini's setup message is only valid as the first frame; its catalog
+            // capability is false, so this arm is only reached if catalog data changes.
             ModelProvider::Gemini => None,
         }
     }
@@ -267,6 +302,7 @@ impl Session {
         match &mut self.decoder {
             SessionDecoder::Aliyun(decoder) => decoder.decode(message).into_iter().collect(),
             SessionDecoder::Gemini(decoder) => decoder.decode(message),
+            SessionDecoder::Gpt(decoder) => decoder.decode(message),
         }
     }
 }
@@ -355,7 +391,7 @@ fn normalize_code(code: &str) -> String {
 pub fn explain_error(code: Option<&str>, message: &str) -> String {
     let flat = normalize_code(code.unwrap_or_default());
     if flat.contains("resourceexhausted") || flat.contains("ratelimit") {
-        return format!("Gemini 请求过快或项目额度暂时耗尽，请稍后再试：{message}");
+        return format!("模型服务请求过快或项目额度暂时耗尽，请稍后再试：{message}");
     }
     if is_fatal_error(code, message) {
         let lower = message.to_ascii_lowercase();
@@ -423,6 +459,20 @@ mod tests {
                 model_name: crate::catalog::GEMINI_MODEL_NAME.to_string(),
                 target_language: "ja".to_string(),
                 voice: Some("provider-default".to_string()),
+                clone_frequency: None,
+                source_language: None,
+            },
+        )
+    }
+
+    fn gpt_session() -> Session {
+        Session::new_for(
+            ModelProvider::Gpt,
+            "sk-test-gpt",
+            SessionParams {
+                model_name: crate::catalog::GPT_MODEL_NAME.to_string(),
+                target_language: "ja".to_string(),
+                voice: Some("auto".to_string()),
                 clone_frequency: None,
                 source_language: None,
             },
@@ -499,6 +549,48 @@ mod tests {
             setup["setup"]["generationConfig"]["translationConfig"]["targetLanguageCode"],
             "ja"
         );
+    }
+
+    #[test]
+    fn gpt_connects_with_bearer_and_realtime_frames() {
+        let mut session = gpt_session();
+        let request = session.connect_request();
+        assert_eq!(request.url, gpt::endpoint_url());
+        assert_eq!(request.auth_header, "Bearer sk-test-gpt");
+
+        let handshake = parse(&session.handshake(0));
+        assert_eq!(handshake["type"], "session.update");
+        assert_eq!(handshake["session"]["audio"]["output"]["language"], "ja");
+        assert!(handshake["session"].get("modalities").is_none());
+
+        let audio = session.audio_frame(&[0.1, -0.1], 5).expect("握手后该发");
+        let parsed = parse(&audio);
+        assert_eq!(parsed["type"], "session.input_audio_buffer.append");
+        assert!(parsed["audio"].as_str().is_some());
+
+        assert_eq!(
+            session.close_frame().as_deref(),
+            Some(r#"{"type":"session.close"}"#)
+        );
+    }
+
+    #[test]
+    fn gpt_close_frame_is_only_offered_after_handshake() {
+        let mut gpt = gpt_session();
+        assert!(gpt.close_frame().is_none(), "没握手不该发 session.close");
+        gpt.handshake(0);
+        assert_eq!(
+            gpt.close_frame().as_deref(),
+            Some(r#"{"type":"session.close"}"#)
+        );
+        assert!(session().close_frame().is_none());
+    }
+
+    #[test]
+    fn input_sample_rate_is_16k_for_alias_gemini_and_24k_for_gpt() {
+        assert_eq!(session().input_sample_rate(), 16_000);
+        assert_eq!(gemini_session().input_sample_rate(), 16_000);
+        assert_eq!(gpt_session().input_sample_rate(), 24_000);
     }
 
     #[test]

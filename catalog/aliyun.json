@@ -28,6 +28,7 @@
   "api": {
     "transport": "websocket",
     "legacy_endpoint": "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
+    "api_key_placeholder": "sk-...",
     "recommended_endpoints": {
       "cn_beijing": "wss://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime",
       "sg_singapore": "wss://{WorkspaceId}.ap-southeast-1.maas.aliyuncs.com/api-ws/v1/realtime"
@@ -35,6 +36,12 @@
     "auth_header": "Authorization: Bearer <API_KEY>",
     "input_audio": "PCM16LE / 16000 Hz / mono",
     "output_audio": "PCM16LE / 24000 Hz / mono"
+  },
+  "capabilities": {
+    "voice_selection": true,
+    "voice_clone": true,
+    "source_language": true,
+    "hot_update_language": true
   },
   "defaults": {
     "target_language": "ja",

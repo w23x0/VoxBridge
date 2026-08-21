@@ -9,6 +9,7 @@
 //! - `Option` 字段**不加** `skip_serializing_if`——前端要的是显式 `null`。
 
 use serde::Serialize;
+use std::collections::BTreeMap;
 
 use vox_core::event::{Notice, Pipeline, PipelineState};
 use vox_core::gate::GateStatus;
@@ -87,11 +88,7 @@ pub struct SnapshotDto {
     pub notices: Vec<Notice>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct ProviderKeyStatusDto {
-    pub aliyun: bool,
-    pub gemini: bool,
-}
+pub type ProviderKeyStatusDto = BTreeMap<String, bool>;
 
 // ─── 流水线 ──────────────────────────────────────────────────────────────────
 
@@ -139,18 +136,11 @@ pub fn snapshot(state: &AppState) -> SnapshotDto {
     SnapshotDto {
         settings: core.settings.into(),
         has_api_key: core.api_key_configured,
-        api_keys: ProviderKeyStatusDto {
-            aliyun: core
-                .api_keys_configured
-                .get(&vox_core::settings::ModelProvider::Aliyun)
-                .copied()
-                .unwrap_or(false),
-            gemini: core
-                .api_keys_configured
-                .get(&vox_core::settings::ModelProvider::Gemini)
-                .copied()
-                .unwrap_or(false),
-        },
+        api_keys: core
+            .api_keys_configured
+            .iter()
+            .map(|(provider, configured)| (provider.as_id().to_string(), *configured))
+            .collect(),
         speak: pipeline_dto(&core.speak, state.gate_of(Pipeline::Speak, speak_running)),
         listen: pipeline_dto(
             &core.listen,
@@ -232,10 +222,14 @@ mod tests {
         SnapshotDto {
             settings: Settings::default().into(),
             has_api_key: true,
-            api_keys: ProviderKeyStatusDto {
-                aliyun: true,
-                gemini: false,
-            },
+            api_keys: BTreeMap::from_iter(vox_core::settings::ModelProvider::ALL.into_iter().map(
+                |provider| {
+                    (
+                        provider.as_id().to_string(),
+                        provider == vox_core::settings::ModelProvider::Aliyun,
+                    )
+                },
+            )),
             speak: pipe.clone(),
             listen: pipe,
             mic_active: false,
@@ -284,6 +278,17 @@ mod tests {
         for key in expected_keys {
             assert!(json.get(key).is_some(), "顶层缺字段: {key}");
         }
+    }
+
+    /// 前端拿到的 API key 状态要包含 gpt，不能只来自 v1 的两个 provider。
+    #[test]
+    fn api_keys_map_includes_gpt() {
+        let dto = make_dto(true, None);
+        let json = serde_json::to_value(&dto).unwrap();
+        let keys = json.get("api_keys").unwrap().as_object().unwrap();
+        assert!(keys.contains_key("aliyun"));
+        assert!(keys.contains_key("gemini"));
+        assert!(keys.contains_key("gpt"));
     }
 
     /// 不含只用于 v1 迁移的顶层模型字段——防止旧结构重新漏给前端。

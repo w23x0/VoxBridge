@@ -276,7 +276,7 @@ impl Runtime {
 
     /// 注入密钥仓库，顺手把存着的密钥读进来。
     pub fn set_secret_store(&self, store: Arc<dyn SecretStore>) {
-        let loaded = [ModelProvider::Aliyun, ModelProvider::Gemini]
+        let loaded = ModelProvider::ALL
             .into_iter()
             .map(|provider| (provider, store.load_api_key_for(provider)))
             .collect::<Vec<_>>();
@@ -329,7 +329,7 @@ impl Runtime {
         let s = self.inner.state.read();
         let speak_running = s.pipeline(Pipeline::Speak).state.is_running();
         let listen_running = s.pipeline(Pipeline::Listen).state.is_running();
-        let api_keys_configured = [ModelProvider::Aliyun, ModelProvider::Gemini]
+        let api_keys_configured = ModelProvider::ALL
             .into_iter()
             .map(|provider| {
                 (
@@ -502,11 +502,11 @@ impl Runtime {
                 // 换服务商/模型必须重连，语言/音色可以热更新。
                 if new.speak.provider != old.speak.provider
                     || new.speak.model_name != old.speak.model_name
-                    || (new.speak.provider == ModelProvider::Gemini
+                    || (!catalog::supports_hot_update_language(new.speak.provider)
                         && new.speak.target_language != old.speak.target_language)
                 {
                     events.push(Event::Notice {
-                        notice: Notice::info("Gemini/模型设置已保存，重启「对外说话」后生效")
+                        notice: Notice::info("服务商/模型设置已保存，重启「对外说话」后生效")
                             .on(Pipeline::Speak),
                     });
                 } else {

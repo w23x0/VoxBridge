@@ -212,18 +212,6 @@
   min-width: 0;
 }
 
-.pipeline-config-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 6px;
-}
-
-.pipeline-config .pipeline-config-head .stat-label {
-  margin-bottom: 0;
-}
-
 .pipeline-inline-toggle {
   display: inline-flex;
   align-items: center;

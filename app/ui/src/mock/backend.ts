@@ -7,7 +7,8 @@
  */
 
 import { DEFAULT_SETTINGS, cloneSettings } from "../defaults";
-import type { ModelProvider, PipelineName, PipelineState, Settings, Track } from "../types";
+import type { PipelineName, PipelineState, Settings, Track } from "../types";
+import * as catalog from "../catalog";
 import type {
   AudioApp,
   GateStatus,
@@ -39,7 +40,9 @@ interface Lane {
 
 export function createMockApi(): VoxApi {
   let settings = normalizeSettings(cloneSettings(DEFAULT_SETTINGS));
-  const apiKeys: Record<ModelProvider, boolean> = { aliyun: false, gemini: false };
+  const apiKeys = Object.fromEntries(
+    catalog.providerIds().map((provider) => [provider, false]),
+  ) as Record<string, boolean>;
   let virtualCableInstalled = true;
   let virtualCableStatus:
     | "installed"
@@ -268,7 +271,7 @@ export function createMockApi(): VoxApi {
   function currentSnapshot(): Snapshot {
     return {
       settings: cloneSettings(settings),
-      has_api_key: apiKeys.aliyun || apiKeys.gemini,
+      has_api_key: catalog.providerIds().some((provider) => apiKeys[provider]),
       api_keys: { ...apiKeys },
       speak: snap("speak"),
       listen: snap("listen"),
@@ -294,8 +297,9 @@ export function createMockApi(): VoxApi {
    */
   function seed(): void {
     if (new URLSearchParams(window.location.search).get("cold") === "1") return;
-    apiKeys.aliyun = true;
-    apiKeys.gemini = true;
+    for (const provider of catalog.providerIds()) {
+      apiKeys[provider] = true;
+    }
     const app = MOCK_APPS[0];
     if (app) {
       settings = normalizeSettings({
@@ -327,11 +331,11 @@ export function createMockApi(): VoxApi {
       if (
         (before.speak.provider !== next.speak.provider ||
           before.speak.model_name !== next.speak.model_name ||
-          (next.speak.provider === "gemini" &&
+          (!catalog.supportsHotUpdateLanguage(next.speak.provider) &&
             before.speak.target_language !== next.speak.target_language)) &&
         isRunning(lanes.speak.state)
       ) {
-        notify("info", "Gemini/模型设置已保存，重启「对外说话」后生效", "speak");
+        notify("info", "模型设置已保存，重启「对外说话」后生效", "speak");
       }
       if (
         (before.listen.provider !== next.listen.provider ||
@@ -412,13 +416,7 @@ export function createMockApi(): VoxApi {
       window.open("https://bailian.console.aliyun.com/?apiKey=1", "_blank", "noopener");
     },
     async openProviderConsole(provider) {
-      window.open(
-        provider === "gemini"
-          ? "https://aistudio.google.com/apikey"
-          : "https://bailian.console.aliyun.com/?apiKey=1",
-        "_blank",
-        "noopener",
-      );
+      window.open(catalog.providerConsoleUrl(provider), "_blank", "noopener");
     },
     subscribe(handler) {
       handlers.add(handler);

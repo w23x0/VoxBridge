@@ -14,29 +14,79 @@ pub struct ModelInfo {
     pub label: &'static str,
 }
 
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct ProviderCapabilities {
+    pub voice_selection: bool,
+    pub voice_clone: bool,
+    pub source_language: bool,
+    pub hot_update_language: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct ProviderInfo {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub console_url: &'static str,
+    pub default_model: &'static str,
+    pub model_label: &'static str,
+    pub capabilities: ProviderCapabilities,
+}
+
 include!(concat!(env!("OUT_DIR"), "/aliyun_catalog.rs"));
 
 pub fn default_model(provider: crate::settings::ModelProvider) -> &'static str {
-    match provider {
-        crate::settings::ModelProvider::Aliyun => DEFAULT_MODEL_NAME,
-        crate::settings::ModelProvider::Gemini => GEMINI_MODEL_NAME,
-    }
+    provider_info(provider).default_model
 }
 
 pub fn normalize_model_for(provider: crate::settings::ModelProvider, name: &str) -> &'static str {
-    match provider {
-        crate::settings::ModelProvider::Aliyun => normalize_model(name),
-        crate::settings::ModelProvider::Gemini => GEMINI_MODEL_NAME,
+    let info = provider_info(provider);
+    if MODELS.iter().any(|model| model.name == info.default_model) {
+        normalize_model(name)
+    } else {
+        info.default_model
     }
 }
 
 pub fn supports_audio_output_for(provider: crate::settings::ModelProvider, language: &str) -> bool {
-    match provider {
-        crate::settings::ModelProvider::Aliyun => supports_audio_output(language),
-        // Gemini Live Translation returns audio for its documented language set;
-        // the shared catalog only exposes the verified intersection for now.
-        crate::settings::ModelProvider::Gemini => supports_audio_output(language),
+    if provider_info(provider).capabilities.voice_selection {
+        supports_audio_output(language)
+    } else {
+        LANGUAGE_LABELS.iter().any(|(code, _)| *code == language)
     }
+}
+
+/// 当前启用的 provider 快照。从目录 JSON 生成，不要手写第二份。
+pub fn providers() -> &'static [ProviderInfo] {
+    PROVIDER_INFOS
+}
+
+pub fn provider_info(provider: crate::settings::ModelProvider) -> &'static ProviderInfo {
+    PROVIDER_INFOS
+        .iter()
+        .find(|info| info.id == provider.as_id())
+        .unwrap_or_else(|| panic!("catalog is missing provider {}", provider.as_id()))
+}
+
+pub fn provider_by_id(id: &str) -> Option<crate::settings::ModelProvider> {
+    crate::settings::ModelProvider::ALL
+        .into_iter()
+        .find(|provider| provider.as_id() == id)
+}
+
+pub fn supports_voice_selection(provider: crate::settings::ModelProvider) -> bool {
+    provider_info(provider).capabilities.voice_selection
+}
+
+pub fn supports_voice_clone(provider: crate::settings::ModelProvider) -> bool {
+    provider_info(provider).capabilities.voice_clone
+}
+
+pub fn supports_source_language(provider: crate::settings::ModelProvider) -> bool {
+    provider_info(provider).capabilities.source_language
+}
+
+pub fn supports_hot_update_language(provider: crate::settings::ModelProvider) -> bool {
+    provider_info(provider).capabilities.hot_update_language
 }
 
 // --- 激活方式 --------------------------------------------------------------
@@ -208,6 +258,38 @@ pub fn key_options() -> Vec<KeyOption> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn provider_lookup_is_id_driven_and_covers_third_provider() {
+        assert_eq!(
+            provider_by_id("gpt"),
+            Some(crate::settings::ModelProvider::Gpt)
+        );
+        for provider in crate::settings::ModelProvider::ALL {
+            assert_eq!(
+                provider_info(provider).id,
+                provider.as_id(),
+                "catalog id must match the settings provider id"
+            );
+            assert_eq!(provider_by_id(provider.as_id()), Some(provider));
+        }
+        assert_eq!(provider_by_id("missing"), None);
+    }
+
+    #[test]
+    fn gpt_catalog_points_to_the_realtime_translation_model() {
+        let info = provider_info(crate::settings::ModelProvider::Gpt);
+        assert_eq!(info.default_model, "gpt-realtime-translate");
+        assert_eq!(info.model_label, "GPT Realtime Translate");
+        assert_eq!(info.default_model, GPT_MODEL_NAME);
+        assert_eq!(info.model_label, GPT_MODEL_LABEL);
+        assert_eq!(GPT_INPUT_SAMPLE_RATE, 24_000);
+        assert_eq!(GPT_OUTPUT_SAMPLE_RATE, 24_000);
+        assert!(!info.capabilities.voice_selection);
+        assert!(!info.capabilities.voice_clone);
+        assert!(!info.capabilities.source_language);
+        assert!(info.capabilities.hot_update_language);
+    }
 
     #[test]
     fn model_normalization_falls_back() {

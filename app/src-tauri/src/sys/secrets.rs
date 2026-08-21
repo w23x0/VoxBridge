@@ -30,22 +30,21 @@ impl DpapiSecretStore {
     }
 
     fn path_for(&self, provider: ModelProvider) -> PathBuf {
-        match provider {
-            ModelProvider::Aliyun => self.path.clone(),
-            ModelProvider::Gemini => {
-                let stem = self
-                    .path
-                    .file_stem()
-                    .and_then(|value| value.to_str())
-                    .unwrap_or("secret");
-                let extension = self
-                    .path
-                    .extension()
-                    .and_then(|value| value.to_str())
-                    .unwrap_or("bin");
-                self.path
-                    .with_file_name(format!("{stem}-gemini.{extension}"))
-            }
+        if provider == ModelProvider::Aliyun {
+            self.path.clone()
+        } else {
+            let stem = self
+                .path
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("secret");
+            let extension = self
+                .path
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or("bin");
+            self.path
+                .with_file_name(format!("{stem}-{}.{extension}", provider.as_id()))
         }
     }
 }
@@ -332,6 +331,30 @@ mod tests {
                 .unwrap()
                 .as_deref(),
             Some("AIza-gemini")
+        );
+    }
+
+    #[test]
+    fn gpt_uses_id_suffixed_secret_path_and_roundtrips() {
+        let path = unique_path();
+        let gpt_path = DpapiSecretStore::new(path.clone()).path_for(ModelProvider::Gpt);
+        let _cleanup = Cleanup(gpt_path.clone());
+        let store = DpapiSecretStore::new(path);
+
+        let gpt_filename = gpt_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default();
+        assert!(
+            gpt_filename.ends_with("-gpt.bin"),
+            "expected a secret-gpt.bin path, got {gpt_filename}"
+        );
+        store
+            .store_api_key_for(ModelProvider::Gpt, "sk-gpt")
+            .unwrap();
+        assert_eq!(
+            store.load_api_key_for(ModelProvider::Gpt).unwrap().as_deref(),
+            Some("sk-gpt")
         );
     }
 

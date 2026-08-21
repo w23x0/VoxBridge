@@ -21,12 +21,11 @@
       })();
     </script>
     <style>
-      /* 首帧防闪：html/body 必须透明，否则不透明底会传播到整块画布、在透明窗口
-         四角露出黑角。底色和圆角由 tokens.css 放在 #root（普通元素受圆角裁剪）。
-         闪白由上面 head 里的内联脚本提前设 data-theme + #root 的 token 兜住。 */
+      /* 首帧防闪：html/body 直接铺 --bg，避免圆角外露出透明窗口背后的深色底。
+         tokens.css 里同一样式再兜一次完整主题计算后的背景。 */
       html,
       body {
-        background: transparent;
+        background: var(--bg);
         overflow: hidden;
       }
     </style>

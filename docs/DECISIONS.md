@@ -389,6 +389,15 @@ b 的实现量很小：settings 里加一个 `Vec<(String, String)>`，
 | B10 | 官方热词表（术语表）这版做不做？ | **这版不做，但现在先在 settings 里占好字段** |
 | B11 | 老模型 `qwen3-livetranslate-flash-realtime-2025-09-22` 还留吗？ | **删掉**（它语音语言表只有 18 种且不是子集，留着就是坑） |
 
+### B12.（🔴 窗口边缘待真机）大圆角没生效 & 最小高度锁不到 38
+
+这两项**没有解决**，已单开 `docs/WINDOW_BEHAVIOR.md` 追踪完整现状与验证动作。
+一句话：真机发现**窗口没显示 12px 大圆角，而是默认小弧度**——"黑角月牙缝"很可能
+是因为大圆角根本没渲染而不出现的，不是被修好了。`#root` 的 12px 圆角
+（`tokens.css`）在真机大概率没作用到窗口上。最小高度 38 已加两层钳制
+（WM_GETMINMAXINFO + WM_WINDOWPOSCHANGING），但**没真拖验证**，不能算解决。
+`npm run verify`/`cargo build` 都测不到这两个，只能真机拖。待办见 WINDOW_BEHAVIOR.md。
+
 ---
 
 ## C. 后端契约

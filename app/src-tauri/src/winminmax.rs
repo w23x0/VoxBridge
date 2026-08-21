@@ -1,12 +1,12 @@
-//! 把主窗口的最小尺寸钉死到最底层的 `WM_GETMINMAXINFO`。
+//! 把主窗口的最小尺寸钉死到最底层的窗口过程。
 //!
 //! 为什么需要这一层：tauri 的 `set_min_size`（以及 conf 里的 `minHeight`）最终
 //! 落在 tao 挂的 `SetWindowSubclass` 链上处理，但这条链对「透明 + 无边框」窗口
 //! 实测压不到下限（用户量出来是 30px）。不深究 tao 内部，这里用
 //! `SetWindowLongPtrW(GWL_WNDPROC)` 在主窗口**最外面**再包一层窗口函数：收到
 //! `WM_GETMINMAXINFO` 时，先放原函数（tao 那条 subclass 链）处理，再强制把
-//! `ptMinTrackSize` 改成我们要的值。Windows 拖拽 resize 时按 `ptMinTrackSize`
-//! 判下限，因此这个下限总能保住。
+//! `ptMinTrackSize` 改成我们要的值；同时兜住 `WM_WINDOWPOSCHANGING`，把绕过
+//! `WM_GETMINMAXINFO` 的缩放路径（自定义 resize、程序化 SetWindowPos 等）也钳住。
 //!
 //! 兼容性：tao 挂的是 `SetWindowSubclass`，我们换的是最底层窗口过程指针，二者互不
 //! 覆盖，原函数指针由 `call_orig` 原样接续。
@@ -19,8 +19,8 @@ use windows::Win32::{
     UI::{
         HiDpi::GetDpiForWindow,
         WindowsAndMessaging::{
-            CallWindowProcW, DefWindowProcW, GA_ROOT, GetAncestor, GWL_WNDPROC, MINMAXINFO,
-            SetWindowLongPtrW, WM_GETMINMAXINFO,
+            CallWindowProcW, DefWindowProcW, GetAncestor, SetWindowLongPtrW, GA_ROOT, GWL_WNDPROC,
+            MINMAXINFO, SWP_NOSIZE, WINDOWPOS, WM_GETMINMAXINFO, WM_WINDOWPOSCHANGING,
         },
     },
 };
@@ -60,12 +60,7 @@ pub fn enforce_min_size(raw_hwnd: *mut c_void, min_w_dip: u32, min_h_dip: u32) {
     }
 }
 
-unsafe extern "system" fn wndproc(
-    hwnd: HWND,
-    msg: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
+unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if msg == WM_GETMINMAXINFO {
         // 先让原函数（tao 的 subclass 链）把 ptMinTrackSize 填上它自己的值，
         // 再强制覆盖成我们的下限。顺序不能反：tao 还要在里面补 max 等。
@@ -80,6 +75,29 @@ unsafe extern "system" fn wndproc(
         let min_h = MIN_H_DIP.load(Ordering::SeqCst);
         if min_h > 0 {
             mmi.ptMinTrackSize.y = ((min_h as f32) * dpi_scale).round() as i32;
+        }
+        return r;
+    }
+    if msg == WM_WINDOWPOSCHANGING {
+        let r = call_orig(hwnd, msg, wparam, lparam);
+
+        let dpi_scale = unsafe { GetDpiForWindow(hwnd) as f32 / 96.0 };
+        let wp = &mut *(lparam.0 as *mut WINDOWPOS);
+        if !wp.flags.contains(SWP_NOSIZE) {
+            let min_w = MIN_W_DIP.load(Ordering::SeqCst);
+            if min_w > 0 {
+                let min_w_physical = ((min_w as f32) * dpi_scale).round() as i32;
+                if wp.cx < min_w_physical {
+                    wp.cx = min_w_physical;
+                }
+            }
+            let min_h = MIN_H_DIP.load(Ordering::SeqCst);
+            if min_h > 0 {
+                let min_h_physical = ((min_h as f32) * dpi_scale).round() as i32;
+                if wp.cy < min_h_physical {
+                    wp.cy = min_h_physical;
+                }
+            }
         }
         return r;
     }

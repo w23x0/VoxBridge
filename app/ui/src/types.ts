@@ -8,7 +8,7 @@
 export type PipelineName = "speak" | "listen";
 
 /** Rust: ModelProvider，后续接入服务商时在这里追加。 */
-export type ModelProvider = "aliyun" | "gemini";
+export type ModelProvider = "aliyun" | "gemini" | "gpt";
 
 /** Rust: PipelineState，serde rename_all = "snake_case"。 */
 export type PipelineState =

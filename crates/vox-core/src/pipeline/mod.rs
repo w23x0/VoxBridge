@@ -27,7 +27,7 @@ use std::time::{Duration, Instant};
 
 use parking_lot::{Condvar, Mutex};
 
-use crate::cloud::protocol::{pcm16_to_float, INPUT_SAMPLE_RATE, OUTPUT_SAMPLE_RATE};
+use crate::cloud::protocol::{pcm16_to_float, OUTPUT_SAMPLE_RATE};
 use crate::cloud::{self, HotChange, Incoming, ServerEvent, Session, SessionParams, Transport};
 use crate::event::{Notice, Pipeline, PipelineState};
 use crate::gate::{ActivationGate, GateConfig, GateState};
@@ -444,10 +444,21 @@ struct UploadedSpan {
 
 /// 把服务端的 `audio_start_ms` 映射回本机采集时刻。只留最近两分钟，
 /// 长会话也不会无限长；服务端 VAD 的回报远早于这个窗口。
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct UploadTimeline {
     spans: VecDeque<UploadedSpan>,
     total_samples: u64,
+    sample_rate: u32,
+}
+
+impl UploadTimeline {
+    fn new(sample_rate: u32) -> Self {
+        Self {
+            spans: VecDeque::new(),
+            total_samples: 0,
+            sample_rate,
+        }
+    }
 }
 
 impl UploadTimeline {
@@ -470,7 +481,7 @@ impl UploadTimeline {
         });
         let keep_after = self
             .total_samples
-            .saturating_sub(INPUT_SAMPLE_RATE as u64 * 120);
+            .saturating_sub(self.sample_rate as u64 * 120);
         while self
             .spans
             .front()
@@ -481,7 +492,7 @@ impl UploadTimeline {
     }
 
     fn capture_time(&self, audio_offset_ms: u64) -> Option<u64> {
-        let sample = audio_offset_ms.saturating_mul(INPUT_SAMPLE_RATE as u64) / 1000;
+        let sample = audio_offset_ms.saturating_mul(self.sample_rate as u64) / 1000;
         let span = self
             .spans
             .iter()
@@ -560,6 +571,7 @@ impl Worker {
     ) -> Self {
         let session =
             Session::new_for(config.provider, config.api_key.clone(), plan.params.clone());
+        let input_sample_rate = session.input_sample_rate();
         Self {
             runtime,
             deps,
@@ -584,7 +596,7 @@ impl Worker {
             latency: LatencyTracker::default(),
             last_latency_emit: 0,
             session_opened_at: 0,
-            upload_timeline: UploadTimeline::default(),
+            upload_timeline: UploadTimeline::new(input_sample_rate),
             turn_probe: None,
             playback_probe: None,
             fallback_speech_start: None,
@@ -695,7 +707,10 @@ impl Worker {
                 tracing::warn!(rate = format.sample_rate, "采集率不是 48 kHz，跳过降噪");
             }
         }
-        self.resampler = Some((self.deps.resample)(format.sample_rate, INPUT_SAMPLE_RATE));
+        self.resampler = Some((self.deps.resample)(
+            format.sample_rate,
+            self.session.input_sample_rate(),
+        ));
 
         if self.stopping() {
             return Ok(false);
@@ -986,7 +1001,7 @@ impl Worker {
             return;
         };
         // 记下这段采样在上传时间线上的位置，好把服务端的 `audio_start_ms` 映回
-        // 本机采集墙钟。上传是 16 kHz；时长按同一段墙钟换算。
+        // 本机采集墙钟。上传采样率按 provider catalog 配置。
         self.upload_timeline
             .push(samples.len(), capture_start_ms, capture_end_ms);
 
@@ -1063,6 +1078,9 @@ impl Worker {
             }
             ServerEvent::SourceDetected { language } => {
                 self.runtime.on_source_detected(self.pipeline(), language);
+            }
+            ServerEvent::SourceTranscriptDelta { text } => {
+                tracing::debug!(text = %text, "source transcript delta");
             }
             ServerEvent::AudioDelta { pcm } => {
                 let samples = pcm16_to_float(&pcm);
@@ -1357,6 +1375,13 @@ impl Worker {
             capture.stop();
         }
         self.capture = None;
+        if let Some(frame) = self.session.close_frame() {
+            if let Some(transport) = self.transport.as_mut() {
+                if let Err(err) = transport.send(&frame) {
+                    tracing::warn!(error = %err, "session.close 发不出去");
+                }
+            }
+        }
         if let Some(transport) = self.transport.as_mut() {
             transport.close();
         }

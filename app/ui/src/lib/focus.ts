@@ -1,21 +1,20 @@
 /* ==========================================================================
-   焦点网格 —— 列模型树形导航（移植玻璃样式的 GlassUI focusGrid）
+   焦点网格 —— 列模型导航（移植玻璃样式的 GlassUI focusGrid）
 
    模型：
    - 界面没有「模块/面板」这一层 —— 直接操控控件。
-   - 「层」是相对位置：控件按行排、行内向左靠齐，行内第 N 个控件
-     就属于第 N 层（列）。所以「一行有多少控件就有多少层」。
+   - 控件按行排、行内向左靠齐，行内第 N 个控件属于第 N 层（列）。
        第 0 层 = 侧边栏（data-focus-zone="sidebar"），↑↓ 沿整条侧栏走
        （Shell 里 stepSidebar，因为侧栏项有「切页」这个特殊动作）
-       第 1..N 层 = 内容区第 0..N-1 列
-   - ↑↓（行间移动）：在相邻行之间走，保持当前列号；目标行没有这一列时
-     落到该行最后一列（列号夹紧）—— 保证任何控件都能连通上下，
-     不会因为某行控件少就把这一列卡死。
+       第 1..N 层 = 内容区
+   - ↑↓（行间移动）：把内容区当成一张固定的二维格子表 —— 列槽位。
+       保持「列槽位」，落到相邻行的、列槽位与当前相交的项；
+       没有相交就落到列槽最接近的。这样列不漂移，speak/listen 天然分列不串。
    - ←→（层间切换）：
-       → 在侧栏 = 进入内容区第 0 列第 0 行（第一个控件）
-       → 在内容区 = 同一行右移一列（下一层）；行内已是最右列 = 无动作
-       ← 在内容区第 0 列 = 回侧栏当前激活页图标
-       ← 在内容区第 N 列 = 同一行左移一列（上一层）
+       → 在侧栏 = 进入内容区第 0 行第 0 个控件
+       → 在内容区 = 同一行右移一格；行内最右 = 无动作
+       ← 在内容区最左 = 回侧栏当前激活页图标
+       ← 在内容区第 N 列 = 同一行左移一格
        ← 在侧栏 = 无动作（已是最左）
    - 失焦 / 红绿灯上按任意方向 = 视作光标在「当前激活页图标」，方向键直接生效
 
@@ -61,27 +60,33 @@ export function focusItem(el: HTMLElement | undefined | null): void {
 }
 
 /* --------------------------------------------------------------------------
-   内容区网格（列模型）。核心约定：
-   - 内容区的项 = 所有 [data-focus-item]，排除侧栏里的。
-   - 按 top 分组 = 行（容差 8px，同排控件的顶边几乎同高）；
-     行内按 left 排序，行内下标 = 列号（相对位置 = 层）。
-   - 移动规则：↑↓ 在相邻行间走（保持列号，列号夹紧）；
-     ←→ 在行内走（同一行左右移动一列）。
+   内容区网格（列模型）。核心约定 —— 一张固定的二维格子表，不比较坐标距离：
+   - 内容区项 = 所有 [data-focus-item]，排除侧栏里的。
+   - 行 = 按 top 分组（容差 ROW_TOLERANCE，同排项横顶齐）。
+   - 列 = 把每行的横向宽度均匀切成 COL_COUNT 个「列槽」；
+       每行每个项占据「一段连续列槽」[lo,hi] —— 行里项数少（像 1×2 开关）时一项跨多槽。
+   - 移动（= 表格光标）：
+       ↓↑：保持列槽位 —— 选邻行的、列槽包含当前框的项；无则取列槽最接近的。
+       →←：同一行内左右移一格（按该行格子序）。
+   这样避免跨行时把 1×2 跨度项的中心点当落点（坐标距离的坑），
+   而是按"它占哪几格"来对齐 —— 两张卡各自分列，永不横穿。
    -------------------------------------------------------------------------- */
 
 const ROW_TOLERANCE = 8;
+/** 网格列槽数：首页两卡 × 2 列 = 4。 */
+const COL_COUNT = 4;
 
 interface Grid {
   rows: HTMLElement[][];
-  pos: Map<HTMLElement, { row: number; col: number }>;
+  slot: Map<HTMLElement, { lo: number; hi: number }>;
 }
 
-/** 重建内容区网格。每次按键重算（导航是低频操作，不缓存）。 */
+/** 重建网格。每次按键重算（导航低频，不缓存）。 */
 function buildGrid(): Grid {
-  const items = Array.from(
-    document.querySelectorAll<HTMLElement>('[data-focus-item]'),
-  )
-    .filter((el) => isFocusable(el) && !el.closest('[data-focus-zone="sidebar"]'))
+  const items = Array.from(document.querySelectorAll<HTMLElement>('[data-focus-item]'))
+    .filter(
+      (el) => isFocusable(el) && !el.closest('[data-focus-zone="sidebar"]'),
+    )
     .sort((a, b) => {
       const ra = a.getBoundingClientRect();
       const rb = b.getBoundingClientRect();
@@ -99,61 +104,124 @@ function buildGrid(): Grid {
     }
   }
 
-  const pos = new Map<HTMLElement, { row: number; col: number }>();
-  rows.forEach((row, r) => {
-    row.forEach((el, c) => pos.set(el, { row: r, col: c }));
+  // 行内按 left 排序，并把每个项映射到「它覆盖的列槽范围 [lo,hi]」。
+  const slot = new Map<HTMLElement, { lo: number; hi: number }>();
+  rows.forEach((row) => {
+    row.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+    const n = row.length;
+    row.forEach((el, i) => {
+      // 第 i 个均匀占 [i*C/n, (i+1)*C/n - 1]，取整边缘。
+      const lo = Math.floor((i * COL_COUNT) / n);
+      const hi = Math.ceil(((i + 1) * COL_COUNT) / n) - 1;
+      slot.set(el, { lo, hi });
+    });
   });
-  return { rows, pos };
+  return { rows, slot };
 }
 
-/** ↑↓ 内容区：相邻行走一站（↑ = -1，↓ = +1），保持列号、列号夹紧。
- *  焦点不在网格里：Down 落第一个、Up 落最后一个。已在首/末行 → false。 */
+/** ↑↓ 内容区：相邻行走一站，列保持「列槽位」（列记忆）。
+ *  记忆 = 上次落下/从中出发的那一列槽（跨每次按键持久），用来看看在跨 1×2
+ *   束身上也只认那一格，↑ 才能回到原来的那格（右侧格 → 右侧格）。
+ */
+let memSlot: number | null = null; // 最近一次稳定停在的列槽位（0..COL_COUNT-1）
+let memEl: HTMLElement | null = null; // 记忆所属的焦点控件
+
 export function stepUpDown(dir: 1 | -1 = 1): boolean {
   const g = buildGrid();
   if (g.rows.length === 0) return false;
   const active = document.activeElement as HTMLElement | null;
-  const cur = active ? g.pos.get(active) : undefined;
-  if (!cur) {
+  if (!active || !g.slot.has(active)) {
+    memSlot = null;
+    memEl = null;
     const first = g.rows[0][0];
     const last = g.rows[g.rows.length - 1][g.rows[g.rows.length - 1].length - 1];
     focusItem(dir === 1 ? first : last);
+    if (dir === 1) memSlot = 0;
+    else memSlot = g.slot.get(last)!.hi;
+    memEl = dir === 1 ? first : last;
     return true;
   }
-  const targetRow = g.rows[cur.row + dir];
+  // 焦点换了（点击/ Tab 换到别的单元）→ 丢弃旧记忆，按当前格重新锚定。
+  if (memEl !== active) {
+    const s = g.slot.get(active)!;
+    memSlot = (s.lo + s.hi) >> 1;
+    memEl = active;
+  }
+  const anchor = memSlot!;
+  const curRow = g.rows.findIndex((r) => r.includes(active));
+  if (curRow < 0) return false;
+  const targetRow = g.rows[curRow + dir];
   if (!targetRow) return false;
-  const col = Math.min(cur.col, targetRow.length - 1);
-  focusItem(targetRow[col]);
+
+  // 相邻行里选「列槽包含锚点槽」的项；没有则取列槽与锚点最近的一个。
+  const best = pickBestSlotNearest(targetRow, anchor, (el) => g.slot.get(el));
+  memSlot = bestSlot(g.slot.get(best)!, anchor);
+  memEl = best;
+  focusItem(best);
   return true;
 }
 
-/** → 内容区：同一行右移一列。已在最右列 → false。 */
+/** 在行内挑「列槽包含 slot」的项；否则取列槽中点与 slot 最近的那个。 */
+function pickBestSlotNearest(
+  row: HTMLElement[],
+  slot: number,
+  getSlot: (el: HTMLElement) => { lo: number; hi: number } | undefined,
+): HTMLElement {
+  let best = row[0];
+  let bestDelta = Infinity;
+  const anchor = slot;
+  for (const el of row) {
+    const s = getSlot(el);
+    if (!s) continue;
+    if (s.lo <= anchor && anchor <= s.hi) {
+      best = el;
+      break;
+    }
+    const mid = (s.lo + s.hi) / 2;
+    const d = Math.abs(mid - anchor);
+    if (d < bestDelta) {
+      bestDelta = d;
+      best = el;
+    }
+  }
+  return best;
+}
+
+function bestSlot(s: { lo: number; hi: number }, anchor: number): number {
+  if (s.lo <= anchor && anchor <= s.hi) return anchor;
+  if (s.hi < anchor) return s.hi;
+  return s.lo;
+}
+
+/** → 内容区：同一行右移一格。已在最右 → false。 */
 export function stepColumnRight(): boolean {
   const g = buildGrid();
   const active = document.activeElement as HTMLElement | null;
-  const cur = active ? g.pos.get(active) : undefined;
-  if (!cur) return false;
-  const row = g.rows[cur.row];
-  const target = row[cur.col + 1];
-  if (!target) return false;
-  focusItem(target);
+  if (!active) return false;
+  const curRow = g.rows.findIndex((r) => r.includes(active));
+  if (curRow < 0) return false;
+  const row = g.rows[curRow];
+  const col = row.indexOf(active);
+  if (col < 0 || col + 1 >= row.length) return false;
+  focusItem(row[col + 1]);
   return true;
 }
 
-/** ← 内容区：同一行左移一列。已在第 0 列 → false（调用方据此回侧栏）。 */
+/** ← 内容区：同一行左移一格。已是最左 → false（调用方据此回侧栏）。 */
 export function stepColumnLeft(): boolean {
   const g = buildGrid();
   const active = document.activeElement as HTMLElement | null;
-  const cur = active ? g.pos.get(active) : undefined;
-  if (!cur) return false;
-  if (cur.col === 0) return false;
-  const row = g.rows[cur.row];
-  const target = row[cur.col - 1];
-  if (!target) return false;
-  focusItem(target);
+  if (!active) return false;
+  const curRow = g.rows.findIndex((r) => r.includes(active));
+  if (curRow < 0) return false;
+  const row = g.rows[curRow];
+  const col = row.indexOf(active);
+  if (col <= 0) return false;
+  focusItem(row[col - 1]);
   return true;
 }
 
-/** 进入内容区第一个控件（侧栏按 → 的落点 = 第 0 列第 0 行）。 */
+/** 进入内容区第一个控件（侧栏按 → 的落点）。 */
 export function enterContent(): boolean {
   const g = buildGrid();
   if (g.rows.length === 0) return false;

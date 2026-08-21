@@ -69,8 +69,8 @@
   --sidebar-bg: #ffffff;
   --content-max: 1200px;
 
-  /* 无边框窗口自身是直角的，圆角靠 CSS 做（shell.css 给 html+body）。
-     直角会把渐变底硬切一刀——Tauri 已开透明窗口，圆角外由桌面接管。 */
+  /* 无边框窗口自身是直角的，圆角靠 #root 的 CSS 做；
+     html/body 铺同渐变盖住圆角外四角。 */
   --window-radius: 12px;
 
   /* ---- 渐变图标砖（统计卡锚点，按语义取色） ---- */
@@ -128,16 +128,16 @@
 html, body {
   height: 100%;
   font-family: var(--font-ui);
-  /* 背景不在 html/body 上做：它会被当作 canvas 背景传播到整块画布、绕过圆角，
-     在透明窗口的四角露出不透明底（黑角的根）。背景和圆角统一放 #root。 */
-  background: transparent;
+  /* 整窗铺上和 #root 相同的渐变。圆角外那一圈由 html/body 直接盖住，
+     不会把背后图层透成黑角。 */
+  background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 /* 桌面壳：整窗渐变底色 + 圆角都在这里（普通元素背景受 border-radius 裁剪，
-   圆角外是透明 html -> 透到窗口，四角不黑）。transform 让 position:fixed 的
+   圆角外由 html/body 的同渐变覆盖，不再透到窗口）。transform 让 position:fixed 的
    子元素把 #root 当包含块，从而也被 overflow 圆角裁剪。 */
 #root {
   height: 100%;

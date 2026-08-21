@@ -19,13 +19,16 @@
   },
   "api": {
     "websocket_endpoint": "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
+    "api_key_placeholder": "AIza...",
     "input_audio": "PCM16LE / 16000 Hz / mono",
     "output_audio": "PCM16LE / 24000 Hz / mono"
   },
   "capabilities": {
     "languages": "70+",
     "voice_selection": false,
-    "voice_clone": false
+    "voice_clone": false,
+    "source_language": false,
+    "hot_update_language": false
   },
   "docs": {
     "live_translation": "https://ai.google.dev/gemini-api/docs/live-api/live-translate",

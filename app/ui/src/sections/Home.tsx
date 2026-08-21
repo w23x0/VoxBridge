@@ -158,6 +158,7 @@ export function HomePage() {
           const failed = state?.state === "failed";
           const blocked = blockedBy(card.id);
           const Icon = card.icon;
+          const activeProvider = card.id === "speak" ? speak.provider : listen.provider;
 
           return (
             <div
@@ -208,22 +209,27 @@ export function HomePage() {
                       label={t("pipeline.providerAria", { pipe: pipeLabel(card.id) })}
                       value={card.id === "speak" ? speak.provider : listen.provider}
                       options={catalog.providerOptions(uiLang)}
-                      onChange={(provider) =>
-                        card.id === "speak"
-                          ? patch({
+                      onChange={(provider) => {
+                        const nextProvider = provider as ModelProvider;
+                        if (card.id === "speak") {
+                          patch({
                               speak: {
-                                provider: provider as ModelProvider,
-                                model_name: catalog.defaultModelForProvider(provider as ModelProvider),
+                                provider: nextProvider,
+                                model_name: catalog.defaultModelForProvider(nextProvider),
                               },
-                            })
-                          : patch({
+                            });
+                        } else {
+                          patch({
                               listen: {
-                                provider: provider as ModelProvider,
-                                model_name: catalog.defaultModelForProvider(provider as ModelProvider),
-                                source_language: provider === "gemini" ? null : listen.source_language,
+                                provider: nextProvider,
+                                model_name: catalog.defaultModelForProvider(nextProvider),
+                                source_language: catalog.supportsSourceLanguage(nextProvider)
+                                  ? listen.source_language
+                                  : null,
                               },
-                            })
-                      }
+                            });
+                        }
+                      }}
                     />
                   </div>
 
@@ -254,7 +260,8 @@ export function HomePage() {
                           });
                         }}
                       />
-                      <div className="pipeline-toggle-under">
+                      <div className="pipeline-inline-toggle"
+                      style={{ marginTop: 8, width: "100%", justifyContent: "space-between" }}>
                         <span>{t("pipeline.showTranslation")}</span>
                         <Toggle
                           checked={speak.show_translation}
@@ -273,13 +280,13 @@ export function HomePage() {
                         label={t("pipeline.sourceLanguageAria")}
                         value={listen.source_language ?? ""}
                         options={
-                          listen.provider === "gemini"
+                          !catalog.supportsSourceLanguage(listen.provider)
                             ? [sourceChoices[0]].filter(
                                 (option): option is catalog.LabeledOption => option !== undefined,
                               )
                             : listenLanguageOptions
                         }
-                        disabled={listen.provider === "gemini"}
+                        disabled={!catalog.supportsSourceLanguage(listen.provider)}
                         onChange={(language) => {
                           rememberListenLanguage(language);
                           patch({
@@ -287,58 +294,41 @@ export function HomePage() {
                           });
                         }}
                       />
+                      <div className="pipeline-inline-toggle"
+                      style={{ marginTop: 8, width: "100%", justifyContent: "space-between" }}>
+                        <span>{t("pipeline.playTranslation")}</span>
+                        <Toggle
+                          checked={listen.speak_translation}
+                          label={t("pipeline.playTranslation")}
+                          onChange={(checked) => patch({ listen: { speak_translation: checked } })}
+                        />
+                      </div>
                     </div>
                   )}
 
                   <div className="pipeline-config-wide">
-                    <div className="pipeline-config-head">
-                      <label
-                        className="stat-label"
-                        htmlFor={card.id === "speak" ? "dd-home-speak-voice" : "dd-home-listen-voice"}
-                      >
-                        {t("pipeline.voice")}
-                      </label>
-                      <div className="pipeline-inline-toggle">
-                        <span>
-                          {card.id === "speak"
-                            ? t("pipeline.showTranslation")
-                            : t("pipeline.playTranslation")}
-                        </span>
-                        <Toggle
-                          checked={
-                            card.id === "speak"
-                              ? speak.show_translation
-                              : listen.speak_translation
-                          }
-                          label={
-                            card.id === "speak"
-                              ? t("pipeline.showTranslation")
-                              : t("pipeline.playTranslation")
-                          }
-                          onChange={(checked) =>
-                            card.id === "speak"
-                              ? patch({ speak: { show_translation: checked } })
-                              : patch({ listen: { speak_translation: checked } })
-                          }
-                        />
-                      </div>
-                    </div>
+                    <label
+                      className="stat-label"
+                      htmlFor={card.id === "speak" ? "dd-home-speak-voice" : "dd-home-listen-voice"}
+                    >
+                      {t("pipeline.voice")}
+                    </label>
                     <Dropdown
                       id={card.id === "speak" ? "dd-home-speak-voice" : "dd-home-listen-voice"}
                       label={t("pipeline.voiceAria", { pipe: pipeLabel(card.id) })}
                       value={card.id === "speak" ? speak.voice : listen.voice}
                       options={
-                        (card.id === "speak" ? speak.provider : listen.provider) === "gemini"
+                        !catalog.supportsVoiceSelection(activeProvider)
                           ? [{
                               value: card.id === "speak" ? speak.voice : listen.voice,
-                              label: t("catalog.geminiAutoVoice"),
+                              label: t("catalog.autoVoice"),
                             }]
                           : card.id === "speak"
                             ? speakVoiceOptions
                             : listenVoiceOptions
                       }
                       disabled={
-                        (card.id === "speak" ? speak.provider : listen.provider) === "gemini" ||
+                        !catalog.supportsVoiceSelection(activeProvider) ||
                         (card.id === "listen" && !listen.speak_translation)
                       }
                       onChange={(voice) => {

@@ -30,6 +30,23 @@ pub enum ModelProvider {
     #[default]
     Aliyun,
     Gemini,
+    Gpt,
+}
+
+impl ModelProvider {
+    pub const ALL: [Self; 3] = [Self::Aliyun, Self::Gemini, Self::Gpt];
+
+    pub fn as_id(self) -> &'static str {
+        match self {
+            Self::Aliyun => "aliyun",
+            Self::Gemini => "gemini",
+            Self::Gpt => "gpt",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        crate::catalog::provider_by_id(id)
+    }
 }
 
 /// 全部设置。
@@ -300,7 +317,7 @@ impl Settings {
             .voice_by_language
             .insert(speak.target_language.clone(), speak.voice.clone());
         speak.voice_clone_frequency = speak.voice_clone_frequency.filter(|f| *f > 0);
-        if speak.provider == ModelProvider::Gemini {
+        if !catalog::supports_voice_clone(speak.provider) {
             speak.voice_clone_frequency = None;
         }
         speak.gate_threshold = clamp_f32(speak.gate_threshold, GATE_THRESHOLD_RANGE);
@@ -330,7 +347,7 @@ impl Settings {
             .source_language
             .take()
             .filter(|lang| catalog::language_label(lang).is_some());
-        if listen.provider == ModelProvider::Gemini {
+        if !catalog::supports_source_language(listen.provider) {
             listen.source_language = None;
         }
 
@@ -495,6 +512,29 @@ mod tests {
         assert_eq!(settings.listen.model_name, catalog::GEMINI_MODEL_NAME);
         assert_eq!(settings.speak.voice_clone_frequency, None);
         assert_eq!(settings.listen.source_language, None);
+    }
+
+    #[test]
+    fn gpt_provider_pins_catalog_model_and_clears_unsupported_options() {
+        let settings = Settings::from_json(
+            r#"{
+                "speak": {
+                    "provider": "gpt",
+                    "model_name": "qwen3.5-livetranslate-flash-realtime",
+                    "voice_clone_frequency": 3
+                },
+                "listen": {
+                    "provider": "gpt",
+                    "source_language": "en"
+                }
+            }"#,
+        );
+        assert_eq!(settings.speak.model_name, catalog::GPT_MODEL_NAME);
+        assert_eq!(settings.listen.model_name, catalog::GPT_MODEL_NAME);
+        assert_eq!(settings.speak.voice_clone_frequency, None);
+        assert_eq!(settings.listen.source_language, None);
+        assert_eq!(ModelProvider::from_id("gpt"), Some(ModelProvider::Gpt));
+        assert_eq!(ModelProvider::Gpt.as_id(), "gpt");
     }
 
     #[test]

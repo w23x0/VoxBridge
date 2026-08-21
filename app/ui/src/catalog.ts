@@ -11,6 +11,7 @@
 
 import aliyun from "../../../catalog/aliyun.json";
 import gemini from "../../../catalog/gemini.json";
+import gpt from "../../../catalog/gpt.json";
 import type { ModelProvider } from "./types";
 import type { UiLang } from "./i18n/types";
 
@@ -36,14 +37,69 @@ export interface ModelInfo {
   label: CatalogLabel;
 }
 
-const PROVIDER_ROWS: { value: string; label: CatalogLabel }[] = [
-  { value: aliyun.provider.id, label: aliyun.provider.label },
-  { value: gemini.provider.id, label: gemini.provider.label },
+export interface ProviderCapabilities {
+  languages?: string;
+  voice_selection: boolean;
+  voice_clone: boolean;
+  source_language: boolean;
+  hot_update_language: boolean;
+}
+
+export interface ProviderCatalog {
+  id: ModelProvider;
+  label: CatalogLabel;
+  console_url: string;
+  api_key_placeholder: string;
+  model_name: string;
+  model_label: CatalogLabel;
+  capabilities: ProviderCapabilities;
+}
+
+function toModelProvider(id: string): ModelProvider {
+  return id as ModelProvider;
+}
+
+const PROVIDERS: ProviderCatalog[] = [
+  {
+    id: toModelProvider(aliyun.provider.id),
+    label: aliyun.provider.label,
+    console_url: aliyun.provider.console_url,
+    api_key_placeholder: aliyun.api.api_key_placeholder,
+    model_name: aliyun.model.id,
+    model_label: aliyun.model.label,
+    capabilities: aliyun.capabilities,
+  },
+  {
+    id: toModelProvider(gemini.provider.id),
+    label: gemini.provider.label,
+    console_url: gemini.provider.console_url,
+    api_key_placeholder: gemini.api.api_key_placeholder,
+    model_name: gemini.model.id,
+    model_label: gemini.model.label,
+    capabilities: gemini.capabilities,
+  },
+  {
+    id: toModelProvider(gpt.provider.id),
+    label: gpt.provider.label,
+    console_url: gpt.provider.console_url,
+    api_key_placeholder: gpt.api.api_key_placeholder,
+    model_name: gpt.model.id,
+    model_label: gpt.model.label,
+    capabilities: gpt.capabilities,
+  },
 ];
+
+export function providerCatalog(provider: ModelProvider): ProviderCatalog | undefined {
+  return PROVIDERS.find((candidate) => candidate.id === provider);
+}
+
+export function providerIds(): ModelProvider[] {
+  return PROVIDERS.map((provider) => provider.id);
+}
 
 /** 语言列表（label 已按界面语言解析）。 */
 export function providerOptions(uiLang: UiLang): LabeledOption[] {
-  return PROVIDER_ROWS.map((row) => ({ value: row.value, label: l10n(row.label, uiLang) }));
+  return PROVIDERS.map((row) => ({ value: row.id, label: l10n(row.label, uiLang) }));
 }
 
 export const LANGUAGE_CODES: { code: string; label: CatalogLabel; audio_output: boolean }[] =
@@ -78,18 +134,41 @@ export function sourceLanguageOptions(
 }
 
 export const DEFAULT_MODEL_NAME = aliyun.model.id;
-export const GEMINI_MODEL_NAME = gemini.model.id;
-const MODELS: ModelInfo[] = [
-  { name: DEFAULT_MODEL_NAME, label: aliyun.model.label },
-  { name: GEMINI_MODEL_NAME, label: gemini.model.label },
-];
+const MODELS: ModelInfo[] = PROVIDERS.map((provider) => ({
+  name: provider.model_name,
+  label: provider.model_label,
+}));
 
 export function defaultModelForProvider(provider: ModelProvider): string {
-  return provider === "gemini" ? GEMINI_MODEL_NAME : DEFAULT_MODEL_NAME;
+  return providerCatalog(provider)?.model_name ?? DEFAULT_MODEL_NAME;
+}
+
+export function providerApiKeyPlaceholder(provider: ModelProvider): string {
+  return providerCatalog(provider)?.api_key_placeholder ?? "";
+}
+
+export function providerConsoleUrl(provider: ModelProvider): string {
+  return providerCatalog(provider)?.console_url ?? "";
+}
+
+export function supportsVoiceSelection(provider: ModelProvider): boolean {
+  return providerCatalog(provider)?.capabilities.voice_selection ?? false;
+}
+
+export function supportsVoiceClone(provider: ModelProvider): boolean {
+  return providerCatalog(provider)?.capabilities.voice_clone ?? false;
+}
+
+export function supportsSourceLanguage(provider: ModelProvider): boolean {
+  return providerCatalog(provider)?.capabilities.source_language ?? false;
+}
+
+export function supportsHotUpdateLanguage(provider: ModelProvider): boolean {
+  return providerCatalog(provider)?.capabilities.hot_update_language ?? false;
 }
 
 export function providerLabel(provider: ModelProvider, uiLang: UiLang): string {
-  const row = PROVIDER_ROWS.find((candidate) => candidate.value === provider);
+  const row = providerCatalog(provider);
   return row ? l10n(row.label, uiLang) : provider;
 }
 
@@ -108,12 +187,12 @@ export function languageLabel(code: string, uiLang: UiLang): string {
 }
 
 export function supportsAudioOutput(language: string, provider: ModelProvider = "aliyun"): boolean {
-  return provider === "gemini"
-    ? LANGUAGE_CODES.some((candidate) => candidate.code === language)
-    : AUDIO_OUTPUT_LANGUAGES.has(language);
+  const row = providerCatalog(provider);
+  if (row?.capabilities.voice_selection) {
+    return AUDIO_OUTPUT_LANGUAGES.has(language);
+  }
+  return LANGUAGE_CODES.some((candidate) => candidate.code === language);
 }
-
-export const GEMINI_CATALOG = gemini;
 
 export const VOICE_CATALOG = aliyun.voices;
 export const DEFAULT_VOICE = aliyun.defaults.voice;
