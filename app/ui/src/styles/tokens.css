@@ -1,0 +1,224 @@
+/* ==========================================================================
+   KiroX UI — 基础层（变量 / reset / 主题 / 排版）
+   整份复制进项目，第一个引入。后续所有组件样式都依赖这里的变量。
+   ========================================================================== */
+
+:root {
+  /* ---- 背景三档层级 ---- */
+  --bg: linear-gradient(135deg, #eef2f7 0%, #e0e7ff 100%);
+  --bg-flat: #eef2f7;          /* 需要纯色回退时用 */
+  --bg-card: rgba(255, 255, 255, 0.92);  /* 主面板（半透明），无边设计 alpha 高一档 */
+  --bg-panel: rgba(255, 255, 255, 0.72); /* 浮空面板 */
+  --bg-subtle: #f9fafb;        /* 内层子卡（实色，不透明） */
+  --bg-hover: #f3f4f6;
+
+  /* ---- 描边 ----
+     --border 恒为 transparent：组件里照常写 border: 1px solid var(--border)，
+     边是隐形的但盒模型尺寸不变。需要功能性分隔线的地方（表行、面板头）用
+     --divider，别用 --border。 ---- */
+  --border: transparent;
+  --divider: rgba(0, 0, 0, 0.05);
+  --bg-panel-border: transparent;  /* 兼容旧组件；无边设计下不出现 */
+  --text: #1f2937;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+
+  /* ---- 语义色 ---- */
+  --accent: #3b82f6;
+  --accent-strong: #2563eb;    /* 主按钮悬停用，原项目此处误用灰色 */
+  --accent-soft: rgba(59, 130, 246, 0.07);
+  --success: #10b981;
+  --success-soft: rgba(16, 185, 129, 0.08);
+  --danger: #ef4444;
+  --danger-soft: rgba(239, 68, 68, 0.08);
+  --warn: #f59e0b;
+
+  /* ---- 圆角阶梯（不要低于 8px） ---- */
+  --radius-sm: 8px;            /* 小按钮 */
+  --radius-ctl: 10px;          /* 输入框 / 按钮 */
+  --radius: 16px;              /* 一般块 */
+  --radius-inner: 20px;        /* 内层子卡 */
+  --radius-lg: 24px;           /* 主面板 */
+  --radius-xl: 32px;           /* 大区块 */
+  --radius-pill: 20px;         /* 徽章胶囊 */
+
+  /* ---- 字体：全等宽设计 ----
+     字体已打包进应用（fonts.css），分发不依赖用户装字体。
+     GlassUI Mono 是打包字体：JetBrains Mono（拉丁）+ Maple CN（汉字），
+     unicode-range 让浏览器逐字符分派。栈末尾保留系统字体兜底，
+     但正常情况永远走 GlassUI Mono，不会掉回系统。 */
+  --font-ui: 'GlassUI Mono', 'JetBrains Mono', 'Maple Mono Normal CN',
+             'Maple Mono Normal NF', 'Maple Mono Normal', 'Cascadia Code',
+             'SF Mono', Consolas, ui-monospace, monospace;
+  --font-mono: var(--font-ui);   /* 同一栈，语义区分保留给数值类 class */
+  --font-sans: var(--font-ui);   /* 兼容别名；这套设计里没有真正的无衬线层 */
+
+  /* ---- 阴影（极轻，纯垂直） ----
+     统一 x=0、无 spread：负 spread 会让阴影四边内缩，半透明面板一叠
+     就看成光从斜角打来。光源永远是正上方，单层对称直落。
+     分层靠明度 + 圆角，阴影只是补一层高度感。 */
+  --shadow-sm: 0 2px 8px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 4px 20px rgba(16, 24, 40, 0.08);
+  --shadow-pop: 0 8px 30px rgba(16, 24, 40, 0.12);   /* 下拉 / 弹层 */
+  --shadow-modal: 0 20px 60px rgba(16, 24, 40, 0.16);
+  --shadow-ctl: 0 2px 6px rgba(16, 24, 40, 0.08);    /* 控件悬浮 / 聚焦 */
+
+  /* ---- 布局 ---- */
+  --sidebar-width: 64px;
+  --titlebar-height: 38px;
+  --sidebar-bg: #ffffff;
+  --content-max: 1200px;
+
+  /* 无边框窗口自身是直角的，圆角靠 CSS 做（shell.css 给 html+body）。
+     直角会把渐变底硬切一刀——Tauri 已开透明窗口，圆角外由桌面接管。 */
+  --window-radius: 12px;
+
+  /* ---- 渐变图标砖（统计卡锚点，按语义取色） ---- */
+  --grad-indigo: linear-gradient(135deg, #6366f1, #818cf8);
+  --grad-green:  linear-gradient(135deg, #10b981, #34d399);
+  --grad-cyan:   linear-gradient(135deg, #06b6d4, #22d3ee);
+  --grad-amber:  linear-gradient(135deg, #f59e0b, #fbbf24);
+  --grad-red:    linear-gradient(135deg, #ef4444, #f87171);
+  --grad-violet: linear-gradient(135deg, #8b5cf6, #a78bfa);
+  --grad-blue:   linear-gradient(135deg, #3b82f6, #60a5fa);
+}
+
+/* ==========================================================================
+   暗色主题 — 规则是白色低透明度叠加，不是深灰实色
+   ========================================================================== */
+[data-theme="dark"] {
+  --bg: linear-gradient(135deg, #0f1117 0%, #151825 100%);
+  --bg-flat: #0f1117;
+  /* 无边设计在暗色下最难：阴影落在暗底上几乎不可见，分层只能靠填充明度。
+     所以面板 alpha 从有边版本的 0.9/0.04 提到更高，内层子卡也跟着提。 */
+  --bg-card: rgba(255, 255, 255, 0.065);
+  --bg-panel: rgba(255, 255, 255, 0.055);
+  --bg-subtle: #21232c;
+  --bg-hover: #2a2c36;
+
+  --border: transparent;
+  --divider: rgba(255, 255, 255, 0.07);
+  --bg-panel-border: transparent;
+  --text: #e5e7eb;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+
+  --accent: #60a5fa;
+  --accent-strong: #93c5fd;
+  --accent-soft: rgba(96, 165, 250, 0.12);
+  --success: #34d399;
+  --success-soft: rgba(16, 185, 129, 0.12);
+  --danger-soft: rgba(239, 68, 68, 0.12);
+
+  --sidebar-bg: rgba(30, 32, 40, 0.95);
+  /* 暗色下阴影整体更重，但保持和明色同一套「无 x 偏移、无 spread、单层」 */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.36);
+  --shadow-pop: 0 8px 30px rgba(0, 0, 0, 0.5);
+  --shadow-ctl: 0 2px 6px rgba(0, 0, 0, 0.3);
+
+  color-scheme: dark;
+}
+
+/* ==========================================================================
+   Reset 与基础排版
+   ========================================================================== */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  font-family: var(--font-ui);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 桌面应用外壳用；纯网页请删掉这行，否则页面无法滚动 */
+body.app-shell { overflow: hidden; }
+
+/* 全局已是等宽，所以 .num 的作用不是换字体，而是「加粗 + 负字距 + 表格数字」。
+   数值和正文的区分靠字重（800 vs 400~600）而不是字族。 */
+.num, .mono {
+  font-family: var(--font-mono);
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+/* 斜杠零是这套字体的识别特征，数值区不要关掉 */
+.num-green { color: var(--success); }
+.num-red   { color: var(--danger); }
+.num-blue  { color: var(--accent); }
+.num-muted { color: var(--text-muted); }
+
+/* 10–11px 小标签：必须大写 + 字距 + 600 */
+.label-xs {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ---- 字号阶梯 ---- */
+.t-page    { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: var(--accent); }
+.t-section { font-size: 17px; font-weight: 700; color: var(--text); }
+.t-block   { font-size: 15px; font-weight: 700; color: var(--text); }
+.t-card    { font-size: 14px; font-weight: 700; color: var(--text); }
+.t-body    { font-size: 13px; color: var(--text); }
+.t-aux     { font-size: 12px; color: var(--text-secondary); }
+
+/* ==========================================================================
+   滚动条 — 原项目全局隐藏（*::-webkit-scrollbar{display:none}），
+   会让长列表用户失去位置感知。这里改成细窄半透明。
+   ========================================================================== */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128, 128, 128, 0.28) transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.28);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(128, 128, 128, 0.45); }
+
+/* 确实需要藏起来的容器（如内嵌 iframe）单独加这个 class */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* ==========================================================================
+   焦点可见性 — 原项目用 rgba(0,0,0,0.05) 中性灰，键盘用户几乎看不见。
+   改成 accent 色，并用 :focus-visible 只对键盘生效（鼠标点击不出环）。
+   ========================================================================== */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.form-input:focus-visible,
+.form-select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+/* ==========================================================================
+   动效降级 — 原项目缺失。圆形扩散主题切换 + 卡片位移对前庭敏感用户不友好。
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  ::view-transition-old(root),
+  ::view-transition-new(root) { animation: none !important; }
+}
+
+/* 主题切换瞬间锁住所有过渡，防止几十个元素同时补间造成闪烁 */
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after { transition: none !important; }

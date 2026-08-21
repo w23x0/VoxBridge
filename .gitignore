@@ -1,0 +1,30 @@
+/target/
+/app/ui/node_modules/
+/app/ui/dist/
+/app/ui/.refs/
+/app/ui/.shots/
+/app/ui/.vite/
+
+.env
+.env.*
+!.env.example
+*.local
+*.log
+
+# 本机安装包、调试符号和临时截图不进源码仓库。
+*.exe
+*.msi
+*.pdb
+*.dmp
+*.tmp
+*.bak
+
+# 本机快捷方式(含本机绝对路径)。
+*.lnk
+
+# 个人笔记与本地编辑配置。
+.vox.md
+vox.md
+.obsidian/
+V2V/
+

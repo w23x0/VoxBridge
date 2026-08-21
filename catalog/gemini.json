@@ -1,0 +1,26 @@
+{
+  "verified_at": "2026-08-19",
+  "provider": {
+    "id": "gemini",
+    "label": "Google Gemini",
+    "console_url": "https://aistudio.google.com/apikey"
+  },
+  "model": {
+    "id": "gemini-3.5-live-translate-preview",
+    "label": "Gemini 3.5 Live Translate"
+  },
+  "api": {
+    "websocket_endpoint": "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
+    "input_audio": "PCM16LE / 16000 Hz / mono",
+    "output_audio": "PCM16LE / 24000 Hz / mono"
+  },
+  "capabilities": {
+    "languages": "70+",
+    "voice_selection": false,
+    "voice_clone": false
+  },
+  "docs": {
+    "live_translation": "https://ai.google.dev/gemini-api/docs/live-api/live-translate",
+    "rate_limits": "https://ai.google.dev/gemini-api/docs/rate-limits"
+  }
+}

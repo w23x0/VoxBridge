@@ -1,0 +1,43 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/vox-core",
+    "crates/vox-dsp",
+    "crates/vox-net",
+    "crates/vox-audio-win",
+    "crates/vox-input-win",
+    "crates/vox-overlay-win",
+    # 装配层。放进 workspace 是为了让 `cargo test/clippy --workspace` 真的覆盖到它。
+    "app/src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["VoxBridge"]
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+thiserror = "2"
+tracing = "0.1"
+parking_lot = "0.12"
+vox-core = { path = "crates/vox-core" }
+vox-dsp = { path = "crates/vox-dsp" }
+# 三个 Windows crate 共用同一个版本，避免同时链两份 windows。
+windows = "0.62"
+rubato = "0.16"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+# rustls 0.23 不再自动选 crypto provider，必须显式启用一个（ring / aws-lc-rs）
+# 并在进程启动时 install_default()。选 ring：纯 Rust 实现，无 C 工具链依赖
+# （不引 aws-lc-rs），也关掉 rustls 默认 feature 以免同时拉两个 provider。
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true

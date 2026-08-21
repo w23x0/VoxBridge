@@ -1,0 +1,6 @@
+{
+  "$comment": "给 npm run tauri:dev:attach 用：Vite 已经在 5183 上跑着的时候，别让 tauri 再起一个。平时用 npm run tauri:dev（那条会自己起 Vite）。",
+  "build": {
+    "beforeDevCommand": ""
+  }
+}

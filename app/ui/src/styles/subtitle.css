@@ -1,0 +1,76 @@
+/*
+ * 字幕预览。只留真正需要手写 CSS 的两件事：
+ *   1. 棋盘底 —— 用来看穿底衬不透明度，别的表达不了这种双层渐变。
+ *   2. 逐字淡出的字元 —— 每个字的 opacity 由 JS 按 TTL/淡出算好写进 style。
+ * 圆角沿用规格的 --radius，别自己造数值。
+ */
+
+.subtitle-preview {
+  border-radius: var(--radius);
+  padding: 18px;
+  /* 棋盘底，用来看穿背景不透明度。悬浮窗实际是透明的，这里要能看出「透」到什么程度 */
+  background-color: #101419;
+  background-image:
+    linear-gradient(45deg, #171c23 25%, transparent 25%, transparent 75%, #171c23 75%),
+    linear-gradient(45deg, #171c23 25%, transparent 25%, transparent 75%, #171c23 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    8px 8px;
+}
+
+.subtitle-preview__tag {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: rgba(226, 232, 240, 0.45);
+}
+
+.subtitle-preview__row {
+  display: block;
+  padding: 6px 10px;
+  border-radius: 6px;
+  /* 字号、颜色、底衬不透明度由内联样式注入 —— 它们本来就是被配置的对象 */
+  line-height: 1.35;
+  word-break: break-word;
+  min-height: 1.35em;
+}
+
+.subtitle-preview__ch {
+  white-space: pre-wrap;
+}
+
+/* 预览收进设置组里，沿用组的左右内边距 */
+.subtitle-preview-wrap {
+  padding: 4px 0 20px;
+}
+
+/* 颜色选取：原生 color input，只留色板本身，去掉浏览器默认边框 */
+.color-input {
+  inline-size: 56px;
+  block-size: 32px;
+  padding: 2px;
+  border: none;
+  border-radius: var(--radius-ctl);
+  background: var(--bg-subtle);
+  cursor: pointer;
+}
+
+.color-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.color-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: calc(var(--radius-ctl) - 3px);
+}

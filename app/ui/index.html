@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VoxBridge 设置</title>
+    <script>
+      /*
+       * 首帧前套用已存主题（UI_SPEC 第 5 节）。必须内联在 head 里同步执行 ——
+       * 等 JS 模块加载完再套已经晚了，会先渲染亮色再跳暗色。
+       * key 必须和 src/ui/theme.ts 的 KEY（"app-theme"）一致，否则暗色用户
+       * 冷启动会先亮一下再跳暗。
+       * 没存过就不写 data-theme，让 CSS 里的系统偏好媒体查询生效。
+       */
+      (function () {
+        try {
+          var s = localStorage.getItem("app-theme");
+          if (s === "dark" || s === "light")
+            document.documentElement.setAttribute("data-theme", s);
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      /* 提前铺底色，避免 WebView 起来那一瞬间闪白/闪黑。和 spec.css 的 --bg-flat 对齐。 */
+      html {
+        background: #eef2f7;
+      }
+      @media (prefers-color-scheme: dark) {
+        html:not([data-theme="light"]) {
+          background: #0f1117;
+        }
+      }
+      html[data-theme="dark"] {
+        background: #0f1117;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

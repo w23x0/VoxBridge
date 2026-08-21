@@ -1,0 +1,286 @@
+/* ==========================================================================
+   外壳：浮空侧栏 + 无边框标题栏。数值照 kirox-ui skill 的 references/shell.md。
+   Tauri 版差异：--wails-draggable 换成 data-tauri-drag-region（在 TSX 里加属性）。
+   ========================================================================== */
+
+/* 无边框窗口自身是直角的，圆角要在 CSS 里做，四个角都要 ——
+   只给内容区加圆角会在右下露出直角。尺寸用 --window-radius token。 */
+html,
+body {
+  border-radius: var(--window-radius);
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+}
+
+/* ---- 侧栏：64px 窄条，顶留 44px、其余三边留 16px ----
+   用纯 CSS 的 top / bottom 跟随同一视口，避免 JS 读 innerHeight 后产生相位差。 */
+.sidebar {
+  position: fixed;
+  left: 16px;
+  top: 44px;
+  bottom: 16px;
+  width: var(--sidebar-width);
+  background: var(--sidebar-bg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 200;
+  /* 无边设计：暗色下也不给侧栏描边，靠 --sidebar-bg 比渐变底亮来分层。
+     兜底：窗口压到 minHeight 时，底部图标宁可被面板边缘裁掉，
+     也不能越过白色面板浮到渐变底上。 */
+  overflow: hidden;
+}
+
+.sidebar-nav {
+  flex: 1;
+  /* 撑回侧栏全宽：align-items:center 会让本容器塌成内容宽(42px)，
+     overflow-x:hidden 于是把 .nav-dot 的 -2px 左伸裁掉(顶部竖条变细)。
+     拉伸后按钮仍居中，竖条回到 4px 完整可见。 */
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0 0;
+  gap: 4px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* 功能多了图标会溢出，但 64px 窄条里出滚动条很丑（占掉图标一侧的位置）。
+     隐藏它是安全的：键盘 ↑↓ 一样能到达被挤出去的项。 */
+  scrollbar-width: none;
+}
+.sidebar-nav::-webkit-scrollbar { display: none; }
+
+.sidebar-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 0 20px;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.nav-divider {
+  width: 32px;
+  height: 1px;
+  /* 分隔线是功能性的，用 --divider；--border 恒为 transparent，画不出线 */
+  background: var(--divider);
+  margin: 0 0 6px;
+}
+
+/* ---- 导航项 42×42，激活态浅蓝底 + 左侧 4×20 竖条 ---- */
+.nav-item {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border: none;
+  padding: 0;
+  background: transparent;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.nav-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* 激活态用 --accent-soft 半透明底而不是实色填充 —— 实色蓝在窄条里太跳 */
+.nav-item.active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+[data-theme="dark"] .nav-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .nav-item.active {
+  background: rgba(96, 165, 250, 0.1);
+  /* 暗色下 --accent-strong 是更亮的 #93c5fd，配 accent-soft 底反而发灰，
+     所以退回 --accent 本色 */
+  color: var(--accent);
+}
+
+.nav-item svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.nav-dot {
+  position: absolute;
+  left: -2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.nav-item.active .nav-dot {
+  opacity: 1;
+}
+
+.nav-tooltip {
+  position: fixed;
+  left: 88px;
+  transform: translateY(-50%);
+  background: #1f2937;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: var(--shadow-pop);
+  z-index: 300;
+}
+
+[data-theme="dark"] .nav-tooltip {
+  background: #374151;
+}
+
+/* ---- 标题栏：只放固定的应用名，不放当前页面名 ----
+   页面名是内容区顶部的蓝色大标题（.page-head h1）——应用名和页面名是
+   两级信息；两处都放页面名才是重复。拖拽用 data-tauri-drag-region
+   （TSX 里加属性），这里再给 -webkit-app-region 双保险。 */
+.app-titlebar {
+  position: fixed;
+  top: 0;
+  /* 从侧栏右边开始：左边那 64px 留给红绿灯，避免拖拽区盖住按钮 */
+  left: var(--sidebar-width);
+  right: 0;
+  /* min(38px, 100vh)：窗口被压到比标题栏还矮时，容器跟着窗口缩 */
+  height: min(var(--titlebar-height), 100vh);
+  background: transparent;      /* 别给底色，让渐变透上来 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  -webkit-app-region: drag;
+  z-index: 100;
+}
+
+.app-titlebar-text {
+  position: absolute;
+  /* 水平：侧栏占了左边 64px，直接 50% 会偏右 ——
+     减半个侧栏宽才是**整窗**视觉居中。垂直：top:50% + translateY(-50%)，
+     不依赖 flex 里 static position 的兼容行为（各内核下不一致）。 */
+  left: calc(50% - var(--sidebar-width) / 2);
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  /* 必须：文字挡住拖拽区的话，正好抓在应用名上就拖不动窗口了 */
+  pointer-events: none;
+}
+
+/* ---- 红绿灯：12px 三点。顺序按 macOS 的红─黄─绿 ---- */
+.window-traffic {
+  position: fixed;
+  left: 16px;
+  top: 0;
+  /* 同 .app-titlebar：窗口比 38px 还矮时容器跟着缩，三个点始终垂直居中 */
+  height: min(var(--titlebar-height), 100vh);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* 必须排除出拖拽区：否则按下按钮被识别成拖窗，点了没反应 */
+  -webkit-app-region: no-drag;
+  z-index: 201;
+}
+
+.window-traffic button {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  padding: 0;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.window-traffic button:hover {
+  opacity: 0.8;
+}
+
+/* ---- 主内容：靠 margin 给侧栏让位 ---- */
+.app-layout {
+  /* 64 侧栏 + 16 左隙 + 16 右隙 */
+  margin-left: calc(var(--sidebar-width) + 32px);
+  margin-right: 16px;
+  margin-top: var(--titlebar-height);
+  height: calc(100vh - var(--titlebar-height));
+  display: flex;
+  flex-direction: column;
+}
+
+.app-content {
+  flex: 1;
+  overflow-y: auto;
+  background: transparent;
+}
+
+/* 页面切换：都在 DOM 里，切 class。不加入场动画 —— 位移会被误认成闪烁 */
+.page {
+  display: none;
+}
+
+.page.active {
+  display: block;
+}
+
+.page-scroll {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 28px 32px;
+}
+
+.page-scroll.narrow {
+  max-width: 800px;
+}
+
+/* 页标题 */
+.page-head {
+  margin-bottom: 16px;
+}
+
+.page-head h1 {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--accent);
+}
+
+/* ---- 主题切换的圆形扩散 ---- */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(root) {
+  z-index: 1;
+}

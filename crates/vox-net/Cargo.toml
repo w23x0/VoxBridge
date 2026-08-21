@@ -1,0 +1,22 @@
+[package]
+name = "vox-net"
+description = "vox-core cloud::Transport 的 WebSocket 实现"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+vox-core.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+tokio-tungstenite.workspace = true
+# 进程级 CryptoProvider 只装一次，装完就不需要它的功能了，但这处 import 保证
+# rustls 被拉进编译（Workspace 里声明了，但 crate 本身引用才真的生效）。
+rustls.workspace = true
+futures-util = "0.3.31"
+tokio-util = { version = "0.7.13", features = ["rt"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time", "macros", "net"] }
+tokio-tungstenite = { workspace = true }
+futures-util = "0.3.31"

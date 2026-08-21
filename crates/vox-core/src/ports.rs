@@ -1,0 +1,289 @@
+//! 内核对外壳的要求，全是 trait。
+//!
+//! 内核不知道 WASAPI、Win32、Tauri 存在。要用平台能力时只认这里的 trait，
+//! Windows 那边负责实现并在启动时注入。想搬到别的平台，重写实现即可。
+
+use std::fmt;
+
+use crate::subtitle::{RenderedChar, Track};
+
+/// 外壳侧的失败。内核只关心"失败了、原因是什么"，不关心是哪个 HRESULT。
+#[derive(Debug, Clone)]
+pub struct PortError {
+    pub message: String,
+}
+
+impl PortError {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+impl fmt::Display for PortError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for PortError {}
+
+pub type PortResult<T> = Result<T, PortError>;
+
+// --- 音频采集 --------------------------------------------------------------
+
+/// 一块采集到的音频。交织的多声道数据，转单声道是内核的事。
+#[derive(Debug, Clone)]
+pub struct AudioChunk {
+    pub samples: Vec<f32>,
+    pub sample_rate: u32,
+    pub channels: u16,
+}
+
+impl AudioChunk {
+    /// 交织多声道混成单声道。
+    pub fn to_mono(&self) -> Vec<f32> {
+        if self.channels <= 1 {
+            return self.samples.clone();
+        }
+        let ch = self.channels as usize;
+        let scale = 1.0 / ch as f32;
+        self.samples
+            .chunks(ch)
+            .map(|frame| frame.iter().sum::<f32>() * scale)
+            .collect()
+    }
+}
+
+/// 采集的来源。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CaptureTarget {
+    /// 麦克风。`None` = 自动选默认设备。
+    Microphone(Option<String>),
+    /// 抓某个程序放出来的声音（进程环回）。
+    ProcessLoopback {
+        executable: String,
+        include_tree: bool,
+    },
+}
+
+/// 采集源。`start` 之后音频块通过回调推给内核，`stop` 要能保证回调不再触发。
+pub trait CaptureSource: Send {
+    fn start(
+        &mut self,
+        target: &CaptureTarget,
+        block_ms: u32,
+        on_chunk: Box<dyn FnMut(AudioChunk) + Send>,
+    ) -> PortResult<CaptureFormat>;
+
+    fn stop(&mut self);
+}
+
+/// 采集实际协商到的格式。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CaptureFormat {
+    pub sample_rate: u32,
+    pub channels: u16,
+}
+
+// --- 音频播放 --------------------------------------------------------------
+
+/// 播放汇。内核推 24 kHz 单声道 f32，外壳负责重采样到设备率。
+pub trait PlaybackSink: Send {
+    /// 打开设备。`device` 为 `None` 时用系统默认。返回实际采样率。
+    fn open(&mut self, device: Option<&str>, source_rate: u32) -> PortResult<u32>;
+    /// 送一块要放的音频。队列满时应丢最旧的，绝不阻塞调用方。
+    fn push(&mut self, samples: &[f32]);
+    /// 当前播放侧的无锁统计。默认实现让测试替身和非 Windows 端口无需强制实现。
+    fn stats(&self) -> PlaybackStats {
+        PlaybackStats::default()
+    }
+    /// 立刻丢掉还没放出去的（停流水线时用）。
+    fn flush(&mut self);
+    fn close(&mut self);
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PlaybackStats {
+    /// 环形缓冲中尚未被渲染线程取走的交错样本数。
+    pub queued_samples: usize,
+    pub sample_rate: u32,
+    pub channels: u16,
+    /// 渲染线程累计真正取走的（不含自动补零）交错样本数。
+    pub rendered_samples: u64,
+    pub dropped_samples: u64,
+    /// WASAPI 报告的流延迟；拿不到时为 0。
+    pub device_latency_ms: u64,
+}
+
+impl PlaybackStats {
+    pub fn queued_ms(self) -> u64 {
+        let channels = self.channels.max(1) as u64;
+        if self.sample_rate == 0 {
+            return 0;
+        }
+        (self.queued_samples as u64 / channels) * 1000 / self.sample_rate as u64
+    }
+}
+
+// --- 信号处理 --------------------------------------------------------------
+
+/// 降噪器。内核只知道"送一块进去、拿一块出来"，具体算法在 `vox-dsp` 里。
+///
+/// **输出长度不等于输入长度**：实现内部按固定帧长（RNNoise 是 48 kHz/480 样本）
+/// 攒够一帧才出货，样本不够时返回空切片；首帧也可能被吞掉。调用方不许假设长度守恒。
+pub trait Denoise: Send {
+    /// 送一块 48 kHz 单声道 f32，返回已经降噪好的部分（可能为空，可能长于输入）。
+    fn process(&mut self, samples: &[f32]) -> Vec<f32>;
+    /// 丢掉内部缓冲和状态（换会话、断流后重来时用）。
+    fn reset(&mut self);
+}
+
+/// 重采样器。内核用它把采集率换成协议要的 16 kHz。
+///
+/// 同样**不保证输出长度等于输入长度**：内部会攒够一个 chunk 才算一批，
+/// 采样率相同时是直通。
+pub trait Resample: Send {
+    /// 送一块单声道 f32，返回已经换好率的部分（可能为空）。
+    fn process(&mut self, samples: &[f32]) -> Vec<f32>;
+    /// 把缓冲里剩的零头挤出来（一段语音收尾时用）。
+    fn flush(&mut self) -> Vec<f32>;
+    /// 丢掉内部缓冲和状态。
+    fn reset(&mut self);
+}
+
+// --- 设备目录 --------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct DeviceInfo {
+    pub name: String,
+    pub is_default: bool,
+}
+
+/// 一个正在放声音的程序，给"听人说话"的选择器用。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct AudioApp {
+    pub executable: String,
+    pub display_name: String,
+    pub pid: u32,
+    /// 现在是不是正在出声。
+    pub active: bool,
+}
+
+pub trait DeviceRegistry: Send + Sync {
+    fn input_devices(&self) -> PortResult<Vec<DeviceInfo>>;
+    fn output_devices(&self) -> PortResult<Vec<DeviceInfo>>;
+    /// 正在放声音的程序列表。
+    fn audio_apps(&self) -> PortResult<Vec<AudioApp>>;
+    /// VB-CABLE 装了没。
+    fn virtual_cable_installed(&self) -> bool;
+}
+
+// --- 热键 ------------------------------------------------------------------
+
+/// 哪个热键、按下还是松开。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HotkeyEvent {
+    SpeakPressed,
+    SpeakReleased,
+    ListenPressed,
+}
+
+/// 要监听的热键集合。外壳按这份清单轮询，一个键只有一条生效路径。
+#[derive(Debug, Clone, Default)]
+pub struct HotkeyBindings {
+    pub speak: Option<crate::hotkey::Hotkey>,
+    pub listen: Option<crate::hotkey::Hotkey>,
+}
+
+pub trait HotkeyHost: Send + Sync {
+    /// 换一套要监听的热键（设置改了就调）。
+    fn rebind(&self, bindings: HotkeyBindings) -> PortResult<()>;
+}
+
+// --- 悬浮字幕窗 ------------------------------------------------------------
+
+/// 一帧要画的字幕。
+#[derive(Debug, Clone, PartialEq)]
+pub struct SubtitleFrame {
+    pub lines: Vec<SubtitleLine>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SubtitleLine {
+    pub track: Track,
+    pub chars: Vec<RenderedChar>,
+    /// `#rrggbb`。
+    pub color: String,
+}
+
+pub trait SubtitleView: Send + Sync {
+    fn show(&self);
+    fn hide(&self);
+    /// 推一帧。实现方要保证跨线程安全（内部靠通道 + PostMessage 叫醒窗口线程）。
+    fn render(&self, frame: SubtitleFrame);
+    /// 外观变了（字体、字号、底衬透明度）。
+    fn restyle(&self, settings: &crate::settings::SubtitleSettings);
+}
+
+// --- 密钥存储 --------------------------------------------------------------
+
+/// API 密钥不进配置文件，单独存，落盘时加密（Windows 上用 DPAPI）。
+pub trait SecretStore: Send + Sync {
+    fn load_api_key(&self) -> PortResult<Option<String>>;
+    fn store_api_key(&self, key: &str) -> PortResult<()>;
+    fn clear_api_key(&self) -> PortResult<()>;
+
+    fn load_api_key_for(
+        &self,
+        _provider: crate::settings::ModelProvider,
+    ) -> PortResult<Option<String>> {
+        self.load_api_key()
+    }
+    fn store_api_key_for(
+        &self,
+        _provider: crate::settings::ModelProvider,
+        key: &str,
+    ) -> PortResult<()> {
+        self.store_api_key(key)
+    }
+    fn clear_api_key_for(&self, _provider: crate::settings::ModelProvider) -> PortResult<()> {
+        self.clear_api_key()
+    }
+}
+
+// --- 时钟 ------------------------------------------------------------------
+
+/// 内核不直接读系统时钟，方便测试注入时间。
+pub trait Clock: Send + Sync {
+    /// 启动至今的毫秒数，单调递增。
+    fn now_ms(&self) -> u64;
+    /// 当前日期，给用量分桶用。
+    fn stamp(&self) -> crate::usage::Stamp;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mono_downmix_averages_channels() {
+        let chunk = AudioChunk {
+            samples: vec![1.0, 0.0, 0.5, 0.5],
+            sample_rate: 48_000,
+            channels: 2,
+        };
+        assert_eq!(chunk.to_mono(), vec![0.5, 0.5]);
+    }
+
+    #[test]
+    fn mono_input_passes_through() {
+        let chunk = AudioChunk {
+            samples: vec![0.1, 0.2, 0.3],
+            sample_rate: 16_000,
+            channels: 1,
+        };
+        assert_eq!(chunk.to_mono(), chunk.samples);
+    }
+}

@@ -1,0 +1,12 @@
+[package]
+name = "vox-dsp"
+description = "降噪（RNNoise via nnnoiseless）+ 重采样（rubato）封装"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+vox-core.workspace = true
+tracing.workspace = true
+rubato.workspace = true
+nnnoiseless = "0.5.2"

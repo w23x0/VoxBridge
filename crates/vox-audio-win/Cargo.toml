@@ -1,0 +1,36 @@
+[package]
+name = "vox-audio-win"
+description = "Windows 音频 I/O：麦克风采集、进程环回、按名输出、VB-CABLE 安装"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+vox-core.workspace = true
+tracing.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+# `#[implement]` 展开出来的代码走 `::windows_core::` 绝对路径，所以这个 crate
+# 必须直接出现在依赖里（版本跟 windows 0.62.2 内部用的那份对齐，不会链两份）。
+windows-core = "0.62.2"
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_Media_KernelStreaming",
+    "Win32_Media_Multimedia",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Threading",
+    "Win32_System_Variant",
+    "Win32_System_Registry",
+    "Win32_System_SystemInformation",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_Networking_WinHttp",
+    "Win32_Devices_FunctionDiscovery",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_PropertiesSystem",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Security",
+    "Wdk_System_SystemServices",
+] }

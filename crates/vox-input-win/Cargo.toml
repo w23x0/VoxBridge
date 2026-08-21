@@ -1,0 +1,17 @@
+[package]
+name = "vox-input-win"
+description = "Windows 全局热键轮询"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+vox-core.workspace = true
+tracing.workspace = true
+parking_lot.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_UI_Input_KeyboardAndMouse",
+] }

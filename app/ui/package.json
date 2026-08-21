@@ -1,0 +1,35 @@
+{
+  "name": "voxbridge-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview --port 5184 --strictPort",
+    "a11y": "node scripts/a11y.mjs",
+    "tauri": "cd .. && tauri",
+    "tauri:dev": "cd .. && tauri dev",
+    "tauri:build": "cd .. && tauri build",
+    "check:cable": "node scripts/check-cable.mjs",
+    "verify": "npm run build && npm run check:classes && npm run a11y && npm run check:cable",
+    "tauri:dev:attach": "cd .. && tauri dev --config ui/tauri.dev.json",
+    "check:classes": "node scripts/check-classes.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.11.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.4",
+    "@types/node": "26.1.2",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.0.5",
+    "playwright": "1.62.1",
+    "typescript": "7.0.2",
+    "vite": "8.2.0"
+  }
+}
