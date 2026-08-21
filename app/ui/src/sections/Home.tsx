@@ -413,6 +413,7 @@ export function HomePage() {
                       type="button"
                       className="btn btn-secondary btn-sm"
                       aria-label={t("pipeline.rescanMic")}
+                      data-focus-item
                       onClick={() => void api.refreshDevices()}
                     >
                       <IconRefresh size={15} />
@@ -462,6 +463,7 @@ export function HomePage() {
                       type="button"
                       className="btn btn-secondary btn-sm"
                       aria-label={t("pipeline.rescanApps")}
+                      data-focus-item
                       onClick={() => void api.refreshDevices()}
                     >
                       <IconRefresh size={15} />
@@ -495,6 +497,7 @@ export function HomePage() {
                 className={running ? "btn btn-secondary btn-sm" : "btn btn-dark btn-sm"}
                 style={{ marginTop: "auto", justifyContent: "center" }}
                 disabled={!snapshot || (!running && blocked !== null)}
+                data-focus-item
                 onClick={() => void api.togglePipeline(card.id)}
               >
                 {running ? <IconStop size={14} /> : <IconPlay size={14} />}

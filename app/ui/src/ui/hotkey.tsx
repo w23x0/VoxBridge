@@ -80,6 +80,7 @@ export function HotkeyEditor({
             className={on ? "chip selected" : "chip"}
             aria-pressed={on}
             disabled={disabled}
+            data-focus-item
             onClick={() => onChange({ ...hotkey, [m.key]: !on })}
           >
             {m.label}

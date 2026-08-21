@@ -29,6 +29,7 @@ const en = {
     toggleTheme: "Toggle theme",
     toLight: "Switch to light theme",
     toDark: "Switch to dark theme",
+    language: "Switch interface language",
   },
 
   pipeline: {
@@ -182,11 +183,6 @@ const en = {
     primaryKey: "Key",
     primaryKeyFor: "{label} key",
     hotkeyUnset: "Not set",
-  },
-
-  uiLanguage: {
-    title: "Interface language",
-    desc: "Choose the language of the interface",
   },
 
   home: {

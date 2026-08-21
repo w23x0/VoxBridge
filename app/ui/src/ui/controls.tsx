@@ -38,6 +38,7 @@ export function Toggle({
       aria-checked={checked}
       aria-label={label}
       disabled={disabled}
+      data-focus-item
       onClick={() => onChange(!checked)}
     />
   );
@@ -135,6 +136,7 @@ export function Dropdown({
         id={id}
         className={open ? "dropdown-selected active" : "dropdown-selected"}
         disabled={disabled}
+        data-focus-item
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
@@ -224,6 +226,7 @@ export function Slider({
         disabled={disabled}
         aria-label={label}
         aria-valuetext={format(value)}
+        data-focus-item
         style={{ ["--slider-pct" as string]: `${pct}%` }}
         onChange={(e) => onChange(Number(e.target.value))}
       />

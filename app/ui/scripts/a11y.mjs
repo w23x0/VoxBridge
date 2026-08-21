@@ -326,19 +326,16 @@ try {
     else ok("回车展开、Esc 收起");
   }
 
-  // 键盘遍历
+  // 键盘遍历：Tab 只循环窗口红绿灯（GlassUI 规范），内容区导航走方向键。
+  // 这里验证 Tab 能在 3 个红绿灯之间循环到，并且重复 Tab 不会卡死空转。
   console.log("\n[11] 键盘遍历");
-  const focusSel =
-    "input:not([disabled]), select:not([disabled]), button:not([disabled]), a[href], [tabindex='0']";
-  const total = await page.evaluate((s) => {
-    const all = [...document.querySelectorAll(s)].filter(
-      (el) => !el.closest("[aria-hidden=true]") && el.offsetParent !== null,
-    );
-    all.forEach((el, i) => el.setAttribute("data-a11y-i", String(i)));
-    return all.length;
-  }, focusSel);
+  const traffic = await page.evaluate(() => {
+    const btns = [...document.querySelectorAll(".window-traffic button")];
+    btns.forEach((el, i) => el.setAttribute("data-a11y-i", String(i)));
+    return btns.length;
+  });
   const seen = new Set();
-  for (let i = 0; i < total + 20; i += 1) {
+  for (let i = 0; i < traffic + 20; i += 1) {
     await page.keyboard.press("Tab");
     const who = await page.evaluate(() => {
       const a = document.activeElement;
@@ -348,9 +345,9 @@ try {
     });
     if (who) seen.add(who);
   }
-  console.log(`  可聚焦 ${total} 个，Tab 走到 ${seen.size} 个`);
-  if (seen.size < Math.min(total, 12)) fail(`Tab 只走到 ${seen.size} 个，可能有键盘陷阱`);
-  else ok("没有明显键盘陷阱");
+  console.log(`  红绿灯 ${traffic} 个，Tab 走到 ${seen.size} 个`);
+  if (traffic > 0 && seen.size < Math.min(traffic, 3)) fail(`Tab 只走到 ${seen.size} 个，可能有键盘陷阱`);
+  else ok(`Tab 循环红绿灯不卡死`);
 
   // 焦点环
   console.log("\n[12] 焦点环");
@@ -459,13 +456,13 @@ try {
   if (style.barCtl !== 0) fail(`标题栏里有 ${style.barCtl} 个交互元素，应为 0`);
   else ok("标题栏只有固定应用名，没有工具条");
 
-  if (style.bottomTools !== 3)
-    fail(`侧栏底部应为关于/设置/主题 3 项，实际 ${style.bottomTools} 项`);
-  else if (style.bottomPages !== 2 || style.bottomActions !== 1)
-    fail(`侧栏底部页面/动作应为 2/1，实际 ${style.bottomPages}/${style.bottomActions}`);
+  if (style.bottomTools !== 4)
+    fail(`侧栏底部应为关于/设置/主题/语言 4 项，实际 ${style.bottomTools} 项`);
+  else if (style.bottomPages !== 2 || style.bottomActions !== 2)
+    fail(`侧栏底部页面/动作应为 2/2，实际 ${style.bottomPages}/${style.bottomActions}`);
   else if (style.navDots !== PAGES.length)
     fail(`每个页面项都应有竖条指示器：${style.navDots}/${PAGES.length}`);
-  else ok(`侧栏底部 3 项（2 页面 + 1 动作）、导航 ${style.navDots} 条竖条指示器`);
+  else ok(`侧栏底部 4 项（2 页面 + 2 动作）、导航 ${style.navDots} 条竖条指示器`);
 
   // 运行时噪音：前面所有页面的都攒在这儿
   console.log("\n[15] 运行时噪音");

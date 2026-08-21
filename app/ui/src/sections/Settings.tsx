@@ -1,8 +1,7 @@
-/** 设置：虚拟麦克风、系统启动行为、快捷键和界面语言。 */
+/** 设置：虚拟麦克风、系统启动行为、快捷键。 */
 
 import { useState } from "react";
 import { useT } from "../i18n/context";
-import { UI_LANG_OPTIONS } from "../i18n/types";
 import { useStore } from "../store";
 import type { ActivationMode, Hotkey } from "../types";
 import type { AudioApp } from "../types.snapshot";
@@ -141,6 +140,7 @@ export function SettingsPage() {
                   type="button"
                   className={cableIncomplete ? "btn btn-danger btn-sm" : "btn btn-secondary btn-sm"}
                   disabled={loading || cableBusy !== null}
+                  data-focus-item
                   onClick={() => void inspectUninstall()}
                 >
                   <IconTrash size={14} />
@@ -151,6 +151,7 @@ export function SettingsPage() {
                   type="button"
                   className="btn btn-primary btn-sm"
                   disabled={loading || cableBusy !== null}
+                  data-focus-item
                   onClick={() => void manageCable("install")}
                 >
                   <IconDownload size={14} />
@@ -167,6 +168,7 @@ export function SettingsPage() {
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
+                data-focus-item
                 onClick={() => void api.openVirtualCableWebsite()}
               >
                 <IconExternal size={14} />
@@ -175,6 +177,7 @@ export function SettingsPage() {
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
+                data-focus-item
                 onClick={() => void api.openVirtualCableDonation()}
               >
                 {t("settings.licenseDonate")}
@@ -198,6 +201,7 @@ export function SettingsPage() {
                   type="button"
                   className="btn btn-secondary btn-sm"
                   disabled={cableBusy !== null}
+                  data-focus-item
                   onClick={() => void setChannelVisible(channelStatus === "hidden")}
                 >
                   {channelStatus === "hidden"
@@ -297,23 +301,6 @@ export function SettingsPage() {
         ) : null}
       </div>
 
-      <div className="settings-group">
-        <SettingsItem
-          wide
-          htmlFor="dd-ui-language"
-          title={t("uiLanguage.title")}
-          control={
-            <Dropdown
-              id="dd-ui-language"
-              label={t("uiLanguage.desc")}
-              value={settings.ui_language}
-              options={[...UI_LANG_OPTIONS]}
-              onChange={(ui_language) => patch({ ui_language })}
-            />
-          }
-        />
-      </div>
-
       {uninstallDialog ? (
         <div className="dialog-backdrop" role="presentation">
           <div
@@ -351,6 +338,7 @@ export function SettingsPage() {
                 type="button"
                 className="btn btn-secondary"
                 disabled={cableBusy !== null}
+                data-focus-item
                 onClick={() => setUninstallDialog(null)}
               >
                 {t("settings.cableDialog.cancel")}
@@ -360,6 +348,7 @@ export function SettingsPage() {
                   type="button"
                   className="btn btn-danger"
                   disabled={cableBusy !== null}
+                  data-focus-item
                   onClick={() =>
                     void manageCable("uninstall", uninstallDialog.blockers.length > 0)
                   }

@@ -9,6 +9,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 
 import en from "./en";
+import ja from "./ja";
 import zh from "./zh";
 import type { Dict, TParams, UiLang } from "./types";
 
@@ -32,6 +33,7 @@ function flatten(dict: Dict, prefix = ""): Record<string, string> {
 
 const FLAT: Record<UiLang, Record<string, string>> = {
   "zh-CN": flatten(zh),
+  "ja-JP": flatten(ja),
   en: flatten(en),
 };
 
@@ -61,7 +63,7 @@ const I18nContext = createContext<I18nState | null>(null);
 
 /** 从 settings.ui_language 校验并取一个合法 UiLang（白名单外回退 zh-CN）。 */
 export function toUiLang(value: string | undefined): UiLang {
-  return value === "en" ? "en" : "zh-CN";
+  return value === "en" ? "en" : value === "ja-JP" ? "ja-JP" : "zh-CN";
 }
 
 /**

@@ -107,6 +107,7 @@ function ConfirmButton({
         className="btn btn-secondary btn-sm"
         disabled={disabled}
         title={title}
+        data-focus-item
         onClick={() => {
           setArmed(true);
           if (timer.current) clearTimeout(timer.current);
@@ -123,6 +124,7 @@ function ConfirmButton({
       <button
         type="button"
         className="btn btn-danger btn-sm"
+        data-focus-item
         onClick={() => {
           setArmed(false);
           onConfirm();
@@ -133,6 +135,7 @@ function ConfirmButton({
       <button
         type="button"
         className="btn btn-secondary btn-sm"
+        data-focus-item
         onClick={() => setArmed(false)}
       >
         {cancelText}
@@ -181,6 +184,7 @@ export function UsagePage() {
               type="button"
               className={range === r.v ? "mode-btn selected" : "mode-btn"}
               aria-pressed={range === r.v}
+              data-focus-item
               onClick={() => setRange(r.v)}
             >
               {t(`usage.${r.k}`)}

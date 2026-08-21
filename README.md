@@ -16,7 +16,7 @@ VoxBridge 是一个面向实时对话场景的 Windows 桌面语音翻译工具�
 - 每个服务商固定一个专用实时翻译模型：`qwen3.5-livetranslate-flash-realtime` 或 `gemini-3.5-live-translate-preview`。
 - 阿里云支持 60 种语言（29 种语音+字幕）；Gemini Live Translation 官方标注支持 70+ 语言语音互译。
 - 听人说话固定翻成中文；源语言可手动指定，也可以交给服务端自动识别。
-- 界面支持简体中文 / English 两种显示语言，可在设置中切换、随配置持久化；它和业务翻译的源/目标语种互不影响。
+- 界面支持简体中文 / 日本語 / English 三种显示语言，在侧栏底部一键循环切换、随配置持久化；它和业务翻译的源/目标语种互不影响。
 - 两个服务商的 API Key 在本地分开保存，并使用 Windows DPAPI 按当前用户加密。
 - “关于 → 检查更新”目前是占位入口；GitHub Releases 尚未接入，不会下载任何文件。
 

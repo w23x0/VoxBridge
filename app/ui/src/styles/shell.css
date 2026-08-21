@@ -139,6 +139,34 @@ body {
   opacity: 1;
 }
 
+/* ---- 语言项的文字缩写（中 / あ / EN）----
+   不用国旗图片：国旗和语言不是一对一，且远程取图断网就是碎图，
+   每次启动还在向第三方暴露使用痕迹。
+   16px 才压得住旁边 22px 的 SVG 图标；汉字/假名占满字面用 16px，
+   EN 是两个拉丁字母同字号偏小，单独用 :lang(en) 微调。 */
+.nav-lang-label {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 22px;          /* 和图标等高，切换语言时不上下跳 */
+  letter-spacing: -0.3px;
+}
+/* :lang() 按元素的 lang 属性自动匹配，不需要 JS 加 class */
+.nav-lang-label:lang(en) {
+  font-size: 15px;
+  letter-spacing: -0.8px;
+}
+
+/* 侧栏焦点环：激活项已有「蓝底 + 竖条」两重指示，不再加环；
+   未激活项仍要画环 —— 键盘走到必须看得见落点。负 offset 内缩，
+   42px 按钮在 64px 侧栏里，外扩的环会顶到边缘。 */
+.nav-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.nav-item.active:focus-visible {
+  outline: none;
+}
+
 .nav-tooltip {
   position: fixed;
   left: 88px;

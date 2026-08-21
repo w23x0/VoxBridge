@@ -19,7 +19,7 @@ use crate::hotkey::Hotkey;
 pub const SETTINGS_VERSION: u32 = 2;
 
 /// 界面显示语言（UI locale）允许的取值。
-pub const UI_LANGUAGES: [&str; 2] = ["zh-CN", "en"];
+pub const UI_LANGUAGES: [&str; 3] = ["zh-CN", "ja-JP", "en"];
 /// 默认界面语言。
 pub const DEFAULT_UI_LANGUAGE: &str = "zh-CN";
 
@@ -573,6 +573,9 @@ mod tests {
         s.ui_language = "en".into();
         s.normalize();
         assert_eq!(s.ui_language, "en", "白名单内的语言码保留");
+        s.ui_language = "ja-JP".into();
+        s.normalize();
+        assert_eq!(s.ui_language, "ja-JP", "白名单内的语言码保留");
     }
 
     #[test]

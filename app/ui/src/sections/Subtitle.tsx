@@ -253,6 +253,7 @@ export function SubtitlePage() {
             <button
               type="button"
               className="btn btn-secondary btn-sm"
+              data-focus-item
               onClick={() => patch({ subtitle: { geometry: null } })}
             >
               {t("subtitle.resetDefault")}

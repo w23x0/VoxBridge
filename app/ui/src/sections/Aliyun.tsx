@@ -150,6 +150,7 @@ export function ProvidersPage() {
             type="button"
             className="btn btn-primary"
             disabled={!hasDraft || busy !== null}
+            data-focus-item
             onClick={() => void saveKey()}
           >
             <IconSave size={15} />
@@ -163,6 +164,7 @@ export function ProvidersPage() {
           <button
             type="button"
             className="btn btn-secondary"
+            data-focus-item
             onClick={() => void api.openProviderConsole(provider)}
           >
             <IconExternal size={15} />
@@ -177,6 +179,7 @@ export function ProvidersPage() {
                   type="button"
                   className="btn btn-danger btn-sm"
                   disabled={busy !== null}
+                  data-focus-item
                   onClick={() => void clearKey()}
                 >
                   {busy === "clear"
@@ -187,6 +190,7 @@ export function ProvidersPage() {
                   type="button"
                   className="btn btn-secondary btn-sm"
                   disabled={busy !== null}
+                  data-focus-item
                   onClick={() => setArmed(false)}
                 >
                   {t("common.cancel")}
@@ -197,6 +201,7 @@ export function ProvidersPage() {
                 type="button"
                 className="btn btn-secondary btn-sm"
                 disabled={busy !== null}
+                data-focus-item
                 onClick={() => {
                   setArmed(true);
                   if (timer.current) clearTimeout(timer.current);

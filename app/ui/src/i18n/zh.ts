@@ -32,6 +32,7 @@ const zh = {
     toggleTheme: "切换主题",
     toLight: "切到亮色主题",
     toDark: "切到暗色主题",
+    language: "切换界面语言",
   },
 
   pipeline: {
@@ -185,11 +186,6 @@ const zh = {
     primaryKey: "主键",
     primaryKeyFor: "{label} 的主键",
     hotkeyUnset: "未设置",
-  },
-
-  uiLanguage: {
-    title: "界面语言",
-    desc: "选择界面显示的语言",
   },
 
   home: {
