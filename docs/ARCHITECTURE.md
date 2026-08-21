@@ -78,12 +78,9 @@ VoxBridge/
 
 workspace 成员是 `crates/` 下这 6 个**加上 `app/src-tauri`**，一共 7 个。
 
-> 早先版本的本文档写「`app/src-tauri` **不是** workspace 成员，它自己一个 crate
-> （Tauri 的常规布局）」。改掉了：装配层不在 workspace 里的话，
-> `cargo test --workspace` 和 `cargo clippy --workspace` 就**扫不到它**——而装配层
-> 恰恰是唯一能暴露跨 crate 类型对不上的地方，把它排除在验收命令之外没有意义。
-> 代价是 `app/src-tauri` 跟着共用根 `Cargo.lock` 和 `target/`，这正好是我们想要的
-> （六个 crate 和装配层用同一套依赖版本）。
+> 装配层必须在 workspace 里：否则 `cargo test --workspace` 和 `cargo clippy --workspace`
+> 就**扫不到它**——而装配层是唯一能暴露跨 crate 类型对不上的地方，排除在验收命令之外没有意义。
+> 代价是 `app/src-tauri` 跟着共用根 `Cargo.lock` 和 `target/`（六个 crate 和装配层用同一套依赖版本）。
 
 ## 4. 内核 `vox-core`
 
@@ -94,9 +91,6 @@ thiserror / tracing / parking\_lot，**既没有 tokio 也没有 tokio-tungsteni
 网络怎么办？内核只定义一个同步的 `Transport` trait（`cloud/mod.rs` 里），
 真正的 WS 客户端在**独立的 `vox-net` crate**里（见 §5）。内核不知道 tokio 存在，
 异步全被挡在 `vox-net` 内部。
-
-> 早先版本的本文档写「内核唯一允许的重依赖是 tokio + tokio-tungstenite」，
-> 那是错的，已按代码改正。
 
 | 文件 | 职责 |
 | --- | --- |
@@ -164,15 +158,13 @@ thiserror / tracing / parking\_lot，**既没有 tokio 也没有 tokio-tungsteni
 | 每条流水线的工作线程（`vox-speak` / `vox-listen`） | 从输入队列取块，做单声道/降噪/阀门/重采样/编码，交给 tokio 发出去；收到的语音再写进播放侧的环形缓冲 | `vox-core::PipelineEngine` |
 | 落盘去抖线程（`vox-persist`） | 800 ms 醒一次，有脏才写 `settings.json` / `usage.json`，先写 `.tmp` 再 rename | `app/src-tauri` |
 
-关于 tokio：早先版本的本文档写「tokio 运行时**只存在于 `vox-net` 里**」。
-准确说法是——**内核看不见 tokio**（这条没变，`vox-core` 里一个 async 都没有），
+关于 tokio：**内核看不见 tokio**（`vox-core` 里一个 async 都没有），
 但运行时实例是**外壳给的**：装配层把 `tauri::async_runtime::handle().inner()`
 传进 `WsTransport::new()`，两条 WS 会话共用 Tauri 那批工作线程。
 `vox-net` 也提供 `standalone()` 自建一个 2 worker 的小运行时，但**装配层不用它**：
 一个进程里跑两个 tokio 运行时只是白占线程。
 
-关于环形缓冲：早先版本的本文档写「音频回调线程写进无锁环形缓冲，流水线工作线程
-从环形缓冲取」。实际是**两条不同的路**——
+关于环形缓冲，采集侧和播放侧是**两条不同的路**：
 - **采集侧没有环形缓冲**：采集线程把定长块推给 `PipelineEngine` 的输入队列
   （`Mutex` + `Condvar`，深度 `INPUT_QUEUE_SIZE = 32`，满了**丢最旧的**并打限流日志），
   工作线程从这个队列取。
@@ -235,3 +227,4 @@ RNNoise 这边：
 **让音量阀门判断准**，不是追求录音棚音质。
 
 > 这项替换属于**事后补票**，见 `DECISIONS.md` 的待拍板清单第 1 条。
+<!-- 精简：237 行 → 229 行 -->

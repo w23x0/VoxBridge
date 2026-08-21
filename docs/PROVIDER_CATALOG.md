@@ -9,8 +9,8 @@ VoxBridge 只做实时语音翻译。当前启用两个服务商，各固定一�
 
 `catalog/aliyun.json` 和 `catalog/gemini.json`
 
-前端直接导入两份 JSON；`vox-core` 的构建脚本会读取并校验同一数据，再生成 Rust 常量。
-不要在 TypeScript 或 Rust 文件里另抄一份模型、语言或音色表。
+前端直接导入两份 JSON；`vox-core` 的构建脚本会读取并校验同一份数据，再生成 Rust 常量。
+不要在 TypeScript 或 Rust 文件里另抄一份表。
 
 ## 当前目录包含什么
 
@@ -49,3 +49,4 @@ Gemini 的公开限流值可能随项目层级变化，不写进目录。实际 
 ## 软件更新入口
 
 “关于 → 检查更新”目前是诚实的占位入口，不会连接未知地址。GitHub 仓库建立后，再接入 Tauri Updater、签名公钥、GitHub Actions 和 Releases 更新清单；签名私钥只能放在 GitHub Actions Secrets，不能提交到仓库。
+<!-- 精简：51 行 → 51 行（合并 1 处重复表述） -->
