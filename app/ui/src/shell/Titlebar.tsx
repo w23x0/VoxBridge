@@ -23,6 +23,17 @@ async function win() {
   return getCurrentWindow();
 }
 
+/**
+ * 红绿灯关闭按钮 = 完全退出，不是收进托盘。
+ * 走后端 quit_app 命令（内层 app.exit(0)），绕开 window.close() 会被
+ * CloseRequested 拦截成 hide() 进托盘的那条路径 —— 那会「后台静默」。
+ */
+async function quitApp() {
+  if (!inTauri()) return;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("quit_app");
+}
+
 export function Titlebar() {
   const t = useT();
   return (
@@ -37,7 +48,7 @@ export function Titlebar() {
           type="button"
           aria-label={t("titlebar.close")}
           style={{ background: "#ff5f57" }}
-          onClick={() => void win().then((w) => w?.close())}
+          onClick={() => void quitApp()}
         />
         <button
           type="button"

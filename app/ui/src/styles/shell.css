@@ -5,14 +5,22 @@
 
 /* 无边框窗口自身是直角的，圆角要在 CSS 里做，四个角都要 ——
    只给内容区加圆角会在右下露出直角。尺寸用 --window-radius token。 */
+/* 窗口透明且 html/body 完全透明：窗体背板和圆角交给 #root（见 tokens.css），
+   html/body 只负责撑满和禁滚动，不留任何会传播到画布四角的背景。 */
 html,
 body {
-  border-radius: var(--window-radius);
+  background: transparent;
   overflow: hidden;
 }
 
-#root {
-  height: 100%;
+/* 窗口被压扁成一条横条（只剩标题栏及以下极矮内容）时，圆角裁剪会在透明窗口
+   的四角露出 OS 默认底色（黑角）。这个高度下内容几乎不可见，直接弃圆角变直角，
+   既免黑角，也更符合「压扁成条」的形态。阈值放得比标题栏(38px)更宽，
+   保证任何「矮到一条」的区间都进入直角，不留过渡带。 */
+@media (max-height: 160px) {
+  #root {
+    border-radius: 0;
+  }
 }
 
 /* ---- 侧栏：64px 窄条，顶留 44px、其余三边留 16px ----

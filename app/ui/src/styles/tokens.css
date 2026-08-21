@@ -128,10 +128,24 @@
 html, body {
   height: 100%;
   font-family: var(--font-ui);
-  background: var(--bg);
+  /* 背景不在 html/body 上做：它会被当作 canvas 背景传播到整块画布、绕过圆角，
+     在透明窗口的四角露出不透明底（黑角的根）。背景和圆角统一放 #root。 */
+  background: transparent;
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* 桌面壳：整窗渐变底色 + 圆角都在这里（普通元素背景受 border-radius 裁剪，
+   圆角外是透明 html -> 透到窗口，四角不黑）。transform 让 position:fixed 的
+   子元素把 #root 当包含块，从而也被 overflow 圆角裁剪。 */
+#root {
+  height: 100%;
+  width: 100%;
+  background: var(--bg);
+  border-radius: var(--window-radius);
+  overflow: hidden;
+  transform: translateZ(0);
 }
 
 /* 桌面应用外壳用；纯网页请删掉这行，否则页面无法滚动 */

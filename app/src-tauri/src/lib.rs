@@ -35,6 +35,7 @@ mod persist;
 mod state;
 mod sys;
 mod tray;
+mod winminmax;
 
 use state::AppState;
 
@@ -76,6 +77,7 @@ pub fn run() {
             commands::open_provider_console,
             commands::open_virtual_cable_website,
             commands::open_virtual_cable_donation,
+            commands::quit_app,
         ])
         .setup(|app| {
             let state = assemble(app.handle())?;
@@ -139,6 +141,13 @@ fn assemble(app: &tauri::AppHandle) -> Result<Arc<AppState>, Box<dyn std::error:
 
     // 4. 窗口先亮出来。后面任何一步失败，用户至少看得见界面。
     if let Some(w) = app.get_webview_window("main") {
+        // 透明无边框窗口下，tauri.conf.json 的 minHeight 压不住（实测会被压到
+        // ~30px），tauri 的 set_min_size 走 tao 的 subclass 链同样压不到下限。
+        // 这里用原生子类，在 WM_GETMINMAXINFO 最底层强制最小高度 38（标题栏高）
+        // ——用户不能把窗口拖得比「只剩标签栏」更扁。宽度 640 与配置一致。
+        if let Ok(hwnd) = w.hwnd() {
+            winminmax::enforce_min_size(hwnd.0, 640, 38);
+        }
         if runtime.settings().start_minimized {
             let _ = w.hide();
         } else {

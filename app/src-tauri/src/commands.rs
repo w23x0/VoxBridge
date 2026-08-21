@@ -456,6 +456,14 @@ pub fn open_virtual_cable_donation() -> Result<(), String> {
         .map_err(|e| format!("打开 VB-CABLE 授权页面失败：{e}"))
 }
 
+/// 完全退出应用（不是收进托盘）。红绿灯的关闭按钮走这里，而不是走 `window.close()`
+/// —— close() 会被 lib.rs 的 CloseRequested 拦截成 hide() 收进托盘。
+/// `app.exit(0)` 和托盘菜单「退出」走同一条路径，触发 RunEvent::Exit → shutdown() 收尾。
+#[tauri::command]
+pub fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 // ─── 内部工具函数 ──────────────────────────────────────────────────────────────
 
 /// 把前端传来的字符串解析成 `Pipeline` 枚举。三条命令共用。

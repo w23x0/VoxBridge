@@ -47,6 +47,9 @@ windows = { workspace = true, features = [
     "Win32_Security_Cryptography",
     "Win32_System_Memory",
     "Win32_System_SystemInformation",
+    # 窗口最小尺寸强制：WM_GETMINMAXINFO 需要 MINMAXINFO/SetWindowLongPtrW；
+    # GetDpiForWindow 用来把逻辑最小尺寸按当前 DPI 换算成物理像素。
+    "Win32_UI_HiDpi",
     # MessageBoxW：启动失败时唯一能让用户看见原因的手段。
     # 发布构建是 windows_subsystem="windows"，stderr 直接进黑洞。
     "Win32_UI_WindowsAndMessaging",

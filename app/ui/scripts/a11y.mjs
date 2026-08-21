@@ -382,11 +382,14 @@ try {
      * 顺带量一个卡片的文字色，确认不是只有 body 换了。
      */
     const read = () => {
-      const body = getComputedStyle(document.body);
+      // 濒在 body 上会被 canvas 背景传播铺到四角（黑角根因）。背板已迁到 #root，
+      // 主题断言跟随它取，不再从 body 读。
+      const bgNav = document.querySelector("#root") ?? document.body;
       const card = document.querySelector(".page.active .stat-card, .page.active .card");
+      const bg = getComputedStyle(bgNav);
       return {
-        bg: body.backgroundImage,
-        text: body.color,
+        bg: bg.backgroundImage || bg.backgroundColor,
+        text: getComputedStyle(document.body).color,
         cardBg: card ? getComputedStyle(card).backgroundColor : null,
       };
     };
