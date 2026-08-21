@@ -9,7 +9,7 @@
 
 基于 **Tauri 2 + React 19 + Rust**。界面负责配置与状态；音频采集、降噪、重采样、WebSocket 传输、快捷键与悬浮字幕窗口都落在 Rust/Win32 里。
 
-English：[`README.md`](README.md) · 日本語：[`README_ja.md`](README_ja.md)
+English：[`../README.md`](../README.md) · 日本語：[`ja.md`](ja.md) · 한국어：[`ko.md`](ko.md) · Español：[`es.md`](es.md) · Français：[`fr.md`](fr.md) · Deutsch：[`de.md`](de.md)
 
 ## 适用范围
 
@@ -18,7 +18,7 @@ English：[`README.md`](README.md) · 日本語：[`README_ja.md`](README_ja.md)
 - 「听人说话」固定**翻成中文**；源语言自动检测或手动指定。
 - 界面语言：简体中文 / 日本語 / English，与翻译语言相互独立。
 - 服务商 API Key 本地存储，按用户用 **Windows DPAPI** 加密。
-- 服务商元数据在 [`catalog/*.json`](catalog/)，不进源码。
+- 服务商元数据在 [`catalog/*.json`](../catalog/)，不进源码。
 
 ## 开发
 
@@ -80,7 +80,7 @@ VoxBridge/
 
 ## Contributing
 
-VoxBridge 刻意保持保守：核心范围固定，**外挂模块**是开放的扩展点——详见 **[`CONTRIBUTING.md`](CONTRIBUTING.md)**，包括计划中的 Discord 独立进程模块（`docs/DISCORD_PROTOCOL.md`，二期，尚未拍板）。
+VoxBridge 刻意保持保守：核心范围固定，**外挂模块**是开放的扩展点——详见 **[`../CONTRIBUTING.md`](../CONTRIBUTING.md)**，包括计划中的 Discord 独立进程模块（`docs/DISCORD_PROTOCOL.md`，二期，尚未拍板）。
 
 ## Docs
 

@@ -9,7 +9,7 @@
 
 **Tauri 2 + React 19 + Rust** で構築されています。UI は設定と状態を担当し、音声キャプチャ・ノイズ除去・リサンプリング・WebSocket 転送・ホットキー・字幕オーバーレイウィンドウは Rust/Win32 側に実装されています。
 
-简体中文： [`README_zh.md`](README_zh.md) · English： [`README.md`](README.md)
+English： [`../README.md`](../README.md) · 简体中文： [`zh-CN.md`](zh-CN.md) · 한국어： [`ko.md`](ko.md) · Español： [`es.md`](es.md) · Français： [`fr.md`](fr.md) · Deutsch： [`de.md`](de.md)
 
 ## スコープ
 
@@ -18,7 +18,7 @@
 - "Listen in" は常に **中国語へ** 翻訳。翻訳元の言語は自動検出または手動指定。
 - UI 言語は 简体中文 / 日本語 / English で、翻訳の言語とは独立。
 - プロバイダの API キーはローカルに保存され、ユーザーごとに **Windows DPAPI** で暗号化。
-- プロバイダのメタデータは [`catalog/*.json`](catalog/) 内に置かれ、ソースコードには含めない。
+- プロバイダのメタデータは [`catalog/*.json`](../catalog/) 内に置かれ、ソースコードには含めない。
 
 ## 開発 (Develop)
 
@@ -80,7 +80,7 @@ VoxBridge/
 
 ## 貢献 (Contributing)
 
-VoxBridge は意図的に保守的で、コアスコープは固定されています。外部モジュールが拡張のための公開ポイントです — **[`CONTRIBUTING.md`](CONTRIBUTING.md)** を参照してください — また、計画中の Discord アウトプロセスモジュール（`docs/DISCORD_PROTOCOL.md`、第 2 期・未定）も含まれます。
+VoxBridge は意図的に保守的で、コアスコープは固定されています。外部モジュールが拡張のための公開ポイントです — **[`../CONTRIBUTING.md`](../CONTRIBUTING.md)** を参照してください — また、計画中の Discord アウトプロセスモジュール（`docs/DISCORD_PROTOCOL.md`、第 2 期・未定）も含まれます。
 
 ## ドキュメント
 
@@ -90,4 +90,4 @@ VoxBridge は意図的に保守的で、コアスコープは固定されてい�
 
 MIT
 
-简体中文: [`README_zh.md`](README_zh.md) · English: [`README.md`](README.md)
+English: [`../README.md`](../README.md) · 简体中文: [`zh-CN.md`](zh-CN.md) · 한국어: [`ko.md`](ko.md) · Español: [`es.md`](es.md) · Français: [`fr.md`](fr.md) · Deutsch: [`de.md`](de.md)

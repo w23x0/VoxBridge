@@ -9,7 +9,7 @@ A Windows desktop real-time speech translator for live conversations. Two indepe
 
 Built with **Tauri 2 + React 19 + Rust**. The UI handles config and status; audio capture, noise reduction, resampling, WebSocket transport, hotkeys and the overlay caption window live in Rust/Win32.
 
-简体中文： [`README_zh.md`](README_zh.md) · 日本語： [`README_ja.md`](README_ja.md)
+简体中文：[`READMEs/zh-CN.md`](READMEs/zh-CN.md) · 日本語：[`READMEs/ja.md`](READMEs/ja.md) · 한국어：[`READMEs/ko.md`](READMEs/ko.md) · Español：[`READMEs/es.md`](READMEs/es.md) · Français：[`READMEs/fr.md`](READMEs/fr.md) · Deutsch：[`READMEs/de.md`](READMEs/de.md)
 
 ## Scope
 
