@@ -111,6 +111,7 @@ Settings and usage write atomically (temp file + rename, debounced). Keys never 
 ## Further reading
 
 - `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/QWEN_PROTOCOL.md`, `docs/GEMINI_PROTOCOL.md`, `docs/PROVIDER_CATALOG.md`
+- `docs/DISCORD_PROTOCOL.md` — Discord deep-integration research (**phase 2, undecided**)
 
 ## License
 

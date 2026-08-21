@@ -388,6 +388,7 @@ b 的实现量很小：settings 里加一个 `Vec<(String, String)>`，
 | B9 | 🔴 默认模型流式字幕可能一直没生效，现在就加 `.text`+`stash` 支持吗？ | **已加入**；并尽快拿真 key 抓一次报文 |
 | B10 | 官方热词表（术语表）这版做不做？ | **这版不做，但现在先在 settings 里占好字段** |
 | B11 | 老模型 `qwen3-livetranslate-flash-realtime-2025-09-22` 还留吗？ | **删掉**（它语音语言表只有 18 种且不是子集，留着就是坑） |
+| B13 | Discord 增强适配：第一期做到「按人独立」（Bot）还是「频道混译」？opus/Discord 框架怎么选？ | **（未拍板）** 预研在 `DISCORD_PROTOCOL.md`，六个 Q 全待你答 |
 
 ### B12.（🔴 窗口边缘待真机）大圆角没生效 & 最小高度锁不到 38
 
@@ -397,6 +398,32 @@ b 的实现量很小：settings 里加一个 `Vec<(String, String)>`，
 （`tokens.css`）在真机大概率没作用到窗口上。最小高度 38 已加两层钳制
 （WM_GETMINMAXINFO + WM_WINDOWPOSCHANGING），但**没真拖验证**，不能算解决。
 `npm run verify`/`cargo build` 都测不到这两个，只能真机拖。待办见 WINDOW_BEHAVIOR.md。
+
+---
+
+### B13. Discord 专属增强适配（**第二阶段预研，尚未拍板**）
+
+> 初心是让 VoxBridge「和 Discord 高度配合」。完整摊开了方向、能力边界、延迟与工程代价，
+> **没有结论**，详见 [`docs/DISCORD_PROTOCOL.md`](DISCORD_PROTOCOL.md)。
+
+**背景**
+现有「听人说话」用进程环回抓 `Discord.exe` 整棵进程树，只能拿到**混合了所有人的**混音，
+抓不到是谁在说话、切没切频道。只要目标是「按人独立字幕 / 独立翻译」，进程环回就做不到，
+能拆出每人的唯一途径是 **Bot 的语音音频流接收**。
+
+**待你确认的分叉（Q1，影响整个设计）**
+- 「频道所有说话混一股翻译成一条」（环回接近够用，但不分人）；还是
+- 「按用户独立分派、每人各自 translate」。（**只有 Bot 能做**——你已经明确这个方向。）
+
+**关键工程决策点（全部 ⚠️ 待定，见 `DISCORD_PROTOCOL.md`）**
+- **D1 opus 解码**：Discord 语音是分用户的 20ms opus 帧。要不要**引 `opus` crate**（打破
+  「vox-dsp 几乎无外部编解码依赖」的现状）？还是自作解码（数周级工作量）？
+- **D2 Discord 协议层**：直接引 `serenity`/`songbird`/`twilight`（现成但体积大，且要验
+  收每一用户语音的成熟度），还是自己精简实现 Gateway + RTP？
+- **D3 部署门槛**：Bot 跑在使用者本机（Tauri 内嵌），用户要先自己建一个 Discord Bot
+  并填 Token（本地 DPAPI 保存，不并入 API Key 体系）。
+- **D4 延迟**：Bot 这路（网络接收 + opus 解码）预计只 +20~35 ms；翻译往返本身 ≥600 ms
+  仍是瓶颈。
 
 ---
 

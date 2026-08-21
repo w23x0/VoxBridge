@@ -111,6 +111,7 @@ VoxBridge/
 ## 延伸阅读
 
 - `docs/ARCHITECTURE.md`、`docs/DECISIONS.md`、`docs/QWEN_PROTOCOL.md`、`docs/GEMINI_PROTOCOL.md`、`docs/PROVIDER_CATALOG.md`
+- `docs/DISCORD_PROTOCOL.md` —— Discord 专属增强适配（**第二阶段预研，未拍板**）
 
 ## License
 
