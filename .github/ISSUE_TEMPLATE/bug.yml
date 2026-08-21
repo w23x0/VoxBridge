@@ -1,0 +1,74 @@
+name: Bug report
+description: Report a bug to help us fix it
+title: "Describe the bug"
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What is the problem? What did you expect to happen and what actually happened?
+      placeholder: "e.g. Translation audio cuts off after a few seconds"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-vs-actual
+    attributes:
+      label: Expected vs actual
+      description: What did you expect, and what actually happened instead?
+    validations:
+      required: true
+
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows version
+      description: e.g. Windows 11 / 10, build XXXXX
+      placeholder: "Windows 11 24H2"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Step-by-step how to trigger the issue.
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: direction
+    attributes:
+      label: Voice direction (pipeline)
+      multiple: false
+      options:
+        - Speak out
+        - Listen in
+        - Both
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      multiple: false
+      options:
+        - Aliyun
+        - Gemini
+        - GPT
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots
+      description: Optional. Paste logs or attach screenshots if available.
+    validations:
+      required: false
