@@ -66,7 +66,6 @@ export function ProvidersPage() {
 
   const clearKey = async () => {
     if (busyRef.current) return;
-    const t = useT();
     busyRef.current = true;
     setBusy("clear");
     setArmed(false);

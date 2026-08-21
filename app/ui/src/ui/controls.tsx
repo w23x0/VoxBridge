@@ -107,15 +107,19 @@ export function Dropdown({
   const onKey = (e: React.KeyboardEvent) => {
     if (disabled) return;
     if (!open) {
-      if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+      // 未展开时不拦截方向键，让它冒泡给 document 的网格导航
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         setOpen(true);
       }
       return;
     }
+    // 已展开：方向键归下拉使用，不再冒泡
+    e.stopPropagation();
     if (e.key === "Escape") {
       e.preventDefault();
       setOpen(false);
+      box.current?.querySelector("button")?.focus();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       setCursor((c) => Math.min(options.length - 1, c + 1));
@@ -125,7 +129,11 @@ export function Dropdown({
     } else if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       const pick = options[cursor];
-      if (pick) commit(pick.value);
+      if (pick) {
+        commit(pick.value);
+        // 选中后把焦点还给触发器，让方向键继续走网格
+        box.current?.querySelector("button")?.focus();
+      }
     }
   };
 

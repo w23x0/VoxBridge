@@ -170,7 +170,7 @@ export function HomePage() {
                       }
                     >
                       <span className={running && !failed ? "status-dot running" : "status-dot"} />
-                      {state?.state_label ?? "读取中"}
+                      {state ? t(`pipeline.state.${state.state}`) : "读取中"}
                     </span>
                   </div>
                 </div>
@@ -340,42 +340,40 @@ export function HomePage() {
                       }}
                     />
 
-                    {card.id === "speak" || listen.speak_translation ? (
-                      <div className="pipeline-output-device">
-                        <label className="stat-label" htmlFor={`dd-home-${card.id}-output`}>
-                          {t("pipeline.outputDevice")}
-                        </label>
-                        <Dropdown
-                          id={`dd-home-${card.id}-output`}
-                          label={t("pipeline.outputDeviceAria", { pipe: pipeLabel(card.id) })}
-                          value={
-                            (card.id === "speak" ? speak.output_device : listen.output_device) ??
-                            SYSTEM_DEFAULT
-                          }
-                          options={deviceOptions(
-                            snapshot?.devices.outputs ?? [],
-                            card.id === "speak" ? speak.output_device : listen.output_device,
-                            t,
-                          )}
-                          disabled={!snapshot}
-                          onChange={(outputDevice) =>
-                            card.id === "speak"
-                              ? patch({
-                                  speak: {
-                                    output_device:
-                                      outputDevice === SYSTEM_DEFAULT ? null : outputDevice,
-                                  },
-                                })
-                              : patch({
-                                  listen: {
-                                    output_device:
-                                      outputDevice === SYSTEM_DEFAULT ? null : outputDevice,
-                                  },
-                                })
-                          }
-                        />
-                      </div>
-                    ) : null}
+                    <div className="pipeline-output-device">
+                      <label className="stat-label" htmlFor={`dd-home-${card.id}-output`}>
+                        {t("pipeline.outputDevice")}
+                      </label>
+                      <Dropdown
+                        id={`dd-home-${card.id}-output`}
+                        label={t("pipeline.outputDeviceAria", { pipe: pipeLabel(card.id) })}
+                        value={
+                          (card.id === "speak" ? speak.output_device : listen.output_device) ??
+                          SYSTEM_DEFAULT
+                        }
+                        options={deviceOptions(
+                          snapshot?.devices.outputs ?? [],
+                          card.id === "speak" ? speak.output_device : listen.output_device,
+                          t,
+                        )}
+                        disabled={!snapshot}
+                        onChange={(outputDevice) =>
+                          card.id === "speak"
+                            ? patch({
+                                speak: {
+                                  output_device:
+                                    outputDevice === SYSTEM_DEFAULT ? null : outputDevice,
+                                },
+                              })
+                            : patch({
+                                listen: {
+                                  output_device:
+                                    outputDevice === SYSTEM_DEFAULT ? null : outputDevice,
+                                },
+                              })
+                        }
+                      />
+                    </div>
                   </div>
                 </div>
 
