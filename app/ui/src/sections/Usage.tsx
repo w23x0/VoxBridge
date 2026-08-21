@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import * as catalog from "../catalog";
+import { useT } from "../i18n/context";
 import { useStore } from "../store";
 import type { ModelUsage, UsageLedger, UsageTotals } from "../types.snapshot";
 import { fmtAgo, fmtNum } from "../lib/format";
@@ -91,6 +92,7 @@ function ConfirmButton({
 }) {
   const [armed, setArmed] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const t = useT();
   useEffect(
     () => () => {
       if (timer.current) clearTimeout(timer.current);
@@ -115,6 +117,7 @@ function ConfirmButton({
       </button>
     );
   }
+  const cancelText = t("common.cancel");
   return (
     <span className="row">
       <button
@@ -132,7 +135,7 @@ function ConfirmButton({
         className="btn btn-secondary btn-sm"
         onClick={() => setArmed(false)}
       >
-        取消
+        {cancelText}
       </button>
     </span>
   );
@@ -141,6 +144,7 @@ function ConfirmButton({
 export function UsagePage() {
   const { api, snapshot } = useStore();
   const toast = useToast();
+  const t = useT();
   const [range, setRange] = useState<Range>("today");
 
   const now = new Date();
@@ -156,20 +160,20 @@ export function UsagePage() {
   const num = (n: number): string => (loading ? "—" : fmtNum(n));
 
   const resetBlocked = loading
-    ? "读取中"
+    ? t("usage.loading")
     : models.length === 0
-      ? "暂无记录"
+      ? t("usage.empty")
       : null;
 
   return (
     <>
       <div className="row" style={{ marginBottom: 16 }}>
-        <div className="mode-row" role="group" aria-label="统计范围">
+        <div className="mode-row" role="group" aria-label={t("usage.rangeAria")}>
           {(
             [
-              { v: "today", t: "今日" },
-              { v: "month", t: "本月" },
-              { v: "total", t: "总计" },
+              { v: "today", k: "rangeToday" },
+              { v: "month", k: "rangeMonth" },
+              { v: "total", k: "rangeTotal" },
             ] as const
           ).map((r) => (
             <button
@@ -179,12 +183,12 @@ export function UsagePage() {
               aria-pressed={range === r.v}
               onClick={() => setRange(r.v)}
             >
-              {r.t}
+              {t(`usage.${r.k}`)}
             </button>
           ))}
         </div>
         <span className="hint mono">
-          {loading ? "—" : `${fmtNum(totals.turns)} 轮`}
+          {loading ? "—" : t("usage.turnsCount", { n: fmtNum(totals.turns) })}
         </span>
       </div>
 
@@ -198,27 +202,27 @@ export function UsagePage() {
         <StatCard
           tone="green"
           icon={<IconUpload size={24} />}
-          label="输入"
+          label={t("usage.inputTokens")}
           value={num(totals.input_tokens)}
         />
         <StatCard
           tone="amber"
           icon={<IconDownload size={24} />}
-          label="输出"
+          label={t("usage.outputTokens")}
           value={num(totals.output_tokens)}
         />
       </div>
 
       <div className="card">
-        <div className="sub-card-head">模型明细</div>
+        <div className="sub-card-head">{t("usage.modelList")}</div>
         {loading ? (
-          <div className="empty-state">读取中…</div>
+          <div className="empty-state">{t("usage.loading")}</div>
         ) : models.length === 0 ? (
-          <div className="empty-state">暂无记录</div>
+          <div className="empty-state">{t("usage.empty")}</div>
         ) : (
           <div className="col">
             {models.map(([name, usage]) => {
-              const t = bucket(usage, range, day, month);
+              const row = bucket(usage, range, day, month);
               return (
                 <div className="sub-card" key={name}>
                   <div className="sub-card-head">
@@ -226,39 +230,41 @@ export function UsagePage() {
                       {catalog.modelLabel(name)}
                     </span>
                     <span className="chip" style={{ cursor: "default" }}>
-                      {catalog.findModel(name) ? catalog.MODEL_TYPE_LABEL : "历史记录"}
+                      {catalog.findModel(name)
+                        ? t("usage.modelChipRealtime")
+                        : t("usage.modelChipLegacy")}
                     </span>
                     <span style={{ marginLeft: "auto" }}>
                       <ConfirmButton
-                        confirmText="确认清空"
+                        confirmText={t("usage.confirmClear")}
                         onConfirm={() => {
                           void api.resetUsageModel(name);
-                          toast("success", `已清空 ${catalog.modelLabel(name)}`);
+                          toast("success", t("usage.cleared", { name: catalog.modelLabel(name) }));
                         }}
                       >
-                        清空
+                        {t("usage.clear")}
                       </ConfirmButton>
                     </span>
                   </div>
                   <div className="sub-row">
                     <span>Token</span>
-                    <span className="num num-blue">{fmtNum(t.total_tokens)}</span>
+                    <span className="num num-blue">{fmtNum(row.total_tokens)}</span>
                   </div>
                   <div className="sub-row">
-                    <span>输入</span>
-                    <span className="num num-green">{fmtNum(t.input_tokens)}</span>
+                    <span>{t("usage.inputTokens")}</span>
+                    <span className="num num-green">{fmtNum(row.input_tokens)}</span>
                   </div>
                   <div className="sub-row">
-                    <span>输出</span>
-                    <span className="num num-amber">{fmtNum(t.output_tokens)}</span>
+                    <span>{t("usage.outputTokens")}</span>
+                    <span className="num num-amber">{fmtNum(row.output_tokens)}</span>
                   </div>
                   <div className="sub-row">
-                    <span>轮次</span>
-                    <span className="num num-muted">{fmtNum(t.turns)}</span>
+                    <span>{t("usage.turns")}</span>
+                    <span className="num num-muted">{fmtNum(row.turns)}</span>
                   </div>
                   <div className="sub-row">
-                    <span>最后更新</span>
-                    <span className="num num-muted">{fmtAgo(usage.updated_at)}</span>
+                    <span>{t("usage.updatedAt")}</span>
+                    <span className="num num-muted">{fmtAgo(usage.updated_at, t)}</span>
                   </div>
                 </div>
               );
@@ -270,19 +276,19 @@ export function UsagePage() {
       <div className="settings-group">
         <div className="settings-item">
           <div className="si-text">
-            <div className="si-title">全部用量</div>
+            <div className="si-title">{t("usage.resetAll")}</div>
           </div>
           <div className="si-control">
             <ConfirmButton
-              confirmText="确认清空"
+              confirmText={t("usage.confirmClear")}
               disabled={resetBlocked !== null}
               title={resetBlocked ?? undefined}
               onConfirm={() => {
                 void api.resetUsage();
-                toast("success", "用量已清空");
+                toast("success", t("usage.allCleared"));
               }}
             >
-              清空
+              {t("usage.clear")}
             </ConfirmButton>
           </div>
         </div>

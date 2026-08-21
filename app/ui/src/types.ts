@@ -119,4 +119,6 @@ export interface Settings {
   subtitle: SubtitleSettings;
   autostart: boolean;
   start_minimized: boolean;
+  /** 界面显示语言（UI locale）：`zh-CN` / `en`。与翻译目标/源语言无关。 */
+  ui_language: string;
 }

@@ -18,6 +18,11 @@ use crate::hotkey::Hotkey;
 /// 配置结构版本号，用于迁移。
 pub const SETTINGS_VERSION: u32 = 2;
 
+/// 界面显示语言（UI locale）允许的取值。
+pub const UI_LANGUAGES: [&str; 2] = ["zh-CN", "en"];
+/// 默认界面语言。
+pub const DEFAULT_UI_LANGUAGE: &str = "zh-CN";
+
 /// 实时翻译服务商。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -42,6 +47,9 @@ pub struct Settings {
     pub autostart: bool,
     /// 启动时最小化到托盘。
     pub start_minimized: bool,
+    /// 界面显示语言（UI locale），二选一：`zh-CN` / `en`。
+    /// 与翻译功能的目标/源语言无关——那是业务翻译语种，不是界面语言。
+    pub ui_language: String,
 }
 
 impl Default for Settings {
@@ -54,6 +62,7 @@ impl Default for Settings {
             subtitle: SubtitleSettings::default(),
             autostart: false,
             start_minimized: false,
+            ui_language: DEFAULT_UI_LANGUAGE.to_string(),
         }
     }
 }
@@ -268,6 +277,11 @@ impl Settings {
     /// 把所有越界值拽回合法范围。
     pub fn normalize(&mut self) {
         self.model_name = DEFAULT_MODEL_NAME.to_string();
+
+        // 界面语言只认白名单；手改配置、拼错一律回退中文。
+        if !UI_LANGUAGES.contains(&self.ui_language.as_str()) {
+            self.ui_language = DEFAULT_UI_LANGUAGE.to_string();
+        }
 
         // 对外说话
         let speak = &mut self.speak;
@@ -547,6 +561,18 @@ mod tests {
         s.normalize();
         assert!(s.speak.input_device.is_none());
         assert!(s.speak.output_device.is_some());
+    }
+
+    #[test]
+    fn invalid_ui_language_falls_back() {
+        let mut s = Settings::default();
+        assert_eq!(s.ui_language, "zh-CN");
+        s.ui_language = "fr".into();
+        s.normalize();
+        assert_eq!(s.ui_language, "zh-CN", "白名单外的语言码回退中文");
+        s.ui_language = "en".into();
+        s.normalize();
+        assert_eq!(s.ui_language, "en", "白名单内的语言码保留");
     }
 
     #[test]

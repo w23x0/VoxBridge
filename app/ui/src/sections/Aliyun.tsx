@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import * as catalog from "../catalog";
+import { useT } from "../i18n/context";
 import { useStore } from "../store";
 import type { ModelProvider } from "../types";
 import { Dropdown } from "../ui/controls";
@@ -13,6 +14,7 @@ import { orderedVoices } from "../voices";
 export function ProvidersPage() {
   const { api, snapshot, reload } = useStore();
   const toast = useToast();
+  const t = useT();
   const [provider, setProvider] = useState<ModelProvider>("gemini");
   const [hasDraft, setHasDraft] = useState(false);
   const [busy, setBusy] = useState<"save" | "clear" | null>(null);
@@ -48,9 +50,14 @@ export function ProvidersPage() {
     try {
       await api.setApiKey(provider, key);
       reload();
-      toast("success", `${catalog.providerLabel(provider)} 密钥已保存`);
+      toast("success", t("providersPage.savedToast", { name: catalog.providerLabel(provider) }));
     } catch (error: unknown) {
-      toast("danger", `保存失败：${String(error).replaceAll(key, "[密钥已隐藏]")}`);
+      toast(
+        "danger",
+        t("providersPage.saveFailed", {
+          error: String(error).replaceAll(key, t("providersPage.keyHidden")),
+        }),
+      );
     } finally {
       busyRef.current = false;
       setBusy(null);
@@ -59,15 +66,16 @@ export function ProvidersPage() {
 
   const clearKey = async () => {
     if (busyRef.current) return;
+    const t = useT();
     busyRef.current = true;
     setBusy("clear");
     setArmed(false);
     try {
       await api.setApiKey(provider, "");
       reload();
-      toast("success", `${catalog.providerLabel(provider)} 密钥已清除`);
+      toast("success", t("providersPage.clearedToast", { name: catalog.providerLabel(provider) }));
     } catch (error: unknown) {
-      toast("danger", `清除失败：${String(error)}`);
+      toast("danger", t("providersPage.clearFailed", { error: String(error) }));
     } finally {
       busyRef.current = false;
       setBusy(null);
@@ -89,7 +97,7 @@ export function ProvidersPage() {
           <div style={{ width: 260, maxWidth: "70%" }}>
             <Dropdown
               id="dd-provider-config"
-              label="要配置的模型服务商"
+              label={t("providersPage.selectProvider")}
               value={provider}
               options={catalog.PROVIDERS}
               disabled={busy !== null}
@@ -101,14 +109,20 @@ export function ProvidersPage() {
             style={{ cursor: "default" }}
           >
             <span className="status-dot" />
-            {loading ? "读取中" : hasKey ? "已配置" : "未配置"}
+            {loading
+              ? t("providersPage.loading")
+              : hasKey
+                ? t("providersPage.apiKeySet")
+                : t("providersPage.apiKeyNotSet")}
           </span>
         </div>
 
         <div className="row" style={{ alignItems: "stretch" }}>
           {!hasDraft ? (
             <span className="hint" style={{ alignSelf: "center" }}>
-              {hasKey ? "输入新密钥才能覆盖" : "先粘贴密钥再保存"}
+              {hasKey
+                ? t("providersPage.overwriteHint")
+                : t("providersPage.pasteHint")}
             </span>
           ) : null}
           <input
@@ -116,11 +130,17 @@ export function ProvidersPage() {
             ref={input}
             className="form-input mono"
             type="password"
-            placeholder={hasKey ? "输入新密钥以覆盖" : isGemini ? "AIza..." : "sk-..."}
+            placeholder={
+              hasKey
+                ? t("providersPage.overwritePlaceholder")
+                : isGemini
+                  ? "AIza..."
+                  : "sk-..."
+            }
             autoComplete="off"
             spellCheck={false}
             disabled={busy !== null}
-            aria-label={`${catalog.providerLabel(provider)} API 密钥`}
+            aria-label={`${catalog.providerLabel(provider)} ${t("providersPage.apiKey")}`}
             onChange={(event) => setHasDraft(event.currentTarget.value.trim().length > 0)}
             onKeyDown={(event) => {
               if (event.key === "Enter") void saveKey();
@@ -133,7 +153,9 @@ export function ProvidersPage() {
             onClick={() => void saveKey()}
           >
             <IconSave size={15} />
-            {busy === "save" ? "保存中…" : "保存"}
+            {busy === "save"
+              ? t("providersPage.savingKey")
+              : t("providersPage.saveKey")}
           </button>
         </div>
 
@@ -144,7 +166,9 @@ export function ProvidersPage() {
             onClick={() => void api.openProviderConsole(provider)}
           >
             <IconExternal size={15} />
-            {isGemini ? "AI Studio" : "百炼控制台"}
+            {isGemini
+              ? t("providersPage.consoleGemini")
+              : t("providersPage.consoleAliyun")}
           </button>
           {hasKey ? (
             armed ? (
@@ -155,7 +179,9 @@ export function ProvidersPage() {
                   disabled={busy !== null}
                   onClick={() => void clearKey()}
                 >
-                  {busy === "clear" ? "清除中…" : "确认清除"}
+                  {busy === "clear"
+                    ? t("providersPage.clearingKey")
+                    : t("providersPage.confirmClear")}
                 </button>
                 <button
                   type="button"
@@ -163,7 +189,7 @@ export function ProvidersPage() {
                   disabled={busy !== null}
                   onClick={() => setArmed(false)}
                 >
-                  取消
+                  {t("common.cancel")}
                 </button>
               </>
             ) : (
@@ -178,7 +204,7 @@ export function ProvidersPage() {
                 }}
               >
                 <IconTrash size={15} />
-                清除密钥
+                {t("providersPage.clearKey")}
               </button>
             )
           ) : null}
@@ -187,11 +213,11 @@ export function ProvidersPage() {
 
       <div className="panel">
         <div className="panel-top">
-          <div className="panel-title">模型能力</div>
+          <div className="panel-title">{t("providersPage.capabilities")}</div>
         </div>
         <div className="panel-body">
           <div className="sub-card" style={{ marginBottom: 14 }}>
-            <div className="sub-card-head">实时翻译模型</div>
+            <div className="sub-card-head">{t("providersPage.realtimeModels")}</div>
             <div className="row-wrap">
               <span className="mono">
                 {isGemini ? catalog.GEMINI_MODEL_LABEL : catalog.DEFAULT_MODEL_LABEL}
@@ -205,32 +231,34 @@ export function ProvidersPage() {
           {isGemini ? (
             <div className="input-grid-3">
               <div className="sub-card">
-                <div className="sub-card-head">语言</div>
+                <div className="sub-card-head">{t("providersPage.language")}</div>
                 <div className="si-title">70+</div>
-                <div className="hint">实时语音互译</div>
+                <div className="hint">{t("providersPage.realtimeInterp")}</div>
               </div>
               <div className="sub-card">
-                <div className="sub-card-head">上行音频</div>
+                <div className="sub-card-head">{t("providersPage.inputAudio")}</div>
                 <div className="mono">PCM16LE · 16 kHz</div>
-                <div className="hint">单声道</div>
+                <div className="hint">{t("providersPage.mono")}</div>
               </div>
               <div className="sub-card">
-                <div className="sub-card-head">下行音频</div>
+                <div className="sub-card-head">{t("providersPage.outputAudio")}</div>
                 <div className="mono">PCM16LE · 24 kHz</div>
-                <div className="hint">自动音色 · 单声道</div>
+                <div className="hint">{t("providersPage.autoVoiceMono")}</div>
               </div>
             </div>
           ) : (
             <div className="input-grid-2">
               <div className="sub-card">
-                <div className="sub-card-head">译音 · {audioLanguages.length} 种</div>
+                <div className="sub-card-head">
+                  {t("providersPage.voiceCount", { n: String(audioLanguages.length) })}
+                </div>
                 <div className="row-wrap">
                   {audioLanguages.slice(0, 8).map((language) => (
                     <span className="chip static" key={language.value}>{language.label}</span>
                   ))}
                 </div>
                 <details className="catalog-details">
-                  <summary>查看全部</summary>
+                  <summary>{t("providersPage.viewAll")}</summary>
                   <div className="row-wrap">
                     {audioLanguages.map((language) => (
                       <span className="chip static" key={language.value}>{language.label}</span>
@@ -240,7 +268,9 @@ export function ProvidersPage() {
               </div>
 
               <div className="sub-card">
-                <div className="sub-card-head">仅译文 · {textOnlyLanguages.length} 种</div>
+                <div className="sub-card-head">
+                  {t("providersPage.textOnlyCount", { n: String(textOnlyLanguages.length) })}
+                </div>
                 <div className="row-wrap">
                   {textOnlyLanguages.slice(0, 8).map((language) => (
                     <span className="chip static" key={language.value}>{language.label}</span>
@@ -249,7 +279,9 @@ export function ProvidersPage() {
               </div>
 
               <div className="sub-card" style={{ gridColumn: "1 / -1" }}>
-                <div className="sub-card-head">官方音色 · {voices.length} 个</div>
+                <div className="sub-card-head">
+                  {t("providersPage.officialVoices", { n: String(voices.length) })}
+                </div>
                 <div className="row-wrap">
                   {catalog.VOICE_CATALOG.slice(0, 8).map((voice) => (
                     <span className="chip static" key={voice.id}>{voice.name}</span>

@@ -63,6 +63,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   autostart: false,
   start_minimized: false,
+  ui_language: "zh-CN",
 };
 
 export function clamp(value: number, min: number, max: number): number {

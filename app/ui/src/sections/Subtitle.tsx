@@ -8,6 +8,7 @@ import {
   FONT_SIZE_RANGE,
   clamp,
 } from "../defaults";
+import { useT } from "../i18n/context";
 import { useStore } from "../store";
 import type { SubtitleSettings } from "../types";
 import { Dropdown, SettingsItem, Slider, Toggle } from "../ui/controls";
@@ -30,6 +31,7 @@ function plateStyle(sub: SubtitleSettings) {
 
 /** 预览里固定摆两行：对外（暖）在上、听人（冷）在下，颜色跟设置走。 */
 function SubtitlePreview({ sub }: { sub: SubtitleSettings }) {
+  const t = useT();
   const line = (color: string, text: string) => (
     <div
       className="subtitle-preview__row"
@@ -49,9 +51,9 @@ function SubtitlePreview({ sub }: { sub: SubtitleSettings }) {
   );
   return (
     <div className="subtitle-preview" aria-hidden="true">
-      <span className="subtitle-preview__tag">预览 · 实际悬浮窗为透明叠层</span>
-      {line(sub.speak_color, "Hello，这句是对外说话的字幕")}
-      {line(sub.listen_color, "这句是听人说话的字幕")}
+      <span className="subtitle-preview__tag">{t("subtitle.previewTag")}</span>
+      {line(sub.speak_color, t("subtitle.previewSpeakLine"))}
+      {line(sub.listen_color, t("subtitle.previewListenLine"))}
     </div>
   );
 }
@@ -60,18 +62,19 @@ export function SubtitlePage() {
   const { snapshot, settings, patch } = useStore();
   const loading = snapshot === null;
   const sub = settings.subtitle;
+  const t = useT();
 
   return (
     <>
       <div className="settings-group">
         <SettingsItem
-          title="显示字幕"
-          desc="关闭后悬浮窗整体隐藏，两条管线仍会照常工作"
+          title={t("subtitle.visible")}
+          desc={t("subtitle.visibleDesc")}
           control={
             <Toggle
               checked={sub.visible}
               disabled={loading}
-              label="显示字幕"
+              label={t("subtitle.visible")}
               onChange={(visible) => patch({ subtitle: { visible } })}
             />
           }
@@ -85,11 +88,11 @@ export function SubtitlePage() {
         <SettingsItem
           wide
           htmlFor="dd-subtitle-font"
-          title="字体"
+          title={t("subtitle.font")}
           control={
             <Dropdown
               id="dd-subtitle-font"
-              label="字幕字体"
+              label={t("subtitle.font")}
               value={sub.font_family}
               options={
                 FONTS.some((f) => f.value === sub.font_family)
@@ -102,7 +105,7 @@ export function SubtitlePage() {
         />
         <SettingsItem
           wide
-          title="字号"
+          title={t("subtitle.fontSize")}
           control={
             <Slider
               value={sub.font_size}
@@ -110,44 +113,44 @@ export function SubtitlePage() {
               max={FONT_SIZE_RANGE.max}
               step={1}
               disabled={loading}
-              label="字幕字号"
-              format={(v) => `${v} px`}
+              label={t("subtitle.fontSize")}
+              format={(v) => t("subtitle.pxSuffix", { v })}
               onChange={(font_size) => patch({ subtitle: { font_size } })}
             />
           }
         />
         <SettingsItem
-          title="对外说话 · 颜色"
-          desc="暖色行"
+          title={t("subtitle.speakColor")}
+          desc={t("subtitle.speakColorDesc")}
           control={
             <input
               type="color"
               className="color-input"
               value={sub.speak_color}
               disabled={loading}
-              aria-label="对外说话字幕颜色"
+              aria-label={t("subtitle.speakColor")}
               onChange={(e) => patch({ subtitle: { speak_color: e.target.value } })}
             />
           }
         />
         <SettingsItem
-          title="听人说话 · 颜色"
-          desc="冷色行"
+          title={t("subtitle.listenColor")}
+          desc={t("subtitle.listenColorDesc")}
           control={
             <input
               type="color"
               className="color-input"
               value={sub.listen_color}
               disabled={loading}
-              aria-label="听人说话字幕颜色"
+              aria-label={t("subtitle.listenColor")}
               onChange={(e) => patch({ subtitle: { listen_color: e.target.value } })}
             />
           }
         />
         <SettingsItem
           wide
-          title="底衬不透明度"
-          desc="0 = 只显字幕、无底衬"
+          title={t("subtitle.background")}
+          desc={t("subtitle.backgroundDesc")}
           control={
             <Slider
               value={sub.background_alpha}
@@ -155,8 +158,8 @@ export function SubtitlePage() {
               max={BACKGROUND_ALPHA_RANGE.max}
               step={1}
               disabled={loading}
-              label="底衬不透明度"
-              format={(v) => `${v} / 255`}
+              label={t("subtitle.background")}
+              format={(v) => t("subtitle.bgAlphaLabel", { v })}
               onChange={(background_alpha) => patch({ subtitle: { background_alpha } })}
             />
           }
@@ -166,8 +169,8 @@ export function SubtitlePage() {
       <div className="settings-group">
         <SettingsItem
           wide
-          title="字符停留"
-          desc="每个字在屏幕上保留多久"
+          title={t("subtitle.charTtl")}
+          desc={t("subtitle.charTtlDesc")}
           control={
             <Slider
               value={sub.char_ttl_ms}
@@ -175,8 +178,8 @@ export function SubtitlePage() {
               max={CHAR_TTL_RANGE.max}
               step={100}
               disabled={loading}
-              label="字符停留时长"
-              format={(v) => `${(v / 1000).toFixed(1)} 秒`}
+              label={t("subtitle.charTtl")}
+              format={(v) => t("subtitle.secSuffix", { v: (v / 1000).toFixed(1) })}
               onChange={(char_ttl_ms) =>
                 patch({
                   subtitle: {
@@ -192,8 +195,8 @@ export function SubtitlePage() {
         />
         <SettingsItem
           wide
-          title="淡出时长"
-          desc="停留结束后的渐隐速度，0 = 直接消失"
+          title={t("subtitle.charFade")}
+          desc={t("subtitle.charFadeDesc")}
           control={
             <Slider
               value={sub.char_fade_ms}
@@ -201,28 +204,32 @@ export function SubtitlePage() {
               max={clamp(CHAR_FADE_RANGE.max, CHAR_FADE_RANGE.min, sub.char_ttl_ms)}
               step={100}
               disabled={loading}
-              label="淡出时长"
-              format={(v) => (v === 0 ? "直接消失" : `${(v / 1000).toFixed(1)} 秒`)}
+              label={t("subtitle.charFade")}
+              format={(v) =>
+                v === 0
+                  ? t("subtitle.fadeInstant")
+                  : t("subtitle.secSuffix", { v: (v / 1000).toFixed(1) })
+              }
               onChange={(char_fade_ms) => patch({ subtitle: { char_fade_ms } })}
             />
           }
         />
         <SettingsItem
-          title="保留 0 类字幕"
-          desc="纯噪声/填充词/无意义发音在 Lifetime 结束后淡成浅灰长期保留，而不是消失"
+          title={t("subtitle.dimZeros")}
+          desc={t("subtitle.dimZerosDesc")}
           control={
             <Toggle
               checked={sub.dim_zeros}
               disabled={loading}
-              label="保留 0 类字幕"
+              label={t("subtitle.dimZeros")}
               onChange={(dim_zeros) => patch({ subtitle: { dim_zeros } })}
             />
           }
         />
         <SettingsItem
           wide
-          title="淡化程度"
-          desc="启用“保留 0 类字幕”后才能调整；数值越小颜色越淡"
+          title={t("subtitle.dimAlpha")}
+          desc={t("subtitle.dimAlphaDesc")}
           control={
             <Slider
               value={sub.dim_alpha}
@@ -230,7 +237,7 @@ export function SubtitlePage() {
               max={DIM_ALPHA_RANGE.max}
               step={0.05}
               disabled={loading || !sub.dim_zeros}
-              label="淡化程度"
+              label={t("subtitle.dimAlpha")}
               format={(v) => `${Math.round(v * 100)}%`}
               onChange={(dim_alpha) => patch({ subtitle: { dim_alpha } })}
             />
@@ -240,15 +247,15 @@ export function SubtitlePage() {
 
       <div className="settings-group">
         <SettingsItem
-          title="位置与大小"
-          desc="拖动字幕区域移动，拖动窗口边缘调整大小；位置和大小会自动记住"
+          title={t("subtitle.positionSize")}
+          desc={t("subtitle.positionSizeDesc")}
           control={
             <button
               type="button"
               className="btn btn-secondary btn-sm"
               onClick={() => patch({ subtitle: { geometry: null } })}
             >
-              恢复默认
+              {t("subtitle.resetDefault")}
             </button>
           }
         />

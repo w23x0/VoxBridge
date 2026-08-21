@@ -46,7 +46,6 @@ export const DEFAULT_MODEL_NAME = aliyun.model.id;
 export const DEFAULT_MODEL_LABEL = aliyun.model.label;
 export const GEMINI_MODEL_NAME = gemini.model.id;
 export const GEMINI_MODEL_LABEL = gemini.model.label;
-export const MODEL_TYPE_LABEL = "实时翻译";
 export const MODELS: ModelInfo[] = [
   { name: DEFAULT_MODEL_NAME, label: DEFAULT_MODEL_LABEL },
   { name: GEMINI_MODEL_NAME, label: GEMINI_MODEL_LABEL },

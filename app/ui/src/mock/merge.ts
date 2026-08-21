@@ -55,6 +55,11 @@ function normalizeDevice(value: string | null | undefined): string | null {
 export function normalizeSettings(settings: Settings): Settings {
   const s = structuredClone(settings);
 
+  // 界面语言只认白名单；手改配置、拼错一律回退中文（与 Rust Settings::normalize 一致）。
+  if (s.ui_language !== "zh-CN" && s.ui_language !== "en") {
+    s.ui_language = "zh-CN";
+  }
+
   s.speak.model_name = catalog.defaultModelForProvider(s.speak.provider);
   s.listen.model_name = catalog.defaultModelForProvider(s.listen.provider);
   if (s.speak.provider === "gemini") s.speak.voice_clone_frequency = null;

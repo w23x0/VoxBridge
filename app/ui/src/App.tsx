@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { useT } from "./i18n/context";
 import { ABOUT_NAV, DEFAULT_PAGE, PAGE_NAV } from "./nav";
 import { AboutPage } from "./sections/About";
 import { ProvidersPage } from "./sections/Aliyun";
@@ -18,7 +19,6 @@ import { UsagePage } from "./sections/Usage";
 import { Sidebar } from "./shell/Sidebar";
 import { Titlebar } from "./shell/Titlebar";
 import { useStore } from "./store";
-import { PIPELINE_LABEL } from "./pipeline";
 import { restoreTheme } from "./ui/theme";
 import { useToast } from "./ui/toast";
 
@@ -33,6 +33,7 @@ const PAGES: Record<string, () => React.ReactElement> = {
 
 export function App() {
   const [page, setPage] = useState(DEFAULT_PAGE);
+  const t = useT();
   useEffect(() => {
     restoreTheme();
   }, []);
@@ -56,7 +57,7 @@ export function App() {
               >
                 <div className={n === ABOUT_NAV ? "page-scroll narrow" : "page-scroll"}>
                   <div className="page-head">
-                    <h1 id={`title-${n.id}`}>{n.label}</h1>
+                    <h1 id={`title-${n.id}`}>{n.label(t)}</h1>
                   </div>
                   <Page />
                 </div>
@@ -79,6 +80,7 @@ export function App() {
 function useNoticeToasts() {
   const store = useStore();
   const toast = useToast();
+  const t = useT();
   const notices = store.snapshot?.notices;
   /** 记住处理过的那一批（比对数组身份），防止同一批弹两遍。 */
   const done = useRef<unknown>(null);
@@ -91,10 +93,10 @@ function useNoticeToasts() {
     if (done.current === notices) return;
     done.current = notices;
     for (const n of notices) {
-      // 普通 info 是后台状态同步；带流水线的 info 是“运行中需重启”提醒，不能吞掉。
+      // 普通 info 是后台状态同步；带流水线的 info 是"运行中需重启"提醒，不能吞掉。
       if (n.severity !== "info" || n.pipeline) {
-        const who = n.pipeline ? `${PIPELINE_LABEL[n.pipeline]}：` : "";
-        toast(n.severity === "error" ? "danger" : "warning", `${who}${n.text}`);
+        const prefix = n.pipeline ? `${t(`pipeline.${n.pipeline}`)}：` : "";
+        toast(n.severity === "error" ? "danger" : "warning", `${prefix}${n.text}`);
       }
       dismiss.current(0);
     }
@@ -102,7 +104,7 @@ function useNoticeToasts() {
 
   useEffect(() => {
     const err = store.error;
-    if (err && err !== lastError.current) toast("danger", `连接后端失败：${err}`);
+    if (err && err !== lastError.current) toast("danger", t("common.connectFailed", { error: err }));
     lastError.current = err;
   }, [store.error, toast]);
 }

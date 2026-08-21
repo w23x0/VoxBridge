@@ -1,6 +1,7 @@
 /** 侧栏导航表。侧栏只有图标，label 用在 hover tooltip 和页面标题上。 */
 
 import type { ReactElement } from "react";
+import type { TParams } from "./i18n/types";
 
 import {
   IconChart,
@@ -11,10 +12,12 @@ import {
   IconSubtitles,
 } from "./ui/icons";
 
+export type LabelFn = (t: (key: string, params?: TParams) => string) => string;
+
 export interface NavItem {
   id: string;
-  /** 侧栏 tooltip + 页面大标题 */
-  label: string;
+  /** 侧栏 tooltip + 页面大标题。渲染处用 `useT()` 求值，避免模块无 hook 环境。 */
+  label: LabelFn;
   /** 侧栏图标。尺寸由 shell.css 的 .nav-item svg 统一定成 22px，这里不传。 */
   icon: (p: { size?: number }) => ReactElement;
 }
@@ -22,27 +25,27 @@ export interface NavItem {
 export const NAV: NavItem[] = [
   {
     id: "home",
-    label: "首页",
+    label: (t) => t("nav.home"),
     icon: IconHome,
   },
   {
     id: "providers",
-    label: "模型服务商",
+    label: (t) => t("nav.providers"),
     icon: IconKey,
   },
   {
     id: "subtitle",
-    label: "字幕外观",
+    label: (t) => t("nav.subtitle"),
     icon: IconSubtitles,
   },
   {
     id: "settings",
-    label: "设置",
+    label: (t) => t("nav.settings"),
     icon: IconSettings,
   },
   {
     id: "usage",
-    label: "用量",
+    label: (t) => t("nav.usage"),
     icon: IconChart,
   },
 ];
@@ -53,7 +56,7 @@ export const PRIMARY_NAV = NAV.filter((item) => item.id !== "settings");
 /** 关于也是底部页面，但不属于业务导航。 */
 export const ABOUT_NAV: NavItem = {
   id: "about",
-  label: "关于",
+  label: (t) => t("nav.about"),
   icon: IconInfo,
 };
 

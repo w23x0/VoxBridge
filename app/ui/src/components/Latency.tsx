@@ -17,6 +17,7 @@
  */
 
 import type { LatencyMetric, LatencySnapshot, PipelineSnapshot } from "../types.snapshot";
+import { useT } from "../i18n/context";
 
 function ms(value: number | null): string {
   return value === null ? "—" : `${value}ms`;
@@ -44,28 +45,29 @@ const TONE_BG: Record<Tone, string> = {
 
 /** 一段的定义：[标签, 绿色上限, 琥珀上限]；超过琥珀上限就是红。 */
 interface SegmentDef {
-  label: string;
-  hint: string;
+  /** 对应 i18n dict 里 `latency.*` 的 key。渲染处用 useT() 求文案。 */
+  labelKey: string;
+  hintKey: string;
   good: number;
   warn: number;
 }
 
 const SEGMENT_DEFS: SegmentDef[] = [
   {
-    label: "到首字",
-    hint: "首个译文",
+    labelKey: "toFirstChar",
+    hintKey: "hintFirstChar",
     good: 800,
     warn: 1500,
   },
   {
-    label: "到首声",
-    hint: "首个译音",
+    labelKey: "toFirstAudio",
+    hintKey: "hintFirstAudio",
     good: 1500,
     warn: 3000,
   },
   {
-    label: "播放",
-    hint: "播放译音",
+    labelKey: "playback",
+    hintKey: "hintPlayback",
     good: 100,
     warn: 300,
   },
@@ -104,8 +106,8 @@ function segmentsFor(
   lat: LatencySnapshot | null,
   showTranslation: boolean,
   speakTranslation: boolean,
-): { segments: Segment[]; totalMs: number | null; headline: string } {
-  const empty = { segments: [], totalMs: null, headline: "话到话" };
+): { segments: Segment[]; totalMs: number | null; headlineKey: string } {
+  const empty = { segments: [], totalMs: null, headlineKey: "headlineFull" };
   if (!lat) return empty;
 
   // 两个开关都关了，不测
@@ -135,7 +137,7 @@ function segmentsFor(
     return {
       segments: [seg],
       totalMs: firstTextRel,
-      headline: "话到字",
+      headlineKey: "headlineToChar",
     };
   }
 
@@ -162,8 +164,8 @@ function segmentsFor(
     });
   }
 
-  const headline = firstPlaybackRel !== null ? "话到话" : firstAudioRel !== null ? "话到声" : "话到字";
-  return { segments, totalMs: reachable, headline };
+  const headlineKey = firstPlaybackRel !== null ? "headlineFull" : firstAudioRel !== null ? "headlineToAudio" : "headlineToChar";
+  return { segments, totalMs: reachable, headlineKey };
 }
 
 export function LatencyPanel({
@@ -177,9 +179,11 @@ export function LatencyPanel({
   showTranslation: boolean;
   speakTranslation: boolean;
 }) {
+  const t = useT();
   const lat = snapshot?.latency ?? null;
   const noSample = lat === null || lat.completed_turns === 0;
-  const { segments, totalMs, headline } = segmentsFor(lat, showTranslation, speakTranslation);
+  const { segments, totalMs, headlineKey } = segmentsFor(lat, showTranslation, speakTranslation);
+  const headline = t(`latency.${headlineKey}`);
 
   const inputMs = lastOf(lat?.input_queue);
   const uploadMs = lastOf(lat?.upload_send);
@@ -193,7 +197,7 @@ export function LatencyPanel({
       <div className="sub-card" style={{ flex: "none" }}>
         <div className="sub-card-head">
           {label}
-          <span className="num num-muted">关闭</span>
+          <span className="num num-muted">{t("latency.closed")}</span>
         </div>
       </div>
     );
@@ -203,11 +207,13 @@ export function LatencyPanel({
     <div className="sub-card" style={{ flex: "none" }}>
       <div className="sub-card-head">
         {label}
-        <span className="num num-muted">{noSample ? "无数据" : `${lat.completed_turns} 轮`}</span>
+        <span className="num num-muted">
+          {noSample ? t("latency.noData") : t("latency.turnsSuffix", { n: lat.completed_turns })}
+        </span>
       </div>
 
       {/* ---- 实时：话到话/话到字 + 分段横条 ---- */}
-      <div className="sub-row" title="从说话确认到首个输出">
+      <div className="sub-row" title={t("latency.fromVadHint")}>
         <span>{headline}</span>
         <span className={totalMs === null ? "num num-muted" : `num ${TONE_TEXT[overallTone(totalMs)]}`}>
           {totalMs === null ? "—" : ms(totalMs)}
@@ -217,11 +223,11 @@ export function LatencyPanel({
       <div
         className="lat-seg"
         role="img"
-        aria-label="延迟分段"
+        aria-label={t("latency.segmentsAria")}
       >
         {segments.map((seg) => (
           <span
-            key={seg.def.label}
+            key={seg.def.labelKey}
             className="lat-seg-seg"
             style={{ width: `${Math.max(seg.pct, 1)}%`, background: TONE_BG[seg.tone] }}
           />
@@ -230,52 +236,55 @@ export function LatencyPanel({
 
       <div className="lat-legend">
         {segments.map((seg) => (
-          <span className="lat-item" key={seg.def.label} title={seg.def.hint}>
+          <span className="lat-item" key={seg.def.labelKey} title={t(`latency.${seg.def.hintKey}`)}>
             <span className="lat-swatch" style={{ background: TONE_BG[seg.tone] }} />
-            <span>{seg.def.label}</span>
+            <span>{t(`latency.${seg.def.labelKey}`)}</span>
             <span className={`num ${TONE_TEXT[seg.tone]}`}>{seg.ms}ms</span>
           </span>
         ))}
-        {segments.length === 0 ? <span className="hint">暂无数据</span> : null}
+        {segments.length === 0 ? <span className="hint">{t("latency.emptyPlaceholder")}</span> : null}
       </div>
 
-      <div className="sub-row" title="整轮完成时间">
-        <span>整轮</span>
+      <div className="sub-row" title={t("latency.completeTurn")}>
+        <span>{t("latency.completeTurn")}</span>
         <span className="num num-muted">{ms(lastOf(lat?.turn_complete))}</span>
       </div>
 
       {/* ---- 健康度：丢块常驻，输入/上传只在异常时冒出来 ---- */}
-      <div className="label-xs" style={{ margin: "10px 0 0" }}>健康度</div>
+      <div className="label-xs" style={{ margin: "10px 0 0" }}>{t("latency.health")}</div>
       {inputBad ? (
         <div
           className="sub-row"
-          title="输入处理拥堵"
+          title={t("latency.inputQueueHint")}
         >
-          <span>输入排队</span>
+          <span>{t("latency.inputQueue")}</span>
           <span className="num num-red">{inputMs}ms</span>
         </div>
       ) : null}
       {uploadBad ? (
         <div
           className="sub-row"
-          title="上传拥堵"
+          title={t("latency.uploadHint")}
         >
-          <span>上传阻塞</span>
+          <span>{t("latency.uploadBlock")}</span>
           <span className="num num-red">{uploadMs}ms</span>
         </div>
       ) : null}
-      <div className="sub-row" title="丢弃数 / 处理数">
-        <span>丢块 / 处理</span>
+      <div className="sub-row" title={t("latency.droppedHint")}>
+        <span>{t("latency.dropped")}</span>
         <span className={dropped > 0 ? "num num-red" : "num num-green"}>
           {noSample ? "—" : `${dropped} / ${lat?.processed_chunks ?? 0}`}
         </span>
       </div>
 
       {/* ---- 冷启动连接 ---- */}
-      <div className="sub-row" title="连接与会话就绪时间">
-        <span>启动</span>
+      <div className="sub-row">
+        <span>{t("latency.startup")}</span>
         <span className="num num-muted">
-          连接 {ms(lat?.connect_ms ?? null)} · 就绪 {ms(lat?.session_ready_ms ?? null)}
+          {t("latency.startupLine", {
+            connect: ms(lat?.connect_ms ?? null),
+            ready: ms(lat?.session_ready_ms ?? null),
+          })}
         </span>
       </div>
     </div>

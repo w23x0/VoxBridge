@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { useT } from "../i18n/context";
 
 export function AboutPage() {
+  const t = useT();
   const [version, setVersion] = useState("0.1.0");
 
   useEffect(() => {
@@ -18,8 +20,8 @@ export function AboutPage() {
       </div>
       <div className="panel-body">
         <div className="sub-row">
-          <span>产品</span>
-          <span className="num num-muted">实时语音翻译</span>
+          <span>{t("about.product")}</span>
+          <span className="num num-muted">{t("about.productValue")}</span>
         </div>
       </div>
     </div>

@@ -1,6 +1,8 @@
-/** 设置：虚拟麦克风、系统启动行为和快捷键。 */
+/** 设置：虚拟麦克风、系统启动行为、快捷键和界面语言。 */
 
 import { useState } from "react";
+import { useT } from "../i18n/context";
+import { UI_LANG_OPTIONS } from "../i18n/types";
 import { useStore } from "../store";
 import type { ActivationMode, Hotkey } from "../types";
 import type { AudioApp } from "../types.snapshot";
@@ -11,11 +13,6 @@ import { useToast } from "../ui/toast";
 
 const DEFAULT_LISTEN_HOTKEY: Hotkey = { ctrl: true, alt: false, shift: false, key: "L" };
 
-const ACTIVATION = [
-  { value: "toggle", label: "按键切换" },
-  { value: "hold", label: "按住说话" },
-];
-
 interface UninstallDialogState {
   blockers: AudioApp[];
   loading: boolean;
@@ -24,6 +21,7 @@ interface UninstallDialogState {
 export function SettingsPage() {
   const { api, snapshot, settings, patch, applyCableChannelStatus } = useStore();
   const toast = useToast();
+  const t = useT();
   const [cableBusy, setCableBusy] = useState<
     "install" | "uninstall" | "hide16" | "show16" | null
   >(null);
@@ -41,14 +39,14 @@ export function SettingsPage() {
       ? "badge badge-warn"
       : "badge badge-idle";
   const cableStatusLabel = loading
-    ? "检测中"
+    ? t("settings.cableStatus.checking")
     : cableStatus === "installed"
-      ? "已安装"
+      ? t("settings.cableStatus.installed")
       : cableStatus === "install_pending_reboot"
-        ? "安装待重启"
+        ? t("settings.cableStatus.installPendingReboot")
         : cableStatus === "uninstall_incomplete"
-          ? "卸载未完成"
-          : "未安装";
+          ? t("settings.cableStatus.uninstallIncomplete")
+          : t("settings.cableStatus.notInstalled");
   const channelStatus = snapshot?.devices.virtual_cable_16ch_status ?? "absent";
   const channelBadgeClass =
     channelStatus === "hidden"
@@ -68,19 +66,24 @@ export function SettingsPage() {
         toast(
           "warning",
           action === "install"
-            ? "安装完成，请重启 Windows"
-            : "卸载完成，请重启 Windows",
+            ? t("settings.toast.installNeedReboot")
+            : t("settings.toast.uninstallNeedReboot"),
         );
       } else if (action === "install" && !result.multichannel_hidden) {
-        toast("warning", "安装完成，多声道设备隐藏失败");
+        toast("warning", t("settings.toast.hideMultichannelFailed"));
       } else {
         toast(
           "success",
-          action === "install" ? "虚拟麦克风已安装" : "虚拟麦克风已卸载",
+          action === "install" ? t("settings.toast.installDone") : t("settings.toast.uninstallDone"),
         );
       }
     } catch (error: unknown) {
-      toast("danger", `${action === "install" ? "安装" : "卸载"}失败：${String(error)}`);
+      toast(
+        "danger",
+        action === "install"
+          ? t("settings.toast.installFailed", { error: String(error) })
+          : t("settings.toast.uninstallFailed", { error: String(error) }),
+      );
     } finally {
       setCableBusy(null);
     }
@@ -93,7 +96,7 @@ export function SettingsPage() {
       setUninstallDialog({ blockers, loading: false });
     } catch (error: unknown) {
       setUninstallDialog(null);
-      toast("danger", `检测占用失败：${String(error)}`);
+      toast("danger", t("settings.toast.checkBlockersFailed", { error: String(error) }));
     }
   };
 
@@ -106,25 +109,27 @@ export function SettingsPage() {
       // 禁用后 Core Audio 仍可能报 ACTIVE，列表不变，事件不会来，徽标就卡死。）
       applyCableChannelStatus(result.multichannel_hidden ? "hidden" : "visible");
       if (result.needs_reboot) {
-        toast("warning", "请重启 Windows 使设置生效");
+        toast("warning", t("settings.toast.channelNeedReboot"));
       } else {
-        toast(
-          "success",
-          visible ? "多声道设备已显示" : "多声道设备已隐藏",
-        );
+        toast("success", visible ? t("settings.toast.showChannel") : t("settings.toast.hideChannel"));
       }
     } catch (error: unknown) {
-      toast("danger", `修改多声道设备失败：${String(error)}`);
+      toast("danger", t("settings.toast.setChannelFailed", { error: String(error) }));
     } finally {
       setCableBusy(null);
     }
   };
 
+  const activationOptions = [
+    { value: "toggle", label: t("settings.activationToggle") },
+    { value: "hold", label: t("settings.activationHold") },
+  ];
+
   return (
     <>
       <div className="settings-group">
         <SettingsItem
-          title="虚拟麦克风"
+          title={t("settings.virtualCable")}
           control={
             <div className="row row-wrap">
               <span className={cableBadgeClass}>
@@ -139,7 +144,7 @@ export function SettingsPage() {
                   onClick={() => void inspectUninstall()}
                 >
                   <IconTrash size={14} />
-                  {cableIncomplete ? "继续卸载" : "卸载"}
+                  {cableIncomplete ? t("settings.microSwitch.continueUninstall") : t("settings.microSwitch.uninstall")}
                 </button>
               ) : (
                 <button
@@ -149,14 +154,14 @@ export function SettingsPage() {
                   onClick={() => void manageCable("install")}
                 >
                   <IconDownload size={14} />
-                  {cableBusy === "install" ? "安装中…" : "安装"}
+                  {cableBusy === "install" ? t("settings.microSwitch.installing") : t("settings.microSwitch.install")}
                 </button>
               )}
             </div>
           }
         />
         <SettingsItem
-          title="驱动来源"
+          title={t("settings.driveSource")}
           control={
             <div className="row">
               <button
@@ -165,28 +170,28 @@ export function SettingsPage() {
                 onClick={() => void api.openVirtualCableWebsite()}
               >
                 <IconExternal size={14} />
-                官网
+                {t("settings.driveSite")}
               </button>
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
                 onClick={() => void api.openVirtualCableDonation()}
               >
-                授权与捐赠
+                {t("settings.licenseDonate")}
               </button>
             </div>
           }
         />
         <SettingsItem
-          title="多声道设备"
+          title={t("settings.multichannel")}
           control={
             <div className="row">
               <span className={channelBadgeClass}>
                 {channelStatus === "hidden"
-                  ? "已隐藏"
+                  ? t("settings.channelStatus.hidden")
                   : channelStatus === "visible"
-                    ? "已显示"
-                    : "无需处理"}
+                    ? t("settings.channelStatus.visible")
+                    : t("settings.channelStatus.none")}
               </span>
               {cableInstalled && channelStatus !== "absent" ? (
                 <button
@@ -197,11 +202,11 @@ export function SettingsPage() {
                 >
                   {channelStatus === "hidden"
                     ? cableBusy === "show16"
-                      ? "恢复中…"
-                      : "显示"
+                      ? t("settings.microSwitch.showing")
+                      : t("settings.microSwitch.show")
                     : cableBusy === "hide16"
-                      ? "隐藏中…"
-                      : "隐藏"}
+                      ? t("settings.microSwitch.hiding")
+                      : t("settings.microSwitch.hide")}
                 </button>
               ) : null}
             </div>
@@ -211,23 +216,23 @@ export function SettingsPage() {
 
       <div className="settings-group">
         <SettingsItem
-          title="开机自启"
+          title={t("settings.autostart")}
           control={
             <Toggle
               checked={settings.autostart}
               disabled={loading}
-              label="开机自启"
+              label={t("settings.autostart")}
               onChange={(autostart) => patch({ autostart })}
             />
           }
         />
         <SettingsItem
-          title="启动后最小化"
+          title={t("settings.startMinimized")}
           control={
             <Toggle
               checked={settings.start_minimized}
               disabled={loading}
-              label="启动后最小化"
+              label={t("settings.startMinimized")}
               onChange={(startMinimized) => patch({ start_minimized: startMinimized })}
             />
           }
@@ -238,13 +243,13 @@ export function SettingsPage() {
         <SettingsItem
           wide
           htmlFor="dd-activation"
-          title="对外说话 · 激活方式"
+          title={t("settings.speakActivation")}
           control={
             <Dropdown
               id="dd-activation"
-              label="对外说话的激活方式"
+              label={t("settings.speakActivationAria")}
               value={speak.activation_mode}
-              options={ACTIVATION}
+              options={activationOptions}
               onChange={(activationMode) =>
                 patch({ speak: { activation_mode: activationMode as ActivationMode } })
               }
@@ -253,11 +258,11 @@ export function SettingsPage() {
         />
 
         <SettingsItem
-          title="对外说话 · 快捷键"
+          title={t("settings.speakHotkey")}
           control={
             <HotkeyEditor
               id="dd-speak-key"
-              label="对外说话"
+              label={t("settings.speakHotkeyAria")}
               hotkey={speak.hotkey}
               onChange={(hotkey) => patch({ speak: { hotkey } })}
             />
@@ -265,11 +270,11 @@ export function SettingsPage() {
         />
 
         <SettingsItem
-          title="听人说话 · 快捷键"
+          title={t("settings.listenHotkey")}
           control={
             <Toggle
               checked={listenHotkey !== null}
-              label="启用听人说话快捷键"
+              label={t("settings.enableListenHotkey")}
               onChange={(enabled) =>
                 patch({ listen: { hotkey: enabled ? DEFAULT_LISTEN_HOTKEY : null } })
               }
@@ -279,17 +284,34 @@ export function SettingsPage() {
 
         {listenHotkey ? (
           <SettingsItem
-            title="听人说话 · 按键组合"
+            title={t("settings.listenHotkeyCombo")}
             control={
               <HotkeyEditor
                 id="dd-listen-key"
-                label="听人说话"
+                label={t("settings.listenHotkeyAria")}
                 hotkey={listenHotkey}
                 onChange={(hotkey) => patch({ listen: { hotkey } })}
               />
             }
           />
         ) : null}
+      </div>
+
+      <div className="settings-group">
+        <SettingsItem
+          wide
+          htmlFor="dd-ui-language"
+          title={t("uiLanguage.title")}
+          control={
+            <Dropdown
+              id="dd-ui-language"
+              label={t("uiLanguage.desc")}
+              value={settings.ui_language}
+              options={[...UI_LANG_OPTIONS]}
+              onChange={(ui_language) => patch({ ui_language })}
+            />
+          }
+        />
       </div>
 
       {uninstallDialog ? (
@@ -300,13 +322,13 @@ export function SettingsPage() {
             aria-modal="true"
             aria-labelledby="cable-uninstall-title"
           >
-            <h2 id="cable-uninstall-title">卸载虚拟麦克风</h2>
+            <h2 id="cable-uninstall-title">{t("settings.cableDialog.title")}</h2>
             {uninstallDialog.loading ? (
-              <p>检测中…</p>
+              <p>{t("settings.cableDialog.loading")}</p>
             ) : uninstallDialog.blockers.length > 0 ? (
               <>
                 <p className="hint-danger">
-                  以下应用将被关闭，未保存内容可能丢失。
+                  {t("settings.cableDialog.closeApps")}
                 </p>
                 <div className="dialog-app-list">
                   {uninstallDialog.blockers.map((app) => (
@@ -320,8 +342,8 @@ export function SettingsPage() {
             ) : (
               <p>
                 {cableIncomplete
-                  ? "将短暂重启 Windows 音频服务。"
-                  : "未检测到占用。"}
+                  ? t("settings.cableDialog.restartAudio")
+                  : t("settings.cableDialog.noBlockers")}
               </p>
             )}
             <div className="dialog-actions">
@@ -331,7 +353,7 @@ export function SettingsPage() {
                 disabled={cableBusy !== null}
                 onClick={() => setUninstallDialog(null)}
               >
-                取消
+                {t("settings.cableDialog.cancel")}
               </button>
               {!uninstallDialog.loading ? (
                 <button
@@ -343,12 +365,12 @@ export function SettingsPage() {
                   }
                 >
                   {cableBusy === "uninstall"
-                    ? "卸载中…"
+                    ? t("settings.cableDialog.uninstalling")
                     : uninstallDialog.blockers.length > 0
-                      ? "关闭应用并卸载"
+                      ? t("settings.cableDialog.uninstallWithClose")
                       : cableIncomplete
-                        ? "重置音频并卸载"
-                        : "卸载"}
+                        ? t("settings.cableDialog.resetAndUninstall")
+                        : t("settings.cableDialog.uninstall")}
                 </button>
               ) : null}
             </div>

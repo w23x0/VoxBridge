@@ -32,6 +32,7 @@ pub struct SettingsDto {
     pub subtitle: SubtitleSettings,
     pub autostart: bool,
     pub start_minimized: bool,
+    pub ui_language: String,
 }
 
 impl From<Settings> for SettingsDto {
@@ -43,6 +44,7 @@ impl From<Settings> for SettingsDto {
             subtitle: s.subtitle,
             autostart: s.autostart,
             start_minimized: s.start_minimized,
+            ui_language: s.ui_language,
         }
     }
 }

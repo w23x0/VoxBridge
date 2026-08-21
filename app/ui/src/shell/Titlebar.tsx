@@ -9,14 +9,14 @@
 /** 应用名（和 tauri.conf.json 的 productName 一致）。固定不变，不随页面走。 */
 const APP_NAME = "VoxBridge";
 
+import { useT } from "../i18n/context";
+
 /** 不在 Tauri 里（浏览器跑 mock）时静默忽略，别让按钮抛异常。 */
 const inTauri = (): boolean =>
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
-/**
- * 动态 import，和 api.ts 保持一致 —— 静态 import 会把 @tauri-apps/api 拉进主 chunk，
- * 顺带让 api.ts 那边的动态 import 失去分包意义（构建会 warn INEFFECTIVE_DYNAMIC_IMPORT）。
- */
+/** 动态 import，和 api.ts 保持一致 —— 静态 import 会把 @tauri-apps/api 拉进主 chunk，
+ * 顺带让 api.ts 那边的动态 import 失去分包意义（构建会 warn INEFFECTIVE_DYNAMIC_IMPORT）。 */
 async function win() {
   if (!inTauri()) return null;
   const { getCurrentWindow } = await import("@tauri-apps/api/window");
@@ -24,6 +24,7 @@ async function win() {
 }
 
 export function Titlebar() {
+  const t = useT();
   return (
     <>
       {/* 空白处可拖窗。data-tauri-drag-region 要权限 core:window:allow-start-dragging */}
@@ -34,19 +35,19 @@ export function Titlebar() {
       <div className="window-traffic">
         <button
           type="button"
-          aria-label="关闭"
+          aria-label={t("titlebar.close")}
           style={{ background: "#ff5f57" }}
           onClick={() => void win().then((w) => w?.close())}
         />
         <button
           type="button"
-          aria-label="最小化"
+          aria-label={t("titlebar.minimize")}
           style={{ background: "#febc2e" }}
           onClick={() => void win().then((w) => w?.minimize())}
         />
         <button
           type="button"
-          aria-label="最大化"
+          aria-label={t("titlebar.maximize")}
           style={{ background: "#28c840" }}
           onClick={() => void win().then((w) => w?.toggleMaximize())}
         />

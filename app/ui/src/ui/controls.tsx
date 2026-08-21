@@ -6,6 +6,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { useT } from "../i18n/context";
 
 /* ---- 开关 --------------------------------------------------------- */
 
@@ -63,7 +64,7 @@ export function Dropdown({
   disabled,
   id,
   label,
-  placeholder = "请选择",
+  placeholder,
 }: {
   value: string;
   options: Option[];
@@ -73,12 +74,14 @@ export function Dropdown({
   label?: string;
   placeholder?: string;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [cursor, setCursor] = useState(-1);
   const box = useRef<HTMLDivElement | null>(null);
   const listId = useId();
 
   const current = options.find((o) => o.value === value);
+  const placeholderText = placeholder ?? t("controls.dropdownPlaceholder");
 
   // 点空白收起。挂在 document 上，触发器的 click 已经 stopPropagation 了。
   useEffect(() => {
@@ -143,7 +146,7 @@ export function Dropdown({
           setOpen((o) => !o);
         }}
       >
-        <span className="dropdown-text">{current ? current.label : placeholder}</span>
+        <span className="dropdown-text">{current ? current.label : placeholderText}</span>
         {/* 箭头是纯 CSS 三角（skill 4.x），不用图标 */}
         <span className="dropdown-arrow" aria-hidden="true" />
       </button>
@@ -247,6 +250,7 @@ export function LevelMeter({
   stateText: string;
   active?: boolean;
 }) {
+  const t = useT();
   // rms 0..0.2 映射到 0..100%，超过 0.2 顶到底
   const pct = (v: number) => Math.min(100, Math.max(0, (v / 0.2) * 100));
   return (
@@ -255,18 +259,22 @@ export function LevelMeter({
         className="progress-track meter"
         style={{ flex: 1 }}
         role="meter"
-        aria-label="音频电平"
+        aria-label={t("controls.audioLevel")}
         aria-valuemin={0}
         aria-valuemax={0.2}
         aria-valuenow={rms === null ? 0 : Number(rms.toFixed(4))}
-        aria-valuetext={rms === null ? stateText : `电平 ${rms.toFixed(3)}，${stateText}`}
+        aria-valuetext={
+          rms === null
+            ? stateText
+            : t("controls.level", { v: rms.toFixed(3), state: stateText })
+        }
       >
         <div
           className="progress-fill"
           style={{ width: `${rms === null ? 0 : pct(rms)}%`, opacity: active ? 1 : 0.55 }}
         />
         {threshold !== undefined && threshold > 0 ? (
-          <div className="meter-tick" style={{ left: `${pct(threshold)}%` }} title="门限" />
+          <div className="meter-tick" style={{ left: `${pct(threshold)}%` }} title={t("controls.thresholdTitle")} />
         ) : null}
       </div>
       <span className="slider-readout">

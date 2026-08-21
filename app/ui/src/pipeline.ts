@@ -1,4 +1,9 @@
-/** 管线状态的展示辅助。标签取值和 Rust 侧 PipelineState::label 一致。 */
+/** 管线状态的展示辅助。标签取值和 Rust 侧 PipelineState::label 一致。
+ *
+ * ⚠ 注意：`state_label` 是由后端 Rust 发来的中文；前端要 i18n 时，改为在
+ * 渲染处用 `t('pipeline.state.' + state)` 取界面语言文案，不要直接显示这个
+ * 常量。本常量仍保留供旧路径 / mock 使用。
+ */
 
 import type { PipelineName, PipelineState } from "./types";
 

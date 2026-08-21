@@ -7,8 +7,8 @@
 
 import * as catalog from "../catalog";
 import { LatencyPanel } from "../components/Latency";
+import { useT } from "../i18n/context";
 import { recentFirst, useRecentValues } from "../lib/recent";
-import { PIPELINE_LABEL } from "../pipeline";
 import { useStore } from "../store";
 import type { ModelProvider, PipelineName } from "../types";
 import type { DeviceInfo } from "../types.snapshot";
@@ -25,16 +25,20 @@ import { defaultVoiceForLanguage, orderedVoices } from "../voices";
 
 const SYSTEM_DEFAULT = "@@system-default@@";
 
-function deviceOptions(devices: DeviceInfo[], selected: string | null): Option[] {
-  const options: Option[] = [{ value: SYSTEM_DEFAULT, label: "系统默认" }];
+function deviceOptions(
+  devices: DeviceInfo[],
+  selected: string | null,
+  t: ReturnType<typeof useT>,
+): Option[] {
+  const options: Option[] = [{ value: SYSTEM_DEFAULT, label: t("pipeline.systemDefault") }];
   for (const device of devices) {
     options.push({
       value: device.name,
-      label: device.is_default ? `${device.name}（系统默认）` : device.name,
+      label: device.is_default ? `${device.name}${t("pipeline.deviceDefaultSuffix")}` : device.name,
     });
   }
   if (selected && !options.some((option) => option.value === selected)) {
-    options.push({ value: selected, label: `${selected}（未连接）` });
+    options.push({ value: selected, label: `${selected}${t("pipeline.deviceUnconnectedSuffix")}` });
   }
   return options;
 }
@@ -49,6 +53,9 @@ const CARDS: {
 ];
 
 export function HomePage() {
+  const t = useT();
+  const pipeLabel = (id: Extract<PipelineName, "speak" | "listen">) =>
+    id === "speak" ? t("pipeline.speak") : t("pipeline.listen");
   const { api, snapshot, settings, patch } = useStore();
   const speak = settings.speak;
   const listen = settings.listen;
@@ -82,11 +89,11 @@ export function HomePage() {
   ].filter((option): option is catalog.LabeledOption => option !== undefined);
   const speakVoiceOptions = orderedVoices(speak.voice, recentSpeakVoices).map((voice) => ({
     value: voice.value,
-    label: voice.recommended ? `${voice.label} · 默认` : voice.label,
+    label: voice.recommended ? `${voice.label}${t("catalog.defaultVoiceSuffix")}` : voice.label,
   }));
   const listenVoiceOptions = orderedVoices(listen.voice, recentListenVoices).map((voice) => ({
     value: voice.value,
-    label: voice.recommended ? `${voice.label} · 默认` : voice.label,
+    label: voice.recommended ? `${voice.label}${t("catalog.defaultVoiceSuffix")}` : voice.label,
   }));
 
   // 浏览器等程序会开出多个音频会话；按可执行文件名合并，避免下拉重复。
@@ -99,10 +106,10 @@ export function HomePage() {
 
   const appOptions: Option[] = [...byExe].map(([exe, info]) => ({
     value: exe,
-    label: `${info.name}${info.active ? "" : "（未发声）"}`,
+    label: `${info.name}${info.active ? "" : t("pipeline.appNotActiveSuffix")}`,
   }));
   if (target && !byExe.has(target.executable)) {
-    appOptions.unshift({ value: target.executable, label: `${target.display_name}（未运行）` });
+    appOptions.unshift({ value: target.executable, label: `${target.display_name}${t("pipeline.appNotRunningSuffix")}` });
   }
 
   const pickApp = (exe: string) => {
@@ -121,10 +128,12 @@ export function HomePage() {
 
   /** 开不了的原因。null 表示能开。 */
   const blockedBy = (pipeline: PipelineName): string | null => {
-    if (!snapshot) return "读取中";
+    if (!snapshot) return t("pipeline.openFailReason");
     const provider = pipeline === "speak" ? speak.provider : listen.provider;
-    if (!snapshot.api_keys[provider]) return `请先配置 ${catalog.providerLabel(provider)} API 密钥`;
-    if (pipeline === "listen" && !target) return "请先选择监听程序";
+    if (!snapshot.api_keys[provider]) {
+      return t("pipeline.blockedNoApiKey", { provider: catalog.providerLabel(provider) });
+    }
+    if (pipeline === "listen" && !target) return t("pipeline.blockedSelectApp");
     return null;
   };
 
@@ -149,7 +158,7 @@ export function HomePage() {
                   <Icon size={26} />
                 </div>
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div className="stat-label">{PIPELINE_LABEL[card.id]}</div>
+                  <div className="stat-label">{pipeLabel(card.id)}</div>
                   <div className="row" style={{ gap: 6, marginTop: 4 }}>
                     <span
                       className={
@@ -180,11 +189,11 @@ export function HomePage() {
                       className="stat-label"
                       htmlFor={`dd-home-${card.id}-provider`}
                     >
-                      模型服务商
+                      {t("pipeline.provider")}
                     </label>
                     <Dropdown
                       id={`dd-home-${card.id}-provider`}
-                      label={`${PIPELINE_LABEL[card.id]}的模型服务商`}
+                      label={t("pipeline.providerAria", { pipe: pipeLabel(card.id) })}
                       value={card.id === "speak" ? speak.provider : listen.provider}
                       options={catalog.PROVIDERS}
                       onChange={(provider) =>
@@ -209,11 +218,11 @@ export function HomePage() {
                   {card.id === "speak" ? (
                     <div style={{ minWidth: 0 }}>
                       <label className="stat-label" htmlFor="dd-home-target-language">
-                        目标语言
+                        {t("pipeline.targetLanguage")}
                       </label>
                       <Dropdown
                         id="dd-home-target-language"
-                        label="对外说话的目标语言"
+                        label={t("pipeline.targetLanguageAria")}
                         value={speak.target_language}
                         options={speakLanguageOptions}
                         onChange={(targetLanguage) => {
@@ -237,11 +246,11 @@ export function HomePage() {
                   ) : (
                     <div style={{ minWidth: 0 }}>
                       <label className="stat-label" htmlFor="dd-home-listen-source">
-                        对方语言
+                        {t("pipeline.sourceLanguage")}
                       </label>
                       <Dropdown
                         id="dd-home-listen-source"
-                        label="听人说话时对方说的语言"
+                        label={t("pipeline.sourceLanguageAria")}
                         value={listen.source_language ?? ""}
                         options={
                           listen.provider === "gemini"
@@ -267,17 +276,25 @@ export function HomePage() {
                         className="stat-label"
                         htmlFor={card.id === "speak" ? "dd-home-speak-voice" : "dd-home-listen-voice"}
                       >
-                        译音音色
+                        {t("pipeline.voice")}
                       </label>
                       <div className="pipeline-inline-toggle">
-                        <span>{card.id === "speak" ? "显示译文" : "播放译音"}</span>
+                        <span>
+                          {card.id === "speak"
+                            ? t("pipeline.showTranslation")
+                            : t("pipeline.playTranslation")}
+                        </span>
                         <Toggle
                           checked={
                             card.id === "speak"
                               ? speak.show_translation
                               : listen.speak_translation
                           }
-                          label={card.id === "speak" ? "显示译文" : "播放译音"}
+                          label={
+                            card.id === "speak"
+                              ? t("pipeline.showTranslation")
+                              : t("pipeline.playTranslation")
+                          }
                           onChange={(checked) =>
                             card.id === "speak"
                               ? patch({ speak: { show_translation: checked } })
@@ -288,13 +305,13 @@ export function HomePage() {
                     </div>
                     <Dropdown
                       id={card.id === "speak" ? "dd-home-speak-voice" : "dd-home-listen-voice"}
-                      label={`${PIPELINE_LABEL[card.id]}的译音音色`}
+                      label={t("pipeline.voiceAria", { pipe: pipeLabel(card.id) })}
                       value={card.id === "speak" ? speak.voice : listen.voice}
                       options={
                         (card.id === "speak" ? speak.provider : listen.provider) === "gemini"
                           ? [{
                               value: card.id === "speak" ? speak.voice : listen.voice,
-                              label: "Gemini 自动音色",
+                              label: t("catalog.geminiAutoVoice"),
                             }]
                           : card.id === "speak"
                             ? speakVoiceOptions
@@ -326,11 +343,11 @@ export function HomePage() {
                     {card.id === "speak" || listen.speak_translation ? (
                       <div className="pipeline-output-device">
                         <label className="stat-label" htmlFor={`dd-home-${card.id}-output`}>
-                          译音输出
+                          {t("pipeline.outputDevice")}
                         </label>
                         <Dropdown
                           id={`dd-home-${card.id}-output`}
-                          label={`${PIPELINE_LABEL[card.id]}的译音输出设备`}
+                          label={t("pipeline.outputDeviceAria", { pipe: pipeLabel(card.id) })}
                           value={
                             (card.id === "speak" ? speak.output_device : listen.output_device) ??
                             SYSTEM_DEFAULT
@@ -338,6 +355,7 @@ export function HomePage() {
                           options={deviceOptions(
                             snapshot?.devices.outputs ?? [],
                             card.id === "speak" ? speak.output_device : listen.output_device,
+                            t,
                           )}
                           disabled={!snapshot}
                           onChange={(outputDevice) =>
@@ -363,7 +381,7 @@ export function HomePage() {
 
                 {card.id === "speak" && !catalog.supportsAudioOutput(speak.target_language, speak.provider) ? (
                   <div className="hint hint-warn" style={{ marginTop: 8 }}>
-                    {catalog.languageLabel(speak.target_language)}仅支持译文
+                    {t("home.textOnlyHint", { lang: catalog.languageLabel(speak.target_language) })}
                   </div>
                 ) : null}
               </div>
@@ -371,15 +389,15 @@ export function HomePage() {
               {card.id === "speak" ? (
                 <div style={{ marginTop: 10 }}>
                   <label className="stat-label" htmlFor="dd-home-input-device">
-                    麦克风
+                    {t("pipeline.inputDevice")}
                   </label>
                   <div className="row" style={{ alignItems: "stretch", marginTop: 6 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <Dropdown
                         id="dd-home-input-device"
-                        label="麦克风"
+                        label={t("pipeline.inputDeviceAria")}
                         value={speak.input_device ?? SYSTEM_DEFAULT}
-                        options={deviceOptions(inputs, speak.input_device)}
+                        options={deviceOptions(inputs, speak.input_device, t)}
                         disabled={!snapshot}
                         onChange={(inputDevice) =>
                           patch({
@@ -394,7 +412,7 @@ export function HomePage() {
                     <button
                       type="button"
                       className="btn btn-secondary btn-sm"
-                      aria-label="重新扫描麦克风设备"
+                      aria-label={t("pipeline.rescanMic")}
                       onClick={() => void api.refreshDevices()}
                     >
                       <IconRefresh size={15} />
@@ -402,7 +420,7 @@ export function HomePage() {
                   </div>
                   {missingInput || inputs.length === 0 ? (
                     <div className="hint hint-warn" style={{ marginTop: 6 }}>
-                      {missingInput ? "麦克风未连接" : "未发现麦克风"}
+                      {missingInput ? t("pipeline.micNotConnected") : t("pipeline.micNotFound")}
                     </div>
                   ) : null}
 
@@ -410,11 +428,11 @@ export function HomePage() {
                     className="row"
                     style={{ justifyContent: "space-between", marginTop: 12 }}
                   >
-                    <div className="stat-label">回听译音</div>
+                    <div className="stat-label">{t("pipeline.monitorTranslation")}</div>
                     <Toggle
                       checked={speak.monitor_translation}
                       disabled={!snapshot}
-                      label="回听译音"
+                      label={t("pipeline.monitorTranslation")}
                       onChange={(enabled) =>
                         patch({ speak: { monitor_translation: enabled } })
                       }
@@ -426,16 +444,16 @@ export function HomePage() {
               {card.id === "listen" ? (
                 <div style={{ marginTop: 10 }}>
                   <label className="stat-label" htmlFor="dd-home-listen-target">
-                    监听程序
+                    {t("pipeline.listenTarget")}
                   </label>
                   <div className="row" style={{ alignItems: "stretch", marginTop: 6 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <Dropdown
                         id="dd-home-listen-target"
-                        label="监听程序"
+                        label={t("pipeline.listenTargetAria")}
                         value={target?.executable ?? ""}
                         options={appOptions}
-                        placeholder="选择一个程序"
+                        placeholder={t("pipeline.listenTargetPlaceholder")}
                         disabled={!snapshot || appOptions.length === 0}
                         onChange={pickApp}
                       />
@@ -443,7 +461,7 @@ export function HomePage() {
                     <button
                       type="button"
                       className="btn btn-secondary btn-sm"
-                      aria-label="重新扫描监听程序"
+                      aria-label={t("pipeline.rescanApps")}
                       onClick={() => void api.refreshDevices()}
                     >
                       <IconRefresh size={15} />
@@ -451,15 +469,15 @@ export function HomePage() {
                   </div>
                   {appOptions.length === 0 || !target ? (
                     <div className="hint hint-warn" style={{ marginTop: 6 }}>
-                      {appOptions.length === 0 ? "未发现音频程序" : "请选择程序"}
+                      {appOptions.length === 0 ? t("pipeline.appNoAudioFound") : t("pipeline.appSelectApp")}
                     </div>
                   ) : null}
                   <div className="row" style={{ justifyContent: "space-between", marginTop: 10 }}>
-                    <span className="stat-label">包含子进程</span>
+                    <span className="stat-label">{t("pipeline.includeSubprocess")}</span>
                     <Toggle
                       checked={target?.include_process_tree ?? true}
                       disabled={!target}
-                      label="包含子进程"
+                      label={t("pipeline.includeSubprocess")}
                       onChange={(include) => {
                         if (target) {
                           patch({
@@ -480,7 +498,7 @@ export function HomePage() {
                 onClick={() => void api.togglePipeline(card.id)}
               >
                 {running ? <IconStop size={14} /> : <IconPlay size={14} />}
-                {running ? "停止" : "启动"}
+                {running ? t("pipeline.stop") : t("pipeline.start")}
               </button>
             </div>
           );
@@ -489,19 +507,19 @@ export function HomePage() {
 
       <div className="panel">
         <div className="panel-top">
-          <div className="panel-title">延迟</div>
-          {api.mock ? <span className="badge badge-warn">演示数据</span> : null}
+          <div className="panel-title">{t("home.panelTitle")}</div>
+          {api.mock ? <span className="badge badge-warn">{t("home.demoBadge")}</span> : null}
         </div>
         <div className="panel-body">
           <div className="stats-row cols-2">
             <LatencyPanel
-              label="对外说话"
+              label={t("pipeline.speak")}
               snapshot={snapshot?.speak ?? null}
               showTranslation={speak.show_translation}
               speakTranslation
             />
             <LatencyPanel
-              label="听人说话"
+              label={t("pipeline.listen")}
               snapshot={snapshot?.listen ?? null}
               showTranslation={listen.show_translation}
               speakTranslation={listen.speak_translation}
@@ -510,7 +528,7 @@ export function HomePage() {
 
           {snapshot?.headphones_advised ? (
             <div className="hint hint-warn" style={{ marginTop: 12 }}>
-              两条线路同时运行，请使用耳机
+              {t("home.headphonesHint")}
             </div>
           ) : null}
         </div>

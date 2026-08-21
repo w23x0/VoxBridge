@@ -6,6 +6,8 @@
  */
 
 import { KEY_OPTIONS, keyLabel } from "../catalog";
+import { useT } from "../i18n/context";
+import type { TParams } from "../i18n/types";
 import type { Hotkey } from "../types";
 import { Dropdown } from "./controls";
 
@@ -15,12 +17,25 @@ const MODIFIERS = [
   { key: "shift", label: "Shift" },
 ] as const;
 
+/** 需要翻译的按键名（拉丁字母/F 键本身是通用名，直接显示）。 */
+const KEY_LABEL_TRANSLATIONS: Record<string, (t: (key: string, params?: TParams) => string) => string> = {
+  Space: (t) => t("catalog.keySpace"),
+  XButton1: (t) => t("catalog.keyXButton1"),
+  XButton2: (t) => t("catalog.keyXButton2"),
+};
+
+/** 按键显示文案：特殊键走 i18n，其余用 catalog 的原名。 */
+function keyDisplay(key: string, t: (k: string, p?: TParams) => string): string {
+  return KEY_LABEL_TRANSLATIONS[key] ? KEY_LABEL_TRANSLATIONS[key](t) : keyLabel(key);
+}
+
 /** 只读显示一个组合。用 chip 的静态形态，不可点。 */
 export function HotkeyCombo({ hotkey }: { hotkey: Hotkey | null }) {
-  if (!hotkey) return <span className="hint">未设置</span>;
+  const t = useT();
+  if (!hotkey) return <span className="hint">{t("settings.hotkeyUnset")}</span>;
   const parts = [
     ...MODIFIERS.filter((m) => hotkey[m.key]).map((m) => m.label),
-    keyLabel(hotkey.key),
+    keyDisplay(hotkey.key, t),
   ];
   return (
     <span className="row" style={{ gap: 4 }}>
@@ -50,6 +65,10 @@ export function HotkeyEditor({
   disabled?: boolean;
   label?: string;
 }) {
+  const t = useT();
+  const dropdownLabel = label
+    ? t("settings.primaryKeyFor", { label })
+    : t("settings.primaryKey");
   return (
     <span className="row" style={{ gap: 6 }}>
       {MODIFIERS.map((m) => {
@@ -70,7 +89,7 @@ export function HotkeyEditor({
       <span style={{ width: 104 }}>
         <Dropdown
           id={id}
-          label={label ? `${label}的主键` : "主键"}
+          label={dropdownLabel}
           value={hotkey.key}
           options={KEY_OPTIONS}
           disabled={disabled}

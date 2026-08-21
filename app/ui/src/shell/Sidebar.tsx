@@ -6,6 +6,7 @@
 import { useCallback, useState, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
+import { useT } from "../i18n/context";
 import { ABOUT_NAV, NAV, PRIMARY_NAV } from "../nav";
 import { IconMoon, IconSun } from "../ui/icons";
 import { currentTheme, toggleTheme } from "../ui/theme";
@@ -18,6 +19,7 @@ export function Sidebar({
   page: string;
   onNavigate: (id: string) => void;
 }) {
+  const t = useT();
   const [theme, setTheme] = useState<Theme>(() => currentTheme());
   const [tip, setTip] = useState<{ label: string; y: number } | null>(null);
 
@@ -54,29 +56,29 @@ export function Sidebar({
   return (
     <>
       <aside className="sidebar" data-tauri-drag-region>
-        <nav className="sidebar-nav" aria-label="页面导航">
+        <nav className="sidebar-nav" aria-label={t("sidebar.navLabel")}>
           {PRIMARY_NAV.map((item) => {
             const Icon = item.icon;
-            return pageButton(item.id, item.label, <Icon />);
+            return pageButton(item.id, item.label(t), <Icon />);
           })}
         </nav>
 
         {/* 固定三项：关于 / 设置是页面，主题是动作。暂不放语言入口。 */}
         <div className="sidebar-bottom">
           <div className="nav-divider" aria-hidden="true" />
-          {pageButton(ABOUT_NAV.id, ABOUT_NAV.label, <ABOUT_NAV.icon />)}
+          {pageButton(ABOUT_NAV.id, ABOUT_NAV.label(t), <ABOUT_NAV.icon />)}
           {(() => {
             const settings = NAV.find((item) => item.id === "settings");
             if (!settings) return null;
             const Icon = settings.icon;
-            return pageButton(settings.id, settings.label, <Icon />);
+            return pageButton(settings.id, settings.label(t), <Icon />);
           })()}
           <button
             type="button"
             className="nav-item"
-            aria-label={theme === "dark" ? "切到亮色主题" : "切到暗色主题"}
+            aria-label={theme === "dark" ? t("sidebar.toLight") : t("sidebar.toDark")}
             onClick={() => setTheme(toggleTheme())}
-            {...hoverTip("切换主题")}
+            {...hoverTip(t("sidebar.toggleTheme"))}
           >
             {theme === "dark" ? <IconSun /> : <IconMoon />}
           </button>
