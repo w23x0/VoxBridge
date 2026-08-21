@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import * as catalog from "../catalog";
-import { useT } from "../i18n/context";
+import { useLang } from "../i18n/context";
 import { useStore } from "../store";
 import type { ModelProvider } from "../types";
 import { Dropdown } from "../ui/controls";
@@ -14,7 +14,7 @@ import { orderedVoices } from "../voices";
 export function ProvidersPage() {
   const { api, snapshot, reload } = useStore();
   const toast = useToast();
-  const t = useT();
+  const { uiLang, t } = useLang();
   const [provider, setProvider] = useState<ModelProvider>("gemini");
   const [hasDraft, setHasDraft] = useState(false);
   const [busy, setBusy] = useState<"save" | "clear" | null>(null);
@@ -50,7 +50,7 @@ export function ProvidersPage() {
     try {
       await api.setApiKey(provider, key);
       reload();
-      toast("success", t("providersPage.savedToast", { name: catalog.providerLabel(provider) }));
+      toast("success", t("providersPage.savedToast", { name: catalog.providerLabel(provider, uiLang) }));
     } catch (error: unknown) {
       toast(
         "danger",
@@ -72,7 +72,7 @@ export function ProvidersPage() {
     try {
       await api.setApiKey(provider, "");
       reload();
-      toast("success", t("providersPage.clearedToast", { name: catalog.providerLabel(provider) }));
+      toast("success", t("providersPage.clearedToast", { name: catalog.providerLabel(provider, uiLang) }));
     } catch (error: unknown) {
       toast("danger", t("providersPage.clearFailed", { error: String(error) }));
     } finally {
@@ -81,11 +81,12 @@ export function ProvidersPage() {
     }
   };
 
-  const voices = orderedVoices(null);
-  const audioLanguages = catalog.LANGUAGES.filter((language) =>
+  const voices = orderedVoices(uiLang, null, [], t("catalog.customVoiceSuffix"));
+  const allLanguages = catalog.languageOptions(uiLang);
+  const audioLanguages = allLanguages.filter((language) =>
     catalog.supportsAudioOutput(language.value, "aliyun"),
   );
-  const textOnlyLanguages = catalog.LANGUAGES.filter(
+  const textOnlyLanguages = allLanguages.filter(
     (language) => !catalog.supportsAudioOutput(language.value, "aliyun"),
   );
 
@@ -98,7 +99,7 @@ export function ProvidersPage() {
               id="dd-provider-config"
               label={t("providersPage.selectProvider")}
               value={provider}
-              options={catalog.PROVIDERS}
+              options={catalog.providerOptions(uiLang)}
               disabled={busy !== null}
               onChange={(value) => setProvider(value as ModelProvider)}
             />
@@ -139,7 +140,7 @@ export function ProvidersPage() {
             autoComplete="off"
             spellCheck={false}
             disabled={busy !== null}
-            aria-label={`${catalog.providerLabel(provider)} ${t("providersPage.apiKey")}`}
+            aria-label={`${catalog.providerLabel(provider, uiLang)} ${t("providersPage.apiKey")}`}
             onChange={(event) => setHasDraft(event.currentTarget.value.trim().length > 0)}
             onKeyDown={(event) => {
               if (event.key === "Enter") void saveKey();
@@ -224,7 +225,7 @@ export function ProvidersPage() {
             <div className="sub-card-head">{t("providersPage.realtimeModels")}</div>
             <div className="row-wrap">
               <span className="mono">
-                {isGemini ? catalog.GEMINI_MODEL_LABEL : catalog.DEFAULT_MODEL_LABEL}
+                {catalog.modelLabel(catalog.defaultModelForProvider(provider), uiLang)}
               </span>
               <span className="hint mono">
                 {isGemini ? catalog.GEMINI_MODEL_NAME : catalog.DEFAULT_MODEL_NAME}
@@ -288,7 +289,7 @@ export function ProvidersPage() {
                 </div>
                 <div className="row-wrap">
                   {catalog.VOICE_CATALOG.slice(0, 8).map((voice) => (
-                    <span className="chip static" key={voice.id}>{voice.name}</span>
+                    <span className="chip static" key={voice.id}>{catalog.l10n(voice.name, uiLang)}</span>
                   ))}
                 </div>
               </div>

@@ -64,7 +64,7 @@ export function normalizeSettings(settings: Settings): Settings {
   s.listen.model_name = catalog.defaultModelForProvider(s.listen.provider);
   if (s.speak.provider === "gemini") s.speak.voice_clone_frequency = null;
   if (s.listen.provider === "gemini") s.listen.source_language = null;
-  if (!catalog.LANGUAGES.some((language) => language.value === s.speak.target_language)) {
+  if (!catalog.LANGUAGE_CODES.some((language) => language.code === s.speak.target_language)) {
     s.speak.target_language = catalog.DEFAULT_TARGET_LANGUAGE;
   }
   if (!s.speak.voice || catalog.LEGACY_REMOVED_VOICE_IDS.has(s.speak.voice)) {

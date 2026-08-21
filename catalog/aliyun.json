@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "verified_at": "2026-08-18",
   "expected_counts": {
     "languages": 60,
@@ -8,12 +8,20 @@
   },
   "provider": {
     "id": "aliyun",
-    "label": "阿里云百炼",
+    "label": {
+      "zh": "阿里云百炼",
+      "en": "Alibaba Cloud Model Studio",
+      "ja": "アリババクラウド Model Studio"
+    },
     "console_url": "https://bailian.console.aliyun.com/?apiKey=1"
   },
   "model": {
     "id": "qwen3.5-livetranslate-flash-realtime",
-    "label": "Qwen3.5 LiveTranslate Flash",
+    "label": {
+      "zh": "Qwen3.5 LiveTranslate Flash",
+      "en": "Qwen3.5 LiveTranslate Flash",
+      "ja": "Qwen3.5 LiveTranslate Flash"
+    },
     "kind": "realtime_translation",
     "stable_snapshot": "qwen3.5-livetranslate-flash-realtime-2026-05-19"
   },
@@ -55,114 +63,1158 @@
     "model_updates": "https://help.aliyun.com/zh/model-studio/newly-released-models"
   },
   "languages": [
-    { "code": "zh", "label": "中文", "audio_output": true },
-    { "code": "en", "label": "英语", "audio_output": true },
-    { "code": "ar", "label": "阿拉伯语", "audio_output": true },
-    { "code": "de", "label": "德语", "audio_output": true },
-    { "code": "fr", "label": "法语", "audio_output": true },
-    { "code": "es", "label": "西班牙语", "audio_output": true },
-    { "code": "pt", "label": "葡萄牙语", "audio_output": true },
-    { "code": "id", "label": "印度尼西亚语", "audio_output": true },
-    { "code": "it", "label": "意大利语", "audio_output": true },
-    { "code": "ko", "label": "韩语", "audio_output": true },
-    { "code": "ru", "label": "俄语", "audio_output": true },
-    { "code": "th", "label": "泰语", "audio_output": true },
-    { "code": "vi", "label": "越南语", "audio_output": true },
-    { "code": "ja", "label": "日语", "audio_output": true },
-    { "code": "tr", "label": "土耳其语", "audio_output": true },
-    { "code": "hi", "label": "印地语", "audio_output": true },
-    { "code": "ms", "label": "马来语", "audio_output": true },
-    { "code": "nl", "label": "荷兰语", "audio_output": true },
-    { "code": "ur", "label": "乌尔都语", "audio_output": true },
-    { "code": "nb", "label": "挪威语", "audio_output": true },
-    { "code": "sv", "label": "瑞典语", "audio_output": true },
-    { "code": "da", "label": "丹麦语", "audio_output": true },
-    { "code": "he", "label": "希伯来语", "audio_output": true },
-    { "code": "fi", "label": "芬兰语", "audio_output": true },
-    { "code": "pl", "label": "波兰语", "audio_output": true },
-    { "code": "is", "label": "冰岛语", "audio_output": true },
-    { "code": "cs", "label": "捷克语", "audio_output": true },
-    { "code": "fil", "label": "菲律宾语", "audio_output": true },
-    { "code": "fa", "label": "波斯语", "audio_output": true },
-    { "code": "yue", "label": "粤语", "audio_output": false },
-    { "code": "el", "label": "希腊语", "audio_output": false },
-    { "code": "af", "label": "南非荷兰语", "audio_output": false },
-    { "code": "ast", "label": "阿斯图里亚斯语", "audio_output": false },
-    { "code": "be", "label": "白俄罗斯语", "audio_output": false },
-    { "code": "bg", "label": "保加利亚语", "audio_output": false },
-    { "code": "bn", "label": "孟加拉语", "audio_output": false },
-    { "code": "bs", "label": "波斯尼亚语", "audio_output": false },
-    { "code": "ca", "label": "加泰罗尼亚语", "audio_output": false },
-    { "code": "ceb", "label": "宿务语", "audio_output": false },
-    { "code": "et", "label": "爱沙尼亚语", "audio_output": false },
-    { "code": "gl", "label": "加利西亚语", "audio_output": false },
-    { "code": "gu", "label": "古吉拉特语", "audio_output": false },
-    { "code": "hr", "label": "克罗地亚语", "audio_output": false },
-    { "code": "hu", "label": "匈牙利语", "audio_output": false },
-    { "code": "jv", "label": "爪哇语", "audio_output": false },
-    { "code": "kk", "label": "哈萨克语", "audio_output": false },
-    { "code": "kn", "label": "卡纳达语", "audio_output": false },
-    { "code": "ky", "label": "柯尔克孜语", "audio_output": false },
-    { "code": "lv", "label": "拉脱维亚语", "audio_output": false },
-    { "code": "mk", "label": "马其顿语", "audio_output": false },
-    { "code": "ml", "label": "马拉雅拉姆语", "audio_output": false },
-    { "code": "mr", "label": "马拉地语", "audio_output": false },
-    { "code": "pa", "label": "旁遮普语", "audio_output": false },
-    { "code": "ro", "label": "罗马尼亚语", "audio_output": false },
-    { "code": "sk", "label": "斯洛伐克语", "audio_output": false },
-    { "code": "sl", "label": "斯洛文尼亚语", "audio_output": false },
-    { "code": "sw", "label": "斯瓦希里语", "audio_output": false },
-    { "code": "tg", "label": "塔吉克语", "audio_output": false },
-    { "code": "az", "label": "阿塞拜疆语", "audio_output": false },
-    { "code": "uk", "label": "乌克兰语", "audio_output": false }
+    {
+      "code": "zh",
+      "label": {
+        "zh": "中文",
+        "en": "Chinese",
+        "ja": "中国語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "en",
+      "label": {
+        "zh": "英语",
+        "en": "English",
+        "ja": "英語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "ar",
+      "label": {
+        "zh": "阿拉伯语",
+        "en": "Arabic",
+        "ja": "アラビア語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "de",
+      "label": {
+        "zh": "德语",
+        "en": "German",
+        "ja": "ドイツ語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "fr",
+      "label": {
+        "zh": "法语",
+        "en": "French",
+        "ja": "フランス語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "es",
+      "label": {
+        "zh": "西班牙语",
+        "en": "Spanish",
+        "ja": "スペイン語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "pt",
+      "label": {
+        "zh": "葡萄牙语",
+        "en": "Portuguese",
+        "ja": "ポルトガル語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "id",
+      "label": {
+        "zh": "印度尼西亚语",
+        "en": "Indonesian",
+        "ja": "インドネシア語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "it",
+      "label": {
+        "zh": "意大利语",
+        "en": "Italian",
+        "ja": "イタリア語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "ko",
+      "label": {
+        "zh": "韩语",
+        "en": "Korean",
+        "ja": "韓国語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "ru",
+      "label": {
+        "zh": "俄语",
+        "en": "Russian",
+        "ja": "ロシア語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "th",
+      "label": {
+        "zh": "泰语",
+        "en": "Thai",
+        "ja": "タイ語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "vi",
+      "label": {
+        "zh": "越南语",
+        "en": "Vietnamese",
+        "ja": "ベトナム語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "ja",
+      "label": {
+        "zh": "日语",
+        "en": "Japanese",
+        "ja": "日本語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "tr",
+      "label": {
+        "zh": "土耳其语",
+        "en": "Turkish",
+        "ja": "トルコ語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "hi",
+      "label": {
+        "zh": "印地语",
+        "en": "Hindi",
+        "ja": "ヒンディー語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "ms",
+      "label": {
+        "zh": "马来语",
+        "en": "Malay",
+        "ja": "マレー語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "nl",
+      "label": {
+        "zh": "荷兰语",
+        "en": "Dutch",
+        "ja": "オランダ語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "ur",
+      "label": {
+        "zh": "乌尔都语",
+        "en": "Urdu",
+        "ja": "ウルドゥー語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "nb",
+      "label": {
+        "zh": "挪威语",
+        "en": "Norwegian",
+        "ja": "ノルウェー語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "sv",
+      "label": {
+        "zh": "瑞典语",
+        "en": "Swedish",
+        "ja": "スウェーデン語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "da",
+      "label": {
+        "zh": "丹麦语",
+        "en": "Danish",
+        "ja": "デンマーク語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "he",
+      "label": {
+        "zh": "希伯来语",
+        "en": "Hebrew",
+        "ja": "ヘブライ語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "fi",
+      "label": {
+        "zh": "芬兰语",
+        "en": "Finnish",
+        "ja": "フィンランド語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "pl",
+      "label": {
+        "zh": "波兰语",
+        "en": "Polish",
+        "ja": "ポーランド語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "is",
+      "label": {
+        "zh": "冰岛语",
+        "en": "Icelandic",
+        "ja": "アイスランド語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "cs",
+      "label": {
+        "zh": "捷克语",
+        "en": "Czech",
+        "ja": "チェコ語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "fil",
+      "label": {
+        "zh": "菲律宾语",
+        "en": "Filipino",
+        "ja": "フィリピン語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "fa",
+      "label": {
+        "zh": "波斯语",
+        "en": "Persian",
+        "ja": "ペルシア語"
+      },
+      "audio_output": true
+    },
+    {
+      "code": "yue",
+      "label": {
+        "zh": "粤语",
+        "en": "Cantonese",
+        "ja": "広東語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "el",
+      "label": {
+        "zh": "希腊语",
+        "en": "Greek",
+        "ja": "ギリシア語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "af",
+      "label": {
+        "zh": "南非荷兰语",
+        "en": "Afrikaans",
+        "ja": "アフリカーンス語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "ast",
+      "label": {
+        "zh": "阿斯图里亚斯语",
+        "en": "Asturian",
+        "ja": "アストゥリアス語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "be",
+      "label": {
+        "zh": "白俄罗斯语",
+        "en": "Belarusian",
+        "ja": "ベラルーシ語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "bg",
+      "label": {
+        "zh": "保加利亚语",
+        "en": "Bulgarian",
+        "ja": "ブルガリア語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "bn",
+      "label": {
+        "zh": "孟加拉语",
+        "en": "Bengali",
+        "ja": "ベンガル語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "bs",
+      "label": {
+        "zh": "波斯尼亚语",
+        "en": "Bosnian",
+        "ja": "ボスニア語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "ca",
+      "label": {
+        "zh": "加泰罗尼亚语",
+        "en": "Catalan",
+        "ja": "カタルーニャ語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "ceb",
+      "label": {
+        "zh": "宿务语",
+        "en": "Cebuano",
+        "ja": "セブアノ語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "et",
+      "label": {
+        "zh": "爱沙尼亚语",
+        "en": "Estonian",
+        "ja": "エストニア語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "gl",
+      "label": {
+        "zh": "加利西亚语",
+        "en": "Galician",
+        "ja": "ガリシア語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "gu",
+      "label": {
+        "zh": "古吉拉特语",
+        "en": "Gujarati",
+        "ja": "グジャラート語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "hr",
+      "label": {
+        "zh": "克罗地亚语",
+        "en": "Croatian",
+        "ja": "クロアチア語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "hu",
+      "label": {
+        "zh": "匈牙利语",
+        "en": "Hungarian",
+        "ja": "ハンガリー語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "jv",
+      "label": {
+        "zh": "爪哇语",
+        "en": "Javanese",
+        "ja": "ジャワ語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "kk",
+      "label": {
+        "zh": "哈萨克语",
+        "en": "Kazakh",
+        "ja": "カザフ語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "kn",
+      "label": {
+        "zh": "卡纳达语",
+        "en": "Kannada",
+        "ja": "カンナダ語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "ky",
+      "label": {
+        "zh": "柯尔克孜语",
+        "en": "Kyrgyz",
+        "ja": "キルグズ語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "lv",
+      "label": {
+        "zh": "拉脱维亚语",
+        "en": "Latvian",
+        "ja": "ラトビア語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "mk",
+      "label": {
+        "zh": "马其顿语",
+        "en": "Macedonian",
+        "ja": "マケドニア語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "ml",
+      "label": {
+        "zh": "马拉雅拉姆语",
+        "en": "Malayalam",
+        "ja": "マヤラム語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "mr",
+      "label": {
+        "zh": "马拉地语",
+        "en": "Marathi",
+        "ja": "マラーテー語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "pa",
+      "label": {
+        "zh": "旁遮普语",
+        "en": "Punjabi",
+        "ja": "パンジャブ語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "ro",
+      "label": {
+        "zh": "罗马尼亚语",
+        "en": "Romanian",
+        "ja": "ルーマニア語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "sk",
+      "label": {
+        "zh": "斯洛伐克语",
+        "en": "Slovak",
+        "ja": "スロバキア語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "sl",
+      "label": {
+        "zh": "斯洛文尼亚语",
+        "en": "Slovenian",
+        "ja": "スロヴェニア語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "sw",
+      "label": {
+        "zh": "斯瓦希里语",
+        "en": "Swahili",
+        "ja": "スワヒリ語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "tg",
+      "label": {
+        "zh": "塔吉克语",
+        "en": "Tajik",
+        "ja": "タジク語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "az",
+      "label": {
+        "zh": "阿塞拜疆语",
+        "en": "Azerbaijani",
+        "ja": "アゼルバイジャン語"
+      },
+      "audio_output": false
+    },
+    {
+      "code": "uk",
+      "label": {
+        "zh": "乌克兰语",
+        "en": "Ukrainian",
+        "ja": "ウクライナ語"
+      },
+      "audio_output": false
+    }
   ],
   "voices": [
-    { "id": "Tina", "name": "甜甜 Tina", "description": "温暖甜美，官方默认音色" },
-    { "id": "Cindy", "name": "林欣宜 Cindy", "description": "带台湾口音的甜美女声" },
-    { "id": "Liora Mira", "name": "清欢 Liora Mira", "description": "温柔自然" },
-    { "id": "Sunnybobi", "name": "知芝 Sunnybobi", "description": "活泼的邻家女声" },
-    { "id": "Raymond", "name": "林川野 Raymond", "description": "清亮男声" },
-    { "id": "Ethan", "name": "晨煦 Ethan", "description": "阳光温暖的男声" },
-    { "id": "Theo Calm", "name": "予安 Theo Calm", "description": "安静舒缓的男声" },
-    { "id": "Serena", "name": "苏瑶 Serena", "description": "温柔女声" },
-    { "id": "Harvey", "name": "厚 Harvey", "description": "低沉温和的男声" },
-    { "id": "Maia", "name": "四月 Maia", "description": "知性温柔的女声" },
-    { "id": "Evan", "name": "江晨 Evan", "description": "年轻男声" },
-    { "id": "Qiao", "name": "小乔妹 Qiao", "description": "带台湾口音的甜美女声" },
-    { "id": "Momo", "name": "茉兔 Momo", "description": "俏皮女声" },
-    { "id": "Wil", "name": "伟伦 Wil", "description": "带港台口音的男声" },
-    { "id": "Angel", "name": "安琪 Angel", "description": "略带台式口音的甜美女声" },
-    { "id": "Li Cassian", "name": "李公公 Li Cassian", "description": "古风特色男声" },
-    { "id": "Mia", "name": "舒然 Mia", "description": "温柔舒缓的女声" },
-    { "id": "Joyner", "name": "阿逗 Joyner", "description": "夸张活泼的男声" },
-    { "id": "Gold", "name": "金爷 Gold", "description": "西海岸说唱风格男声" },
-    { "id": "Katerina", "name": "卡捷琳娜 Katerina", "description": "成熟有韵律的女声" },
-    { "id": "Ryan", "name": "甜茶 Ryan", "description": "富有节奏和张力的男声" },
-    { "id": "Jennifer", "name": "詹妮弗 Jennifer", "description": "电影质感美语女声" },
-    { "id": "Aiden", "name": "艾登 Aiden", "description": "自然的美语男声" },
-    { "id": "Mione", "name": "敏儿 Mione", "description": "成熟知性的英式女声" },
-    { "id": "Sohee", "name": "素熙 Sohee", "description": "温柔开朗的韩系女声" },
-    { "id": "Lenn", "name": "莱恩 Lenn", "description": "干净理性的德系男声" },
-    { "id": "Ono Anna", "name": "小野杏 Ono Anna", "description": "活泼的日系女声" },
-    { "id": "Sonrisa", "name": "索尼莎 Sonrisa", "description": "热情的拉美女声" },
-    { "id": "Bodega", "name": "博德加 Bodega", "description": "热情的西语男声" },
-    { "id": "Emilien", "name": "埃米尔安 Emilien", "description": "浪漫的法语男声" },
-    { "id": "Andre", "name": "安德雷 Andre", "description": "磁性沉稳的男声" },
-    { "id": "Radio Gol", "name": "拉迪奥·戈尔 Radio Gol", "description": "巴西足球解说风格男声" },
-    { "id": "Alek", "name": "阿列克 Alek", "description": "沉稳的俄语男声" },
-    { "id": "Rizky", "name": "阿力 Rizky", "description": "个性的印尼男声" },
-    { "id": "Roya", "name": "萝雅 Roya", "description": "自由明快的女声" },
-    { "id": "Arda", "name": "阿尔达 Arda", "description": "干净温润的男声" },
-    { "id": "Hana", "name": "阿幸 Hana", "description": "成熟的越南女声" },
-    { "id": "Dolce", "name": "多尔切 Dolce", "description": "慵懒的意大利男声" },
-    { "id": "Jakub", "name": "雅克 Jakub", "description": "磁性的波兰男声" },
-    { "id": "Griet", "name": "海娜 Griet", "description": "成熟文艺的荷兰女声" },
-    { "id": "Eliška", "name": "艾莉卡 Eliška", "description": "温暖的捷克女声" },
-    { "id": "Marina", "name": "玛丽娜 Marina", "description": "自然的多语种女声" },
-    { "id": "Siiri", "name": "西芮 Siiri", "description": "内敛舒缓的女声" },
-    { "id": "Ingrid", "name": "林恩 Ingrid", "description": "自然的挪威女声" },
-    { "id": "Sigga", "name": "海娜 Sigga", "description": "知性的冰岛女声" },
-    { "id": "Bea", "name": "雅娜 Bea", "description": "甜美的菲律宾女声" },
-    { "id": "Chloe", "name": "思怡 Chloe", "description": "自然的马来西亚女声" }
+    {
+      "id": "Tina",
+      "name": {
+        "zh": "甜甜 Tina",
+        "en": "Tina",
+        "ja": "Tina"
+      },
+      "description": {
+        "zh": "温暖甜美，官方默认音色",
+        "en": "Warm and sweet — the official default voice.",
+        "ja": "あたたかく甘い、公式デフォルトの音声。"
+      }
+    },
+    {
+      "id": "Cindy",
+      "name": {
+        "zh": "林欣宜 Cindy",
+        "en": "Cindy",
+        "ja": "Cindy"
+      },
+      "description": {
+        "zh": "带台湾口音的甜美女声",
+        "en": "Sweet female voice with a Taiwanese accent.",
+        "ja": "台湾アクセントのある甘い女性の声。"
+      }
+    },
+    {
+      "id": "Liora Mira",
+      "name": {
+        "zh": "清欢 Liora Mira",
+        "en": "Liora Mira",
+        "ja": "Liora Mira"
+      },
+      "description": {
+        "zh": "温柔自然",
+        "en": "Gentle and natural.",
+        "ja": "やわらかく自然な声。"
+      }
+    },
+    {
+      "id": "Sunnybobi",
+      "name": {
+        "zh": "知芝 Sunnybobi",
+        "en": "Sunnybobi",
+        "ja": "Sunnybobi"
+      },
+      "description": {
+        "zh": "活泼的邻家女声",
+        "en": "Lively, girl-next-door female voice.",
+        "ja": "活発で親しみやすい女性の声。"
+      }
+    },
+    {
+      "id": "Raymond",
+      "name": {
+        "zh": "林川野 Raymond",
+        "en": "Raymond",
+        "ja": "Raymond"
+      },
+      "description": {
+        "zh": "清亮男声",
+        "en": "Bright and clear male voice.",
+        "ja": "澄んで明るい男性の声。"
+      }
+    },
+    {
+      "id": "Ethan",
+      "name": {
+        "zh": "晨煦 Ethan",
+        "en": "Ethan",
+        "ja": "Ethan"
+      },
+      "description": {
+        "zh": "阳光温暖的男声",
+        "en": "Bright, sunny and warm male voice.",
+        "ja": "太陽のように明るく温かな男性の声。"
+      }
+    },
+    {
+      "id": "Theo Calm",
+      "name": {
+        "zh": "予安 Theo Calm",
+        "en": "Theo Calm",
+        "ja": "Theo Calm"
+      },
+      "description": {
+        "zh": "安静舒缓的男声",
+        "en": "Calm, soothing male voice.",
+        "ja": "落ち着いてゆったりした男性の声。"
+      }
+    },
+    {
+      "id": "Serena",
+      "name": {
+        "zh": "苏瑶 Serena",
+        "en": "Serena",
+        "ja": "Serena"
+      },
+      "description": {
+        "zh": "温柔女声",
+        "en": "Gentle female voice.",
+        "ja": "穏やかな女性の声。"
+      }
+    },
+    {
+      "id": "Harvey",
+      "name": {
+        "zh": "厚 Harvey",
+        "en": "Harvey",
+        "ja": "Harvey"
+      },
+      "description": {
+        "zh": "低沉温和的男声",
+        "en": "Deep and gentle male voice.",
+        "ja": "深みがあって穏やかな男性の声。"
+      }
+    },
+    {
+      "id": "Maia",
+      "name": {
+        "zh": "四月 Maia",
+        "en": "Maia",
+        "ja": "Maia"
+      },
+      "description": {
+        "zh": "知性温柔的女声",
+        "en": "Intellectual, gentle female voice.",
+        "ja": "知的でやさしい女性の声。"
+      }
+    },
+    {
+      "id": "Evan",
+      "name": {
+        "zh": "江晨 Evan",
+        "en": "Evan",
+        "ja": "Evan"
+      },
+      "description": {
+        "zh": "年轻男声",
+        "en": "Young male voice.",
+        "ja": "若々しい男性の声。"
+      }
+    },
+    {
+      "id": "Qiao",
+      "name": {
+        "zh": "小乔妹 Qiao",
+        "en": "Qiao",
+        "ja": "Qiao"
+      },
+      "description": {
+        "zh": "带台湾口音的甜美女声",
+        "en": "Sweet female voice with a Taiwanese accent.",
+        "ja": "台湾アクセントのある甘い女性の声。"
+      }
+    },
+    {
+      "id": "Momo",
+      "name": {
+        "zh": "茉兔 Momo",
+        "en": "Momo",
+        "ja": "Momo"
+      },
+      "description": {
+        "zh": "俏皮女声",
+        "en": "Playful female voice.",
+        "ja": "遊び心のある女性の声。"
+      }
+    },
+    {
+      "id": "Wil",
+      "name": {
+        "zh": "伟伦 Wil",
+        "en": "Wil",
+        "ja": "Wil"
+      },
+      "description": {
+        "zh": "带港台口音的男声",
+        "en": "Male voice with a Hong Kong / Taiwan accent.",
+        "ja": "香港・台湾風の口調の男性の声。"
+      }
+    },
+    {
+      "id": "Angel",
+      "name": {
+        "zh": "安琪 Angel",
+        "en": "Angel",
+        "ja": "Angel"
+      },
+      "description": {
+        "zh": "略带台式口音的甜美女声",
+        "en": "Sweet female voice with a subtle Taiwanese accent.",
+        "ja": "台湾アクセントを帯びた甘い女性の声。"
+      }
+    },
+    {
+      "id": "Li Cassian",
+      "name": {
+        "zh": "李公公 Li Cassian",
+        "en": "Li Cassian",
+        "ja": "Li Cassian"
+      },
+      "description": {
+        "zh": "古风特色男声",
+        "en": "Charmingly ancient-style male voice.",
+        "ja": "古風な味わいのある男性の声。"
+      }
+    },
+    {
+      "id": "Mia",
+      "name": {
+        "zh": "舒然 Mia",
+        "en": "Mia",
+        "ja": "Mia"
+      },
+      "description": {
+        "zh": "温柔舒缓的女声",
+        "en": "Gentle, unhurried female voice.",
+        "ja": "やわらかくゆったりした女性の声。"
+      }
+    },
+    {
+      "id": "Joyner",
+      "name": {
+        "zh": "阿逗 Joyner",
+        "en": "Joyner",
+        "ja": "Joyner"
+      },
+      "description": {
+        "zh": "夸张活泼的男声",
+        "en": "Exaggerated, lively male voice.",
+        "ja": "ちょっと大げさで活発な男性の声。"
+      }
+    },
+    {
+      "id": "Gold",
+      "name": {
+        "zh": "金爷 Gold",
+        "en": "Gold",
+        "ja": "Gold"
+      },
+      "description": {
+        "zh": "西海岸说唱风格男声",
+        "en": "West-coast style rap male voice.",
+        "ja": "ウエストコースト風ラップの男性の声。"
+      }
+    },
+    {
+      "id": "Katerina",
+      "name": {
+        "zh": "卡捷琳娜 Katerina",
+        "en": "Katerina",
+        "ja": "Katerina"
+      },
+      "description": {
+        "zh": "成熟有韵律的女声",
+        "en": "Mature, rhythmic female voice.",
+        "ja": "落ち着きとリズムのある女性の声。"
+      }
+    },
+    {
+      "id": "Ryan",
+      "name": {
+        "zh": "甜茶 Ryan",
+        "en": "Ryan",
+        "ja": "Ryan"
+      },
+      "description": {
+        "zh": "富有节奏和张力的男声",
+        "en": "Rhythmic, high-energy male voice.",
+        "ja": "リズムと緊張感のある男性の声。"
+      }
+    },
+    {
+      "id": "Jennifer",
+      "name": {
+        "zh": "詹妮弗 Jennifer",
+        "en": "Jennifer",
+        "ja": "Jennifer"
+      },
+      "description": {
+        "zh": "电影质感美语女声",
+        "en": "Cinematic American English female voice.",
+        "ja": "映画のような英語女性の声。"
+      }
+    },
+    {
+      "id": "Aiden",
+      "name": {
+        "zh": "艾登 Aiden",
+        "en": "Aiden",
+        "ja": "Aiden"
+      },
+      "description": {
+        "zh": "自然的美语男声",
+        "en": "Natural American English male voice.",
+        "ja": "自然な英語男性の声。"
+      }
+    },
+    {
+      "id": "Mione",
+      "name": {
+        "zh": "敏儿 Mione",
+        "en": "Mione",
+        "ja": "Mione"
+      },
+      "description": {
+        "zh": "成熟知性的英式女声",
+        "en": "Mature, intellectual British female voice.",
+        "ja": "成熟した知的な英国系女性の声。"
+      }
+    },
+    {
+      "id": "Sohee",
+      "name": {
+        "zh": "素熙 Sohee",
+        "en": "Sohee",
+        "ja": "Sohee"
+      },
+      "description": {
+        "zh": "温柔开朗的韩系女声",
+        "en": "Warm, cheerful Korean-style female voice.",
+        "ja": "やさしく明るい韓国系女性の声。"
+      }
+    },
+    {
+      "id": "Lenn",
+      "name": {
+        "zh": "莱恩 Lenn",
+        "en": "Lenn",
+        "ja": "Lenn"
+      },
+      "description": {
+        "zh": "干净理性的德系男声",
+        "en": "Clean, rational German-style male voice.",
+        "ja": "きれいで理論的なドイツ系男性の声。"
+      }
+    },
+    {
+      "id": "Ono Anna",
+      "name": {
+        "zh": "小野杏 Ono Anna",
+        "en": "Ono Anna",
+        "ja": "Ono Anna"
+      },
+      "description": {
+        "zh": "活泼的日系女声",
+        "en": "Lively Japanese-style female voice.",
+        "ja": "いきいきした日本系女性の声。"
+      }
+    },
+    {
+      "id": "Sonrisa",
+      "name": {
+        "zh": "索尼莎 Sonrisa",
+        "en": "Sonrisa",
+        "ja": "Sonrisa"
+      },
+      "description": {
+        "zh": "热情的拉美女声",
+        "en": "Passionate Latin female voice.",
+        "ja": "情熱的なラテン系女性の声。"
+      }
+    },
+    {
+      "id": "Bodega",
+      "name": {
+        "zh": "博德加 Bodega",
+        "en": "Bodega",
+        "ja": "Bodega"
+      },
+      "description": {
+        "zh": "热情的西语男声",
+        "en": "Passionate Spanish female voice.",
+        "ja": "情熱的なスペイン語男性の声。"
+      }
+    },
+    {
+      "id": "Emilien",
+      "name": {
+        "zh": "埃米尔安 Emilien",
+        "en": "Emilien",
+        "ja": "Emilien"
+      },
+      "description": {
+        "zh": "浪漫的法语男声",
+        "en": "Romantic French male voice.",
+        "ja": "ロマンティックなフランス語男性の声。"
+      }
+    },
+    {
+      "id": "Andre",
+      "name": {
+        "zh": "安德雷 Andre",
+        "en": "Andre",
+        "ja": "Andre"
+      },
+      "description": {
+        "zh": "磁性沉稳的男声",
+        "en": "Magnetic, steady male voice.",
+        "ja": "存在感のある落ち着いた男性の声。"
+      }
+    },
+    {
+      "id": "Radio Gol",
+      "name": {
+        "zh": "拉迪奥·戈尔 Radio Gol",
+        "en": "Radio Gol",
+        "ja": "Radio Gol"
+      },
+      "description": {
+        "zh": "巴西足球解说风格男声",
+        "en": "Brazilian football commentary-style male voice.",
+        "ja": "ブラジリアンサッカー実況風の男性の声。"
+      }
+    },
+    {
+      "id": "Alek",
+      "name": {
+        "zh": "阿列克 Alek",
+        "en": "Alek",
+        "ja": "Alek"
+      },
+      "description": {
+        "zh": "沉稳的俄语男声",
+        "en": "Steady Russian male voice.",
+        "ja": "どっしりしたロシア語男性の声。"
+      }
+    },
+    {
+      "id": "Rizky",
+      "name": {
+        "zh": "阿力 Rizky",
+        "en": "Rizky",
+        "ja": "Rizky"
+      },
+      "description": {
+        "zh": "个性的印尼男声",
+        "en": "Distinctive Indonesian male voice.",
+        "ja": "個性的なインドネシア語男性の声。"
+      }
+    },
+    {
+      "id": "Roya",
+      "name": {
+        "zh": "萝雅 Roya",
+        "en": "Roya",
+        "ja": "Roya"
+      },
+      "description": {
+        "zh": "自由明快的女声",
+        "en": "Free-spirited, bright female voice.",
+        "ja": "自由で明るい女性の声。"
+      }
+    },
+    {
+      "id": "Arda",
+      "name": {
+        "zh": "阿尔达 Arda",
+        "en": "Arda",
+        "ja": "Arda"
+      },
+      "description": {
+        "zh": "干净温润的男声",
+        "en": "Clean, warm male voice.",
+        "ja": "きれいで温かな男性の声。"
+      }
+    },
+    {
+      "id": "Hana",
+      "name": {
+        "zh": "阿幸 Hana",
+        "en": "Hana",
+        "ja": "Hana"
+      },
+      "description": {
+        "zh": "成熟的越南女声",
+        "en": "Mature Vietnamese female voice.",
+        "ja": "落ち着いたベトナム語女性の声。"
+      }
+    },
+    {
+      "id": "Dolce",
+      "name": {
+        "zh": "多尔切 Dolce",
+        "en": "Dolce",
+        "ja": "Dolce"
+      },
+      "description": {
+        "zh": "慵懒的意大利男声",
+        "en": "Laid-back Italian male voice.",
+        "ja": "のんびりしたイタリア語男性の声。"
+      }
+    },
+    {
+      "id": "Jakub",
+      "name": {
+        "zh": "雅克 Jakub",
+        "en": "Jakub",
+        "ja": "Jakub"
+      },
+      "description": {
+        "zh": "磁性的波兰男声",
+        "en": "Magnetic Polish male voice.",
+        "ja": "磁気のあるポーランド語男性の声。"
+      }
+    },
+    {
+      "id": "Griet",
+      "name": {
+        "zh": "海娜 Griet",
+        "en": "Griet",
+        "ja": "Griet"
+      },
+      "description": {
+        "zh": "成熟文艺的荷兰女声",
+        "en": "Cultured, artistic Dutch female voice.",
+        "ja": "クラシックでアートなオランダ語女性の声。"
+      }
+    },
+    {
+      "id": "Eliška",
+      "name": {
+        "zh": "艾莉卡 Eliška",
+        "en": "Eliška",
+        "ja": "Eliška"
+      },
+      "description": {
+        "zh": "温暖的捷克女声",
+        "en": "Warm Czech female voice.",
+        "ja": "あたたかいチェコ語女性の声。"
+      }
+    },
+    {
+      "id": "Marina",
+      "name": {
+        "zh": "玛丽娜 Marina",
+        "en": "Marina",
+        "ja": "Marina"
+      },
+      "description": {
+        "zh": "自然的多语种女声",
+        "en": "Natural multilingual female voice.",
+        "ja": "自然なマルチリンガルの女性の声。"
+      }
+    },
+    {
+      "id": "Siiri",
+      "name": {
+        "zh": "西芮 Siiri",
+        "en": "Siiri",
+        "ja": "Siiri"
+      },
+      "description": {
+        "zh": "内敛舒缓的女声",
+        "en": "Restrained, soothing female voice.",
+        "ja": "控えめでのんびりした女性の声。"
+      }
+    },
+    {
+      "id": "Ingrid",
+      "name": {
+        "zh": "林恩 Ingrid",
+        "en": "Ingrid",
+        "ja": "Ingrid"
+      },
+      "description": {
+        "zh": "自然的挪威女声",
+        "en": "Natural Norwegian female voice.",
+        "ja": "自然なノルウェー語女性の声。"
+      }
+    },
+    {
+      "id": "Sigga",
+      "name": {
+        "zh": "海娜 Sigga",
+        "en": "Sigga",
+        "ja": "Sigga"
+      },
+      "description": {
+        "zh": "知性的冰岛女声",
+        "en": "Clear Icelandic female voice.",
+        "ja": "知性的なアイスランド語女性の声。"
+      }
+    },
+    {
+      "id": "Bea",
+      "name": {
+        "zh": "雅娜 Bea",
+        "en": "Bea",
+        "ja": "Bea"
+      },
+      "description": {
+        "zh": "甜美的菲律宾女声",
+        "en": "Sweet Filipino female voice.",
+        "ja": "甘くてかわいいフィリピン語女性の声。"
+      }
+    },
+    {
+      "id": "Chloe",
+      "name": {
+        "zh": "思怡 Chloe",
+        "en": "Chloe",
+        "ja": "Chloe"
+      },
+      "description": {
+        "zh": "自然的马来西亚女声",
+        "en": "Natural Malaysian female voice.",
+        "ja": "自然なマレーシア語女性の声。"
+      }
+    }
   ]
 }

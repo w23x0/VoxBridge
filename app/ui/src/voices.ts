@@ -1,17 +1,25 @@
-/** 音色选项来自统一的阿里云维护表。最近使用顺序由首页在调用时传入。 */
+/** 音色选项来自统一的阿里云维护表（{zh,en,ja}）。最近使用顺序由调用方在传入。 */
 
-import { DEFAULT_VOICE, LEGACY_REMOVED_VOICE_IDS, VOICE_CATALOG } from "./catalog";
+import { DEFAULT_VOICE, LEGACY_REMOVED_VOICE_IDS, VOICE_CATALOG, l10n, type CatalogLabel } from "./catalog";
 import type { LabeledOption } from "./catalog";
+import type { UiLang } from "./i18n/types";
 
-const LABELS = new Map(
+/** 官方音色 id -> 多语展示名「name（description）」。 */
+const LABELS = new Map<string, CatalogLabel>(
   VOICE_CATALOG.map((voice) => [
     voice.id,
-    `${voice.name}（${voice.description}）`,
+    {
+      zh: `${voice.name.zh}（${voice.description.zh}）`,
+      en: `${voice.name.en}（${voice.description.en}）`,
+      ja: `${voice.name.ja}（${voice.description.ja}）`,
+    },
   ]),
 );
 
-export function voiceLabel(id: string): string {
-  return LABELS.get(id) ?? id;
+/** 音色 id -> 当前语言展示名；未知 id 返回原 id。 */
+export function voiceLabel(id: string, uiLang: UiLang): string {
+  const label = LABELS.get(id);
+  return label ? l10n(label, uiLang) : id;
 }
 
 export interface VoiceOption extends LabeledOption {
@@ -21,11 +29,14 @@ export interface VoiceOption extends LabeledOption {
 
 /**
  * 排序顺序：当前值 → 最近用过的值 → 官方默认 → 官方维护表原顺序。
- * 表外值只用于兼容声音复刻生成的自定义音色 ID。
+ * 表外值只用于兼容声音复刻生成的自定义音色 ID，展示名给原 id +
+ * `customSuffix`（调用方用 t("catalog.customVoiceSuffix") 传入，已本地化）。
  */
 export function orderedVoices(
-  current?: string | null,
-  recent: readonly string[] = [],
+  uiLang: UiLang,
+  current: string | null | undefined,
+  recent: readonly string[],
+  customSuffix: string,
 ): VoiceOption[] {
   const ids = [current, ...recent, DEFAULT_VOICE, ...VOICE_CATALOG.map((voice) => voice.id)];
   const seen = new Set<string>();
@@ -35,11 +46,10 @@ export function orderedVoices(
     if (!id || seen.has(id)) continue;
     if (LEGACY_REMOVED_VOICE_IDS.has(id)) continue;
     seen.add(id);
-    out.push({
-      value: id,
-      label: LABELS.has(id) ? voiceLabel(id) : `${id}（自定义）`,
-      recommended: id === DEFAULT_VOICE,
-    });
+    const label = LABELS.has(id)
+      ? voiceLabel(id, uiLang)
+      : `${id}${customSuffix}`;
+    out.push({ value: id, label, recommended: id === DEFAULT_VOICE });
   }
   return out;
 }

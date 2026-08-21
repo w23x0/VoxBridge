@@ -2,8 +2,18 @@ use std::{collections::HashSet, env, fs, path::PathBuf};
 
 use serde::Deserialize;
 
+/// catalog JSON 里 label/name/description 的多语对象。构建期前端只用到展示，
+/// 后端仅取 zh 作内部常量（前端自行按 UI 语言从 JSON 取）。
+#[derive(Deserialize)]
+struct L10n {
+    zh: String,
+    en: String,
+    ja: String,
+}
+
 #[derive(Deserialize)]
 struct Catalog {
+    schema_version: i64,
     verified_at: String,
     expected_counts: ExpectedCounts,
     provider: Provider,
@@ -25,14 +35,14 @@ struct ExpectedCounts {
 #[derive(Deserialize)]
 struct Provider {
     id: String,
-    label: String,
+    label: L10n,
     console_url: String,
 }
 
 #[derive(Deserialize)]
 struct Model {
     id: String,
-    label: String,
+    label: L10n,
     stable_snapshot: String,
 }
 
@@ -51,19 +61,20 @@ struct Defaults {
 #[derive(Deserialize)]
 struct Language {
     code: String,
-    label: String,
+    label: L10n,
     audio_output: bool,
 }
 
 #[derive(Deserialize)]
 struct Voice {
     id: String,
-    name: String,
-    description: String,
+    name: L10n,
+    description: L10n,
 }
 
 #[derive(Deserialize)]
 struct GeminiCatalog {
+    schema_version: i64,
     verified_at: String,
     provider: Provider,
     model: GeminiModel,
@@ -73,7 +84,7 @@ struct GeminiCatalog {
 #[derive(Deserialize)]
 struct GeminiModel {
     id: String,
-    label: String,
+    label: L10n,
 }
 
 #[derive(Deserialize)]
@@ -102,6 +113,26 @@ fn main() {
         catalog.provider.id, "aliyun",
         "Aliyun 目录 provider.id 必须是 aliyun"
     );
+    assert!(
+        catalog.schema_version >= 2,
+        "catalog/aliyun.json 的 schema_version 至少应为 2（label 已扩成 {{zh,en,ja}}）"
+    );
+    assert!(
+        gemini.schema_version >= 2,
+        "catalog/gemini.json 的 schema_version 至少应为 2"
+    );
+    for lang in &catalog.languages {
+        assert!(!lang.label.zh.is_empty() && !lang.label.en.is_empty() && !lang.label.ja.is_empty(),
+            "语言 {} 的多语 label 有空值", lang.code);
+    }
+    for voice in &catalog.voices {
+        assert!(!voice.name.zh.is_empty() && !voice.name.en.is_empty() && !voice.name.ja.is_empty(),
+            "音色 {} 的 name 有空值", voice.id);
+        assert!(!voice.description.zh.is_empty() && !voice.description.en.is_empty() && !voice.description.ja.is_empty(),
+            "音色 {} 的 description 有空值", voice.id);
+    }
+    assert!(!catalog.provider.label.zh.is_empty(), "provider.label 空值");
+    assert!(!catalog.model.label.zh.is_empty(), "model.label 空值");
     assert_eq!(
         gemini.provider.id, "gemini",
         "Gemini 目录 provider.id 必须是 gemini"
@@ -179,24 +210,24 @@ fn main() {
     out.push_str(&format!(
         "pub const PROVIDER_ID: &str = {};\npub const PROVIDER_LABEL: &str = {};\npub const PROVIDER_CONSOLE_URL: &str = {};\n",
         lit(&catalog.provider.id),
-        lit(&catalog.provider.label),
+        lit(&catalog.provider.label.zh),
         lit(&catalog.provider.console_url)
     ));
     out.push_str(&format!(
         "pub const GEMINI_PROVIDER_ID: &str = {};\npub const GEMINI_PROVIDER_LABEL: &str = {};\npub const GEMINI_PROVIDER_CONSOLE_URL: &str = {};\npub const GEMINI_CATALOG_VERIFIED_AT: &str = {};\npub const GEMINI_MODEL_NAME: &str = {};\npub const GEMINI_MODEL_LABEL: &str = {};\npub const GEMINI_API_BASE: &str = {};\n",
         lit(&gemini.provider.id),
-        lit(&gemini.provider.label),
+        lit(&gemini.provider.label.zh),
         lit(&gemini.provider.console_url),
         lit(&gemini.verified_at),
         lit(&gemini.model.id),
-        lit(&gemini.model.label),
+        lit(&gemini.model.label.zh),
         lit(&gemini.api.websocket_endpoint)
     ));
     out.push_str(&format!(
         "pub const CATALOG_VERIFIED_AT: &str = {};\npub const DEFAULT_MODEL_NAME: &str = {};\npub const DEFAULT_MODEL_LABEL: &str = {};\npub const STABLE_MODEL_SNAPSHOT: &str = {};\npub const API_BASE: &str = {};\n",
         lit(&catalog.verified_at),
         lit(&catalog.model.id),
-        lit(&catalog.model.label),
+        lit(&catalog.model.label.zh),
         lit(&catalog.model.stable_snapshot),
         lit(&catalog.api.legacy_endpoint)
     ));
@@ -213,7 +244,7 @@ fn main() {
         out.push_str(&format!(
             "    ({}, {}),\n",
             lit(&language.code),
-            lit(&language.label)
+            lit(&language.label.zh)
         ));
     }
     out.push_str("];\n");
@@ -226,7 +257,7 @@ fn main() {
 
     out.push_str("pub const VOICE_LABELS: &[(&str, &str)] = &[\n");
     for voice in &catalog.voices {
-        let label = format!("{}（{}）", voice.name, voice.description);
+        let label = format!("{}（{}）", voice.name.zh, voice.description.zh);
         out.push_str(&format!("    ({}, {}),\n", lit(&voice.id), lit(&label)));
     }
     out.push_str("];\n");

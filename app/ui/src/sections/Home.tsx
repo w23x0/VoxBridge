@@ -7,7 +7,7 @@
 
 import * as catalog from "../catalog";
 import { LatencyPanel } from "../components/Latency";
-import { useT } from "../i18n/context";
+import { useLang, useT } from "../i18n/context";
 import { recentFirst, useRecentValues } from "../lib/recent";
 import { useStore } from "../store";
 import type { ModelProvider, PipelineName } from "../types";
@@ -53,7 +53,7 @@ const CARDS: {
 ];
 
 export function HomePage() {
-  const t = useT();
+  const { uiLang, t } = useLang();
   const pipeLabel = (id: Extract<PipelineName, "speak" | "listen">) =>
     id === "speak" ? t("pipeline.speak") : t("pipeline.listen");
   const { api, snapshot, settings, patch } = useStore();
@@ -82,16 +82,28 @@ export function HomePage() {
     listen.voice,
   );
 
-  const speakLanguageOptions = recentFirst(catalog.LANGUAGES, recentSpeakLanguages);
+  const languageChoices = catalog.languageOptions(uiLang);
+  const sourceChoices = catalog.sourceLanguageOptions(uiLang, t("catalog.autoDetect"));
+  const speakLanguageOptions = recentFirst(languageChoices, recentSpeakLanguages);
   const listenLanguageOptions = [
-    catalog.SOURCE_LANGUAGE_OPTIONS[0],
-    ...recentFirst(catalog.SOURCE_LANGUAGE_OPTIONS.slice(1), recentListenLanguages),
+    sourceChoices[0],
+    ...recentFirst(sourceChoices.slice(1), recentListenLanguages),
   ].filter((option): option is catalog.LabeledOption => option !== undefined);
-  const speakVoiceOptions = orderedVoices(speak.voice, recentSpeakVoices).map((voice) => ({
+  const speakVoiceOptions = orderedVoices(
+    uiLang,
+    speak.voice,
+    recentSpeakVoices,
+    t("catalog.customVoiceSuffix"),
+  ).map((voice) => ({
     value: voice.value,
     label: voice.recommended ? `${voice.label}${t("catalog.defaultVoiceSuffix")}` : voice.label,
   }));
-  const listenVoiceOptions = orderedVoices(listen.voice, recentListenVoices).map((voice) => ({
+  const listenVoiceOptions = orderedVoices(
+    uiLang,
+    listen.voice,
+    recentListenVoices,
+    t("catalog.customVoiceSuffix"),
+  ).map((voice) => ({
     value: voice.value,
     label: voice.recommended ? `${voice.label}${t("catalog.defaultVoiceSuffix")}` : voice.label,
   }));
@@ -131,7 +143,7 @@ export function HomePage() {
     if (!snapshot) return t("pipeline.openFailReason");
     const provider = pipeline === "speak" ? speak.provider : listen.provider;
     if (!snapshot.api_keys[provider]) {
-      return t("pipeline.blockedNoApiKey", { provider: catalog.providerLabel(provider) });
+      return t("pipeline.blockedNoApiKey", { provider: catalog.providerLabel(provider, uiLang) });
     }
     if (pipeline === "listen" && !target) return t("pipeline.blockedSelectApp");
     return null;
@@ -195,7 +207,7 @@ export function HomePage() {
                       id={`dd-home-${card.id}-provider`}
                       label={t("pipeline.providerAria", { pipe: pipeLabel(card.id) })}
                       value={card.id === "speak" ? speak.provider : listen.provider}
-                      options={catalog.PROVIDERS}
+                      options={catalog.providerOptions(uiLang)}
                       onChange={(provider) =>
                         card.id === "speak"
                           ? patch({
@@ -242,6 +254,14 @@ export function HomePage() {
                           });
                         }}
                       />
+                      <div className="pipeline-toggle-under">
+                        <span>{t("pipeline.showTranslation")}</span>
+                        <Toggle
+                          checked={speak.show_translation}
+                          label={t("pipeline.showTranslation")}
+                          onChange={(checked) => patch({ speak: { show_translation: checked } })}
+                        />
+                      </div>
                     </div>
                   ) : (
                     <div style={{ minWidth: 0 }}>
@@ -254,7 +274,7 @@ export function HomePage() {
                         value={listen.source_language ?? ""}
                         options={
                           listen.provider === "gemini"
-                            ? [catalog.SOURCE_LANGUAGE_OPTIONS[0]].filter(
+                            ? [sourceChoices[0]].filter(
                                 (option): option is catalog.LabeledOption => option !== undefined,
                               )
                             : listenLanguageOptions
@@ -379,7 +399,7 @@ export function HomePage() {
 
                 {card.id === "speak" && !catalog.supportsAudioOutput(speak.target_language, speak.provider) ? (
                   <div className="hint hint-warn" style={{ marginTop: 8 }}>
-                    {t("home.textOnlyHint", { lang: catalog.languageLabel(speak.target_language) })}
+                    {t("home.textOnlyHint", { lang: catalog.languageLabel(speak.target_language, uiLang) })}
                   </div>
                 ) : null}
               </div>

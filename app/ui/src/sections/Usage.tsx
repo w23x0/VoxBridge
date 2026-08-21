@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import * as catalog from "../catalog";
-import { useT } from "../i18n/context";
+import { useLang, useT } from "../i18n/context";
 import { useStore } from "../store";
 import type { ModelUsage, UsageLedger, UsageTotals } from "../types.snapshot";
 import { fmtAgo, fmtNum } from "../lib/format";
@@ -147,7 +147,7 @@ function ConfirmButton({
 export function UsagePage() {
   const { api, snapshot } = useStore();
   const toast = useToast();
-  const t = useT();
+  const { uiLang, t } = useLang();
   const [range, setRange] = useState<Range>("today");
 
   const now = new Date();
@@ -231,7 +231,7 @@ export function UsagePage() {
                 <div className="sub-card" key={name}>
                   <div className="sub-card-head">
                     <span style={{ color: "var(--text)", fontSize: 13 }}>
-                      {catalog.modelLabel(name)}
+                      {catalog.modelLabel(name, uiLang)}
                     </span>
                     <span className="chip" style={{ cursor: "default" }}>
                       {catalog.findModel(name)
@@ -243,7 +243,7 @@ export function UsagePage() {
                         confirmText={t("usage.confirmClear")}
                         onConfirm={() => {
                           void api.resetUsageModel(name);
-                          toast("success", t("usage.cleared", { name: catalog.modelLabel(name) }));
+                          toast("success", t("usage.cleared", { name: catalog.modelLabel(name, uiLang) }));
                         }}
                       >
                         {t("usage.clear")}
