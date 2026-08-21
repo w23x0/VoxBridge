@@ -9,11 +9,12 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview --port 5184 --strictPort",
     "a11y": "node scripts/a11y.mjs",
+    "qa:narrow": "node scripts/qa-narrow.mjs",
     "tauri": "cd .. && tauri",
     "tauri:dev": "cd .. && tauri dev",
     "tauri:build": "cd .. && tauri build",
     "check:cable": "node scripts/check-cable.mjs",
-    "verify": "npm run build && npm run check:classes && npm run a11y && npm run check:cable",
+    "verify": "npm run build && npm run check:classes && npm run a11y && npm run qa:narrow && npm run check:cable",
     "tauri:dev:attach": "cd .. && tauri dev --config ui/tauri.dev.json",
     "check:classes": "node scripts/check-classes.mjs"
   },

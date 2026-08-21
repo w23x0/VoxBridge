@@ -486,6 +486,15 @@
   gap: 14px;
 }
 
+/* 三卡从 3 直接跳 1 会有一段「挤压带」：内容区缩到 3 列宽度不足、
+   卡内 30px 等宽大数字(stat-value)撑破卡面。这里对齐 stats-row 的三档退变，
+   加一个 2 列中档，避免 769–1024 范围内三张卡的数值穿模。 */
+@media (max-width: 1024px) {
+  .input-grid-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
   .input-grid-2,
   .input-grid-3 {
