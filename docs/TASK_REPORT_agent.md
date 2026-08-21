@@ -2,6 +2,12 @@
 
 > 调研结论（2026-08-21）。下面每个问题给出「根因 → 目标 → 改动清单」。方向键是最紧急、改动最小的，全提为 P0；i18n 分两步；更新模块两条路径。
 
+> **状态（2026-08-22，落地后更新）**：本报告除「更新模块」外，其余均已通过 commit `0328077`（P0 方向键 + 状态徽标 + Aliyun 重复 useT）、`07409c1`（i18n 模型/语言/服务商/音色多语）、`a8c52a8`（新增 GPT 服务商）完成。「更新模块」路径 B 已于本次修改落地，改动概览：
+> - 后端：新增 `app/src-tauri/src/catalog_updater.rs`；`commands.rs` 加三个命令（`read_catalog_override` / `check_catalog_update` / `apply_catalog_update`）；`Cargo.toml` 加 `reqwest`（复用 rustls-ring 栈）。
+> - 前端：`catalog.ts` 改为 runtime 可替换 registry（`ensureCatalogLoaded` 启动载覆盖版，`reload_catalog` 应用后刷新）；`About.tsx` 加「模型目录」检查/应用区；`api.ts` / `mock/backend.ts` 接线。
+> - **未改 CSP**：本方案用 `reqwest` 在 **Rust 进程内**拉取（报告第 4 步的 "CSP 放行" 只适用于 `tauri-plugin-http` 那条 '或' 选项），故无需放行 `connect-src`。
+> - 分支定 `main`（远程 `w23x0/VoxBridge`）。
+
 ---
 
 ## P0-A · 方向键控件 Bug（首页无法用 ↓ 导航）

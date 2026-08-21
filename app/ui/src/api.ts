@@ -19,6 +19,20 @@ export interface CableActionResult {
   multichannel_hidden: boolean;
 }
 
+export interface CatalogUpdateCheck {
+  /** 当前生效的 verified_at（内置或覆盖版）。 */
+  current: string;
+  /** 线上仓库最新的 verified_at。 */
+  latest: string;
+}
+
+export interface CatalogUpdateApplied {
+  /** 覆盖到的文件名，如 "aliyun.json"。 */
+  file: string;
+  /** 落盘后的 verified_at。 */
+  verified: string;
+}
+
 export interface VoxApi {
   /** 真后端还是假数据。界面靠这个决定要不要显示「演示数据」角标。 */
   readonly mock: boolean;
@@ -39,6 +53,12 @@ export interface VoxApi {
   openVirtualCableDonation(): Promise<void>;
   openDashscopeConsole(): Promise<void>;
   openProviderConsole(provider: ModelProvider): Promise<void>;
+  /** 读某个服务商落盘的覆盖版目录；没覆盖时返回 null。 */
+  readCatalogOverride(provider: ModelProvider): Promise<string | null>;
+  /** 检查某服务商目录有没有线上更新（只查不写）。 */
+  checkCatalogUpdate(provider: ModelProvider): Promise<CatalogUpdateCheck>;
+  /** 应用某服务商的线上目录，落盘并返回结果。 */
+  applyCatalogUpdate(provider: ModelProvider): Promise<CatalogUpdateApplied>;
   /** 订阅事件，返回取消订阅。 */
   subscribe(handler: (event: VoxEvent) => void): () => void;
 }
@@ -84,6 +104,12 @@ function createTauriApi(): VoxApi {
     openDashscopeConsole: async () => void (await call<unknown>("open_dashscope_console")),
     openProviderConsole: async (provider) =>
       void (await call<unknown>("open_provider_console", { provider })),
+    readCatalogOverride: (provider) =>
+      call<string | null>("read_catalog_override", { provider }),
+    checkCatalogUpdate: (provider) =>
+      call<CatalogUpdateCheck>("check_catalog_update", { provider }),
+    applyCatalogUpdate: (provider) =>
+      call<CatalogUpdateApplied>("apply_catalog_update", { provider }),
     subscribe(handler) {
       let stop: (() => void) | null = null;
       let cancelled = false;

@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use serde::Serialize;
 use serde_json::Value;
+use tauri::Manager;
 use vox_core::event::Pipeline;
 use vox_core::catalog;
 use vox_core::settings::{ModelProvider, Settings};
@@ -420,6 +421,65 @@ fn select_regular_cable_output(
     };
     let name = device.name.clone();
     runtime.update_settings(|settings| settings.speak.output_device = Some(name));
+}
+
+// ─── 模型目录在线更新 ───────────────────────────────────────────────────────────
+
+/// 读本地覆盖版目录（app_config_dir/catalog/{provider}.json）。没有就返回 null，
+/// 前端据此回落内置副本。返回的是原始 JSON 文本，由前端按内置同构解析。
+#[tauri::command]
+pub fn read_catalog_override(
+    app: tauri::AppHandle,
+    provider: String,
+) -> Result<Option<String>, String> {
+    if crate::catalog_updater::catalog_file(&provider).is_none() {
+        return Err(format!("未知模型服务商：{provider}"));
+    }
+    let config_dir = app.path().app_config_dir().map_err(|e| format!("取配置目录失败：{e}"))?;
+    Ok(crate::catalog_updater::read_override(&config_dir, &provider))
+}
+
+/// 检查某服务商的模型目录有没有线上更新。只查不写。
+#[tauri::command]
+pub async fn check_catalog_update(
+    app: tauri::AppHandle,
+    provider: String,
+) -> Result<CatalogUpdateCheckDto, String> {
+    parse_provider(&provider)?;
+    let config_dir = app.path().app_config_dir().map_err(|e| format!("取配置目录失败：{e}"))?;
+    let latest = crate::catalog_updater::check_update(&provider).await?;
+    Ok(CatalogUpdateCheckDto {
+        current: crate::catalog_updater::local_verified_at(&config_dir, &provider),
+        latest,
+    })
+}
+
+/// 应用线上模型目录：下载 → 校验 → 覆盖到 app_config_dir。返回落盘后的 verified_at。
+#[tauri::command]
+pub async fn apply_catalog_update(
+    app: tauri::AppHandle,
+    provider: String,
+) -> Result<CatalogUpdateAppliedDto, String> {
+    parse_provider(&provider)?;
+    let config_dir = app.path().app_config_dir().map_err(|e| format!("取配置目录失败：{e}"))?;
+    let (file, verified) = crate::catalog_updater::apply_update(&config_dir, &provider).await?;
+    Ok(CatalogUpdateAppliedDto { file, verified })
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CatalogUpdateCheckDto {
+    /// 当前生效的 verified_at（可能是覆盖版或内置）。
+    pub current: String,
+    /// 线上仓库里最新的 verified_at。
+    pub latest: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CatalogUpdateAppliedDto {
+    /// 覆盖到的文件名，如 "aliyun.json"。
+    pub file: String,
+    /// 落盘后的 verified_at。
+    pub verified: String,
 }
 
 // ─── 打开控制台 ────────────────────────────────────────────────────────────────

@@ -418,6 +418,16 @@ export function createMockApi(): VoxApi {
     async openProviderConsole(provider) {
       window.open(catalog.providerConsoleUrl(provider), "_blank", "noopener");
     },
+    // 假后端没有真实网络/磁盘：覆盖版永远为空，检查/应用给一段占位结果。
+    async readCatalogOverride() {
+      return null;
+    },
+    async checkCatalogUpdate() {
+      return { current: "builtin", latest: "builtin" };
+    },
+    async applyCatalogUpdate() {
+      return { file: "aliyun.json", verified: "builtin" };
+    },
     subscribe(handler) {
       handlers.add(handler);
       return () => {

@@ -36,6 +36,9 @@ tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-opener = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
+# 联网更新模型目录用。TLS 复用 workspace 里 rustls(ring) 那套，不引 native-tls。
+# 进程级的 CryptoProvider 已由 vox-net::ws 里 install_default() 装好，reqwest 直接共享。
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
 # 装配层只在 Windows 上构建：音频、热键、悬浮窗三样全是 Win32 实现，
 # 没有别的平台的等价物，硬造一层 cfg 假实现只会掩盖问题。

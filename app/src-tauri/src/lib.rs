@@ -23,6 +23,7 @@ use vox_core::ports::Clock;
 use vox_core::{PipelineEngine, Runtime};
 
 mod audio;
+mod catalog_updater;
 mod commands;
 mod devices;
 mod dsp;
@@ -75,6 +76,9 @@ pub fn run() {
             commands::set_virtual_cable_multichannel_visible,
             commands::open_dashscope_console,
             commands::open_provider_console,
+            commands::read_catalog_override,
+            commands::check_catalog_update,
+            commands::apply_catalog_update,
             commands::open_virtual_cable_website,
             commands::open_virtual_cable_donation,
             commands::quit_app,

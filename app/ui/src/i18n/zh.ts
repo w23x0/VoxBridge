@@ -236,6 +236,17 @@ const zh = {
     credits: "致谢",
     homepage: "主页",
     checkUpdate: "检查更新",
+    catalogSection: "模型目录",
+    catalogProvider: "目录 · {name}",
+    catalogCurrent: "当前 v{at}",
+    catalogChecking: "检查…",
+    catalogNoOverride: "未使用本地覆盖（内置 v{at}）",
+    catalogUpToDate: "已是最新（v{at}）",
+    catalogHasUpdate: "发现新版本 v{at}",
+    catalogApply: "应用更新",
+    catalogApplying: "应用…",
+    catalogApplied: "已应用 v{at}（重启后生效）",
+    catalogUpdateFailed: "更新失败：{error}",
   },
 
   usage: {

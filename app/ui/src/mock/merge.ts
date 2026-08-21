@@ -64,13 +64,17 @@ export function normalizeSettings(settings: Settings): Settings {
   s.listen.model_name = catalog.defaultModelForProvider(s.listen.provider);
   if (!catalog.supportsVoiceClone(s.speak.provider)) s.speak.voice_clone_frequency = null;
   if (!catalog.supportsSourceLanguage(s.listen.provider)) s.listen.source_language = null;
-  if (!catalog.LANGUAGE_CODES.some((language) => language.code === s.speak.target_language)) {
+  if (
+    !catalog
+      .languageOptions(s.ui_language as "zh-CN" | "en")
+      .some((language) => language.value === s.speak.target_language)
+  ) {
     s.speak.target_language = catalog.DEFAULT_TARGET_LANGUAGE;
   }
-  if (!s.speak.voice || catalog.LEGACY_REMOVED_VOICE_IDS.has(s.speak.voice)) {
+  if (!s.speak.voice || catalog.legacyRemovedVoiceIds().has(s.speak.voice)) {
     s.speak.voice = DEFAULT_VOICE;
   }
-  if (!s.listen.voice || catalog.LEGACY_REMOVED_VOICE_IDS.has(s.listen.voice)) {
+  if (!s.listen.voice || catalog.legacyRemovedVoiceIds().has(s.listen.voice)) {
     s.listen.voice = DEFAULT_VOICE;
   }
 

@@ -233,6 +233,17 @@ const en = {
     credits: "Credits",
     homepage: "Homepage",
     checkUpdate: "Check for updates",
+    catalogSection: "Model catalog",
+    catalogProvider: "Catalog · {name}",
+    catalogCurrent: "Current v{at}",
+    catalogChecking: "Checking…",
+    catalogNoOverride: "No local override (built-in v{at})",
+    catalogUpToDate: "Up to date (v{at})",
+    catalogHasUpdate: "New version v{at} available",
+    catalogApply: "Apply update",
+    catalogApplying: "Applying…",
+    catalogApplied: "Applied v{at} (takes effect after restart)",
+    catalogUpdateFailed: "Update failed: {error}",
   },
 
   usage: {

@@ -286,7 +286,7 @@ export function ProvidersPage() {
                   {t("providersPage.officialVoices", { n: String(voices.length) })}
                 </div>
                 <div className="row-wrap">
-                  {catalog.VOICE_CATALOG.slice(0, 8).map((voice) => (
+                  {catalog.voiceCatalog().slice(0, 8).map((voice) => (
                     <span className="chip static" key={voice.id}>{catalog.l10n(voice.name, uiLang)}</span>
                   ))}
                 </div>

@@ -237,6 +237,17 @@ const ja = {
     credits: "謝辞",
     homepage: "ホームページ",
     checkUpdate: "アップデートを確認",
+    catalogSection: "モデルカタログ",
+    catalogProvider: "カタログ · {name}",
+    catalogCurrent: "現在 v{at}",
+    catalogChecking: "確認中…",
+    catalogNoOverride: "ローカル上書きなし（内蔵 v{at}）",
+    catalogUpToDate: "最新（v{at}）",
+    catalogHasUpdate: "新バージョン v{at} あり",
+    catalogApply: "更新を適用",
+    catalogApplying: "適用中…",
+    catalogApplied: "適用済み {at}（再起動後に有効）",
+    catalogUpdateFailed: "更新失敗：{error}",
   },
 
   usage: {

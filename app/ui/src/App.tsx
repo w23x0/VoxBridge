@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import * as catalog from "./catalog";
 import { useT } from "./i18n/context";
 import {
   cycleTrafficLights,
@@ -70,6 +71,14 @@ export function App() {
     restoreTheme();
   }, []);
   useNoticeToasts();
+
+  // 启动时把 Rust 落盘的覆盖版目录灌进来。加载完成会触发重渲染，列表/下拉随即反映。
+  const [catalogTick, setCatalogTick] = useState(0);
+  useEffect(() => {
+    void catalog.ensureCatalogLoaded().then(() => setCatalogTick((n) => n + 1));
+    return catalog.subscribeCatalog(() => setCatalogTick((n) => n + 1));
+  }, []);
+  void catalogTick;
 
   // ref 反映最新 page，让 document keydown 闭包始终读到当前页，不重挂监听。
   const pageRef = useRef(page);
