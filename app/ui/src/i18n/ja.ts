@@ -248,6 +248,16 @@ const ja = {
     catalogApplying: "適用中…",
     catalogApplied: "適用済み {at}（再起動後に有効）",
     catalogUpdateFailed: "更新失敗：{error}",
+    checkUpdateFailed: "確認失敗",
+    appSection: "アプリ更新",
+    appChannels: "アプリの新バージョンを自動/手動で確認",
+    appChecking: "アプリを確認中…",
+    appUpToDate: "最新です",
+    appAvailable: "新バージョン v{ver} あり",
+    appDownloading: "更新をダウンロード中…",
+    appInstall: "ダウンロードしてインストール",
+    appInstallFailed: "アプリ更新失敗：{error}",
+    appInstallDone: "更新をインストール済み（再起動後に有効）",
   },
 
   usage: {

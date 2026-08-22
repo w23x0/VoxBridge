@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as catalog from "../catalog";
 import { useLang, useT } from "../i18n/context";
 import { useStore } from "../store";
@@ -12,7 +12,16 @@ type RowState =
   | { kind: "checking" }
   | { kind: "checked"; current: string; latest: string }
   | { kind: "applying" }
-  | { kind: "applied"; last: string };
+  | { kind: "applied"; last: string }
+  | { kind: "failed" };
+
+type AppState =
+  | { kind: "idle" }
+  | { kind: "checking" }
+  | { kind: "upToDate" }
+  | { kind: "available"; version: string }
+  | { kind: "downloading" }
+  | { kind: "failed" };
 
 export function AboutPage() {
   const t = useT();
@@ -21,6 +30,9 @@ export function AboutPage() {
   const toast = useToast();
   const [version, setVersion] = useState("0.1.0");
   const [rows, setRows] = useState<Record<string, RowState>>({});
+  const [appState, setAppState] = useState<AppState>({ kind: "idle" });
+  // 进页只自动检查一次；手动点按钮的行为照旧。
+  const didAutoCheck = useRef(false);
 
   useEffect(() => {
     void import("@tauri-apps/api/app")
@@ -34,10 +46,21 @@ export function AboutPage() {
     return catalog.subscribeCatalog(() => setRows((r) => ({ ...r })));
   }, []);
 
+  // 进入「关于」页自动检查一次。失败不弹窗（页面只做静默提示），让行内状态说话。
+  useEffect(() => {
+    if (didAutoCheck.current) return;
+    didAutoCheck.current = true;
+    for (const provider of PROVIDERS) {
+      void check(provider, true);
+    }
+    void checkApp(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api]);
+
   const providerName = (provider: ModelProvider) =>
     catalog.providerLabel(provider, uiLang);
 
-  const check = async (provider: ModelProvider) => {
+  const check = async (provider: ModelProvider, silent = false) => {
     setRows((r) => ({ ...r, [provider]: { kind: "checking" } }));
     try {
       const res = await api.checkCatalogUpdate(provider);
@@ -46,8 +69,10 @@ export function AboutPage() {
         [provider]: { kind: "checked", current: res.current, latest: res.latest },
       }));
     } catch (error: unknown) {
-      toast("danger", t("about.catalogUpdateFailed", { error: String(error) }));
-      setRows((r) => ({ ...r, [provider]: { kind: "idle" } }));
+      if (!silent) {
+        toast("danger", t("about.catalogUpdateFailed", { error: String(error) }));
+      }
+      setRows((r) => ({ ...r, [provider]: { kind: "failed" } }));
     }
   };
 
@@ -62,6 +87,48 @@ export function AboutPage() {
     } catch (error: unknown) {
       toast("danger", t("about.catalogUpdateFailed", { error: String(error) }));
       setRows((r) => ({ ...r, [provider]: { kind: "idle" } }));
+    }
+  };
+
+  // 检查程序本体有没有新版。纯前端走 updater 插件，不经过 Rust 命令，
+  // 所以这里直接动态 import —— 非 Tauri 环境（mock/浏览器）会进 catch，落成 failed。
+  const checkApp = async (silent = false) => {
+    setAppState({ kind: "checking" });
+    try {
+      const { check } = await import("@tauri-apps/plugin-updater");
+      const update = await check();
+      if (!update) {
+        setAppState({ kind: "upToDate" });
+        return;
+      }
+      setAppState({ kind: "available", version: update.version });
+      void update.close().catch(() => undefined);
+    } catch (error: unknown) {
+      if (!silent) {
+        toast("danger", t("about.appInstallFailed", { error: String(error) }));
+      }
+      setAppState({ kind: "failed" });
+    }
+  };
+
+  // 下载并安装新版。updater 装完需要重启才生效；这里不强制重启，
+  // 跟目录更新那句「重启后生效」保持一致的口吻，交给用户自己重启。
+  const installApp = async () => {
+    setAppState({ kind: "downloading" });
+    try {
+      const { check } = await import("@tauri-apps/plugin-updater");
+      const update = await check();
+      if (!update) {
+        setAppState({ kind: "upToDate" });
+        return;
+      }
+      await update.downloadAndInstall();
+      void update.close().catch(() => undefined);
+      toast("success", t("about.appInstallDone"));
+      setAppState({ kind: "upToDate" });
+    } catch (error: unknown) {
+      toast("danger", t("about.appInstallFailed", { error: String(error) }));
+      setAppState({ kind: "failed" });
     }
   };
 
@@ -95,7 +162,9 @@ export function AboutPage() {
                         ? t("about.catalogChecking")
                         : row.kind === "applying"
                           ? t("about.catalogApplying")
-                          : t("about.catalogNoOverride", { at: "builtin" })}
+                          : row.kind === "failed"
+                            ? t("about.checkUpdateFailed")
+                            : t("about.catalogNoOverride", { at: "builtin" })}
                 </span>
                 {row.kind === "checked" && row.latest !== row.current ? (
                   <>
@@ -125,6 +194,46 @@ export function AboutPage() {
               </div>
             );
           })}
+        </div>
+
+        <div className="sub-card" style={{ marginTop: 14 }}>
+          <div className="sub-card-head">{t("about.appSection")}</div>
+          <div className="row" style={{ gap: 10, padding: "6px 0" }}>
+            <span style={{ minWidth: 120 }}>{t("about.appChannels")}</span>
+            <span className="hint mono" style={{ flex: 1, minWidth: 0 }}>
+              {appState.kind === "upToDate"
+                ? t("about.appUpToDate")
+                : appState.kind === "available"
+                  ? t("about.appAvailable", { ver: appState.version })
+                  : appState.kind === "checking"
+                    ? t("about.appChecking")
+                    : appState.kind === "downloading"
+                      ? t("about.appDownloading")
+                      : appState.kind === "failed"
+                        ? t("about.checkUpdateFailed")
+                        : t("about.appUpToDate")}
+            </span>
+            {appState.kind === "available" ? (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                data-focus-item
+                onClick={() => void installApp()}
+              >
+                {t("about.appInstall")}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={appState.kind === "checking" || appState.kind === "downloading"}
+                data-focus-item
+                onClick={() => void checkApp()}
+              >
+                {t("about.checkUpdate")}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -247,6 +247,16 @@ const zh = {
     catalogApplying: "应用…",
     catalogApplied: "已应用 v{at}（重启后生效）",
     catalogUpdateFailed: "更新失败：{error}",
+    checkUpdateFailed: "检查失败",
+    appSection: "程序更新",
+    appChannels: "自动/手动检查新版程序",
+    appChecking: "检查程序…",
+    appUpToDate: "已是最新版",
+    appAvailable: "发现新版本 v{ver}",
+    appDownloading: "下载更新…",
+    appInstall: "下载并安装",
+    appInstallFailed: "程序更新失败：{error}",
+    appInstallDone: "更新已安装（重启后生效）",
   },
 
   usage: {

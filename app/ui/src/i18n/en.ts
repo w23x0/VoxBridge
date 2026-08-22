@@ -244,6 +244,16 @@ const en = {
     catalogApplying: "Applying…",
     catalogApplied: "Applied v{at} (takes effect after restart)",
     catalogUpdateFailed: "Update failed: {error}",
+    checkUpdateFailed: "Check failed",
+    appSection: "App update",
+    appChannels: "Check the app for a newer version",
+    appChecking: "Checking app…",
+    appUpToDate: "You're up to date",
+    appAvailable: "New version v{ver} available",
+    appDownloading: "Downloading update…",
+    appInstall: "Download & install",
+    appInstallFailed: "App update failed: {error}",
+    appInstallDone: "Update installed (takes effect after restart)",
   },
 
   usage: {
