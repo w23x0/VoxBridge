@@ -11,7 +11,7 @@ use windows::Wdk::System::SystemServices::RtlGetVersion;
 use windows::Win32::System::SystemInformation::OSVERSIONINFOW;
 
 /// 进程环回要求的最低内部版本号（Windows Server 2022 / Win11 起）。
-pub const MIN_PROCESS_LOOPBACK_BUILD: u32 = 20348;
+pub(crate) const MIN_PROCESS_LOOPBACK_BUILD: u32 = 20348;
 
 /// 当前系统的内部版本号。取不到时返回 0（会被判定为不支持）。
 pub fn os_build_number() -> u32 {
@@ -30,7 +30,7 @@ pub fn os_build_number() -> u32 {
 }
 
 /// 纯判断，方便测试。
-pub fn process_loopback_supported(build: u32) -> bool {
+pub(crate) fn process_loopback_supported(build: u32) -> bool {
     build >= MIN_PROCESS_LOOPBACK_BUILD
 }
 

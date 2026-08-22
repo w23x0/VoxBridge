@@ -42,28 +42,20 @@ impl Running {
 
 /// 麦克风 / 进程环回采集。
 ///
-/// 进程环回在老系统上不可用时的行为由 `endpoint_fallback` 决定：
-/// - `false`（默认，`new`）：直接报错，让调用方自己决定怎么退，UI 可以提示用户；
-/// - `true`（`with_endpoint_fallback`）：自动退到整机环回，只记一条警告。
+/// 进程环回在老系统上不可用时就报错，让调用方（通常是 UI）决定怎么退。
+/// 宽松模式（`with_endpoint_fallback`，自动退整机环回）已移除：主路径用进程
+/// 环回、失败直说，不静默降级到抓整机声音。
 pub struct WinCapture {
     running: Option<Running>,
     endpoint_fallback: bool,
 }
 
 impl WinCapture {
-    /// 严格模式：进程环回不可用就报错。
+    /// 进程环回不可用就报错。
     pub fn new() -> Self {
         Self {
             running: None,
             endpoint_fallback: false,
-        }
-    }
-
-    /// 宽松模式：进程环回不可用时自动退到整机环回。
-    pub fn with_endpoint_fallback() -> Self {
-        Self {
-            running: None,
-            endpoint_fallback: true,
         }
     }
 }

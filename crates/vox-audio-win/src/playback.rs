@@ -128,7 +128,7 @@ impl PlaybackSink for WinPlayback {
         let thread_shared = Arc::clone(&shared);
         let thread = std::thread::Builder::new()
             .name("vox-playback".into())
-            .spawn(move || render_thread(device, source_rate, thread_shared, tx))
+            .spawn(move || render_thread(device, thread_shared, tx))
             .map_err(|e| PortError::new(format!("创建播放线程失败：{e}")))?;
 
         let report = match rx.recv_timeout(OPEN_TIMEOUT) {
@@ -247,7 +247,6 @@ impl Drop for WinPlayback {
 /// 渲染线程主体。
 fn render_thread(
     device: Option<String>,
-    source_rate: u32,
     shared: Arc<Shared>,
     tx: mpsc::Sender<PortResult<OpenReport>>,
 ) {
@@ -260,7 +259,7 @@ fn render_thread(
         }
     };
 
-    let opened = match open_render(device.as_deref(), source_rate) {
+    let opened = match open_render(device.as_deref()) {
         Ok(o) => o,
         Err(e) => {
             let _ = tx.send(Err(e));
@@ -295,7 +294,7 @@ struct OpenRender {
 }
 
 /// 打开输出设备并按探测顺序定采样率。
-fn open_render(device_name: Option<&str>, source_rate: u32) -> PortResult<OpenRender> {
+fn open_render(device_name: Option<&str>) -> PortResult<OpenRender> {
     let device = devices::find_device(devices::RENDER, device_name)?;
     // SAFETY: device 有效。
     let client: IAudioClient =
@@ -321,7 +320,7 @@ fn open_render(device_name: Option<&str>, source_rate: u32) -> PortResult<OpenRe
     };
 
     // 按 设备默认 → 24000 → 48000 → 44100 探。声道数跟着设备走，不去改它。
-    let choice: RateChoice = choose_output_rate(mix.sample_rate, source_rate, |rate| {
+    let choice: RateChoice = choose_output_rate(mix.sample_rate, |rate| {
         let candidate = float_format(rate, mix.channels);
         // SAFETY: client 有效；格式头是本地结构体，调用期间有效；
         // 不要 closest match，只关心“行不行”。

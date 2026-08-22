@@ -21,7 +21,6 @@ mod rates;
 mod registry;
 mod resample;
 mod ring;
-mod scoring;
 mod sessions;
 mod wave;
 
@@ -32,22 +31,14 @@ pub use cable::{
     UNINSTALL_ARGS,
 };
 pub use capture::{EndpointLoopbackCapture, WinCapture};
-pub use osver::{
-    os_build_number, process_loopback_available, process_loopback_supported,
-    MIN_PROCESS_LOOPBACK_BUILD,
-};
+// 只重导出 examples/smoke.rs 和 app/src-tauri 实际用到的 osver 入口。
+// process_loopback_supported / MIN_PROCESS_LOOPBACK_BUILD 仅 crate 内部用，不对外暴露。
+pub use osver::{os_build_number, process_loopback_available};
 pub use playback::WinPlayback;
 pub use policy::{
     capture_default_endpoints, elevate_and_restore_defaults, restore_via_args_if_requested,
 };
-pub use proc::{
-    choose_target_pid, climb_to_root, matching_processes, name_matches, ProcessEntry, SessionHint,
-};
-pub use rates::{choose_output_rate, RateChoice};
 pub use registry::WinDeviceRegistry;
-pub use scoring::{
-    is_virtual_audio_device, pick_listen_input, pick_microphone, pick_virtual_output,
-};
 
 /// 当前仍持有 VB-CABLE 播放/录音会话的应用。调用方无需预先初始化 COM。
 pub fn virtual_cable_blocking_apps() -> vox_core::ports::PortResult<Vec<vox_core::ports::AudioApp>>

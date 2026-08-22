@@ -19,15 +19,15 @@ use crate::com::{wide_to_string, WinContext};
 
 /// 快照里的一个进程。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProcessEntry {
-    pub pid: u32,
-    pub parent_pid: u32,
+pub(crate) struct ProcessEntry {
+    pub(crate) pid: u32,
+    pub(crate) parent_pid: u32,
     /// 不带路径的可执行文件名，例如 `Discord.exe`。
-    pub name: String,
+    pub(crate) name: String,
 }
 
 /// 拍一张当前进程快照。
-pub fn snapshot_processes() -> PortResult<Vec<ProcessEntry>> {
+pub(crate) fn snapshot_processes() -> PortResult<Vec<ProcessEntry>> {
     // SAFETY: 快照句柄拿到后立刻由下面的作用域负责关闭；失败时返回 INVALID_HANDLE_VALUE，
     // 由 `ctx` 转成带 HRESULT 的错误。
     let snapshot =
@@ -60,7 +60,7 @@ pub fn snapshot_processes() -> PortResult<Vec<ProcessEntry>> {
 }
 
 /// 名字是否匹配（大小写不敏感，允许调用方传带不带 .exe 的写法）。
-pub fn name_matches(entry_name: &str, wanted: &str) -> bool {
+pub(crate) fn name_matches(entry_name: &str, wanted: &str) -> bool {
     let a = entry_name.to_lowercase();
     let b = wanted.trim().to_lowercase();
     if b.is_empty() {
@@ -79,12 +79,12 @@ pub fn name_matches(entry_name: &str, wanted: &str) -> bool {
 
 /// 一个候选进程 + 它的音频会话状态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SessionHint {
-    pub pid: u32,
+pub(crate) struct SessionHint {
+    pub(crate) pid: u32,
     /// 这个 PID 现在有音频会话。
-    pub has_session: bool,
+    pub(crate) has_session: bool,
     /// 会话处于 Active（真在出声），不只是挂着。
-    pub active: bool,
+    pub(crate) active: bool,
 }
 
 /// 挑出该交给进程环回的 PID。
@@ -98,7 +98,7 @@ pub struct SessionHint {
 /// 因为此时只抓单个进程，抓主进程往往一点声音都没有。
 ///
 /// 一个音频会话都找不到（软件开着但没出过声）就退到根进程，让调用方记一条日志。
-pub fn choose_target_pid(
+pub(crate) fn choose_target_pid(
     candidates: &[ProcessEntry],
     hints: &[SessionHint],
     include_tree: bool,
@@ -135,7 +135,7 @@ pub fn choose_target_pid(
 ///
 /// `candidates` 只包含同名进程，所以“父进程在表里”就等于“父进程是同一个软件”。
 /// 带环保护：进程表理论上不该有环，但 PID 回卷时可能出现自指。
-pub fn climb_to_root(start: u32, candidates: &[ProcessEntry]) -> u32 {
+pub(crate) fn climb_to_root(start: u32, candidates: &[ProcessEntry]) -> u32 {
     let by_pid: HashMap<u32, &ProcessEntry> = candidates.iter().map(|e| (e.pid, e)).collect();
     let mut current = start;
     let mut hops = 0;
@@ -154,7 +154,7 @@ pub fn climb_to_root(start: u32, candidates: &[ProcessEntry]) -> u32 {
 }
 
 /// 找出所有同名进程。
-pub fn matching_processes(all: &[ProcessEntry], executable: &str) -> Vec<ProcessEntry> {
+pub(crate) fn matching_processes(all: &[ProcessEntry], executable: &str) -> Vec<ProcessEntry> {
     all.iter()
         .filter(|e| name_matches(&e.name, executable))
         .cloned()
