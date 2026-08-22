@@ -114,7 +114,6 @@ export interface LatencySnapshot {
 
 export interface Snapshot {
   settings: Settings;
-  has_api_key: boolean;
   api_keys: Record<string, boolean>;
   speak: PipelineSnapshot;
   listen: PipelineSnapshot;

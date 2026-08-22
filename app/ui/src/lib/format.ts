@@ -3,11 +3,10 @@
 import type { TParams } from "../i18n/types";
 
 const NUM_CN = new Intl.NumberFormat("zh-CN");
-const NUM_EN = new Intl.NumberFormat("en-US");
 
-/** 千分位整数。locale 决定分组字符（中文同英文逗号，这里仅按界面语言切换）。 */
-export function fmtNum(n: number, lang: "zh-CN" | "en" = "zh-CN"): string {
-  return (lang === "en" ? NUM_EN : NUM_CN).format(Math.round(n));
+/** 千分位整数。 */
+export function fmtNum(n: number): string {
+  return NUM_CN.format(Math.round(n));
 }
 
 /**

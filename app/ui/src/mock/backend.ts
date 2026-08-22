@@ -7,7 +7,7 @@
  */
 
 import { DEFAULT_SETTINGS, cloneSettings } from "../defaults";
-import type { PipelineName, PipelineState, Settings, Track } from "../types";
+import type { PipelineName, PipelineState, Track } from "../types";
 import * as catalog from "../catalog";
 import type {
   AudioApp,
@@ -271,7 +271,6 @@ export function createMockApi(): VoxApi {
   function currentSnapshot(): Snapshot {
     return {
       settings: cloneSettings(settings),
-      has_api_key: catalog.providerIds().some((provider) => apiKeys[provider]),
       api_keys: { ...apiKeys },
       speak: snap("speak"),
       listen: snap("listen"),
@@ -356,8 +355,6 @@ export function createMockApi(): VoxApi {
       apiKeys[provider] = key.trim().length > 0;
       notify("info", apiKeys[provider] ? "密钥已保存" : "密钥已清空");
     },
-    startPipeline: start,
-    stopPipeline: stop,
     async togglePipeline(pipeline) {
       if (isRunning(lanes[pipeline].state)) await stop(pipeline);
       else await start(pipeline);
@@ -412,9 +409,6 @@ export function createMockApi(): VoxApi {
     async openVirtualCableDonation() {
       window.open("https://vb-audio.com/Services/licensing.htm", "_blank", "noopener");
     },
-    async openDashscopeConsole() {
-      window.open("https://bailian.console.aliyun.com/?apiKey=1", "_blank", "noopener");
-    },
     async openProviderConsole(provider) {
       window.open(catalog.providerConsoleUrl(provider), "_blank", "noopener");
     },
@@ -440,6 +434,3 @@ export function createMockApi(): VoxApi {
 function wait(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
-
-/** 让 Settings 类型在本文件里被用到（避免 noUnusedLocals 报错）。 */
-export type MockSettings = Settings;

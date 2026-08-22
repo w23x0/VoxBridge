@@ -243,58 +243,6 @@ export function Slider({
   );
 }
 
-/* ---- 电平条 ------------------------------------------------------- */
-
-/**
- * 进度条 + 一根门限刻线。数据是后端给的真实 rms，没数据就画空槽写「未运行」，
- * 不做假动画。
- */
-export function LevelMeter({
-  rms,
-  threshold,
-  stateText,
-  active,
-}: {
-  rms: number | null;
-  /** 门限刻线位置。手动门控没有门限就不传。 */
-  threshold?: number;
-  stateText: string;
-  active?: boolean;
-}) {
-  const t = useT();
-  // rms 0..0.2 映射到 0..100%，超过 0.2 顶到底
-  const pct = (v: number) => Math.min(100, Math.max(0, (v / 0.2) * 100));
-  return (
-    <div className="row">
-      <div
-        className="progress-track meter"
-        style={{ flex: 1 }}
-        role="meter"
-        aria-label={t("controls.audioLevel")}
-        aria-valuemin={0}
-        aria-valuemax={0.2}
-        aria-valuenow={rms === null ? 0 : Number(rms.toFixed(4))}
-        aria-valuetext={
-          rms === null
-            ? stateText
-            : t("controls.level", { v: rms.toFixed(3), state: stateText })
-        }
-      >
-        <div
-          className="progress-fill"
-          style={{ width: `${rms === null ? 0 : pct(rms)}%`, opacity: active ? 1 : 0.55 }}
-        />
-        {threshold !== undefined && threshold > 0 ? (
-          <div className="meter-tick" style={{ left: `${pct(threshold)}%` }} title={t("controls.thresholdTitle")} />
-        ) : null}
-      </div>
-      <span className="slider-readout">
-        {rms === null ? stateText : `${rms.toFixed(3)} · ${stateText}`}
-      </span>
-    </div>
-  );
-}
-
 /* ---- 设置行 ------------------------------------------------------- */
 
 /**

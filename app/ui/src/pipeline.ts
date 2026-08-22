@@ -5,7 +5,7 @@
  * 常量。本常量仍保留供旧路径 / mock 使用。
  */
 
-import type { PipelineName, PipelineState } from "./types";
+import type { PipelineState } from "./types";
 
 export const STATE_LABEL: Record<PipelineState, string> = {
   idle: "待机",
@@ -21,25 +21,3 @@ export function isRunning(state: PipelineState): boolean {
   return state !== "idle" && state !== "failed";
 }
 
-/** 状态灯的语义色，用来选 CSS 修饰类。 */
-export type StateTone = "off" | "pending" | "live" | "bad";
-
-export function stateTone(state: PipelineState): StateTone {
-  switch (state) {
-    case "idle":
-      return "off";
-    case "starting":
-    case "reconnecting":
-      return "pending";
-    case "ready":
-    case "active":
-      return "live";
-    case "failed":
-      return "bad";
-  }
-}
-
-export const PIPELINE_LABEL: Record<PipelineName, string> = {
-  speak: "对外说话",
-  listen: "听人说话",
-};

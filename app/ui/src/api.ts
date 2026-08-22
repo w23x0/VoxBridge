@@ -39,8 +39,6 @@ export interface VoxApi {
   snapshot(): Promise<Snapshot>;
   updateSettings(patch: SettingsPatch): Promise<Settings>;
   setApiKey(provider: ModelProvider, key: string): Promise<void>;
-  startPipeline(pipeline: PipelineName): Promise<void>;
-  stopPipeline(pipeline: PipelineName): Promise<void>;
   togglePipeline(pipeline: PipelineName): Promise<void>;
   resetUsage(): Promise<void>;
   resetUsageModel(model: string): Promise<void>;
@@ -51,7 +49,6 @@ export interface VoxApi {
   setVirtualCableMultichannelVisible(visible: boolean): Promise<CableActionResult>;
   openVirtualCableWebsite(): Promise<void>;
   openVirtualCableDonation(): Promise<void>;
-  openDashscopeConsole(): Promise<void>;
   openProviderConsole(provider: ModelProvider): Promise<void>;
   /** 读某个服务商落盘的覆盖版目录；没覆盖时返回 null。 */
   readCatalogOverride(provider: ModelProvider): Promise<string | null>;
@@ -87,8 +84,6 @@ function createTauriApi(): VoxApi {
     updateSettings: (patch) => call<Settings>("update_settings", { patch }),
     setApiKey: async (provider, key) =>
       void (await call<unknown>("set_api_key", { provider, key })),
-    startPipeline: async (pipeline) => void (await call<unknown>("start_pipeline", { pipeline })),
-    stopPipeline: async (pipeline) => void (await call<unknown>("stop_pipeline", { pipeline })),
     togglePipeline: async (pipeline) => void (await call<unknown>("toggle_pipeline", { pipeline })),
     resetUsage: async () => void (await call<unknown>("reset_usage")),
     resetUsageModel: async (model) => void (await call<unknown>("reset_usage_model", { model })),
@@ -101,7 +96,6 @@ function createTauriApi(): VoxApi {
       call<CableActionResult>("set_virtual_cable_multichannel_visible", { visible }),
     openVirtualCableWebsite: async () => void (await call<unknown>("open_virtual_cable_website")),
     openVirtualCableDonation: async () => void (await call<unknown>("open_virtual_cable_donation")),
-    openDashscopeConsole: async () => void (await call<unknown>("open_dashscope_console")),
     openProviderConsole: async (provider) =>
       void (await call<unknown>("open_provider_console", { provider })),
     readCatalogOverride: (provider) =>

@@ -9,6 +9,7 @@ import type { ModelProvider } from "../types";
 import { Dropdown } from "../ui/controls";
 import { IconExternal, IconSave, IconTrash } from "../ui/icons";
 import { useToast } from "../ui/toast";
+import { ConfirmButton } from "../ui/ConfirmButton";
 import { orderedVoices } from "../voices";
 
 export function ProvidersPage() {
@@ -20,10 +21,8 @@ export function ProvidersPage() {
   );
   const [hasDraft, setHasDraft] = useState(false);
   const [busy, setBusy] = useState<"save" | "clear" | null>(null);
-  const [armed, setArmed] = useState(false);
   const input = useRef<HTMLInputElement | null>(null);
   const busyRef = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loading = snapshot === null;
   const hasKey = snapshot?.api_keys[provider] ?? false;
@@ -32,13 +31,6 @@ export function ProvidersPage() {
   useEffect(() => {
     if (input.current) input.current.value = "";
     setHasDraft(false);
-    setArmed(false);
-  }, [provider]);
-
-  useEffect(() => {
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
   }, []);
 
   const saveKey = async () => {
@@ -70,7 +62,6 @@ export function ProvidersPage() {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy("clear");
-    setArmed(false);
     try {
       await api.setApiKey(provider, "");
       reload();
@@ -171,45 +162,14 @@ export function ProvidersPage() {
             {t("providersPage.openConsole")}
           </button>
           {hasKey ? (
-            armed ? (
-              <>
-                <button
-                  type="button"
-                  className="btn btn-danger btn-sm"
-                  disabled={busy !== null}
-                  data-focus-item
-                  onClick={() => void clearKey()}
-                >
-                  {busy === "clear"
-                    ? t("providersPage.clearingKey")
-                    : t("providersPage.confirmClear")}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  disabled={busy !== null}
-                  data-focus-item
-                  onClick={() => setArmed(false)}
-                >
-                  {t("common.cancel")}
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                disabled={busy !== null}
-                data-focus-item
-                onClick={() => {
-                  setArmed(true);
-                  if (timer.current) clearTimeout(timer.current);
-                  timer.current = setTimeout(() => setArmed(false), 5000);
-                }}
-              >
-                <IconTrash size={15} />
-                {t("providersPage.clearKey")}
-              </button>
-            )
+            <ConfirmButton
+              confirmText={t("providersPage.confirmClear")}
+              disabled={busy !== null}
+              onConfirm={() => void clearKey()}
+            >
+              <IconTrash size={15} />
+              {t("providersPage.clearKey")}
+            </ConfirmButton>
           ) : null}
         </div>
       </div>

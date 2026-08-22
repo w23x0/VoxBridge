@@ -61,6 +61,26 @@ export function orderedVoices(
   return out;
 }
 
+/**
+ * 音色下拉选项：`orderedVoices` 排好序后，给官方默认音色追加 `defaultVoiceSuffix` 标记。
+ * speak/listen 两张卡的下拉都走这里，避免两段逐字相同的 map。
+ *
+ * `customSuffix` 是复刻音色这类目录外 id 的后缀（调用方用 t("catalog.customVoiceSuffix") 传入）；
+ * `defaultVoiceSuffix` 是官方默认音色的后缀（调用方用 t("catalog.defaultVoiceSuffix") 传入）。
+ */
+export function voiceOptions(
+  uiLang: UiLang,
+  voice: string | null | undefined,
+  recent: readonly string[],
+  customSuffix: string,
+  defaultVoiceSuffix: string,
+): LabeledOption[] {
+  return orderedVoices(uiLang, voice, recent, customSuffix).map((option) => ({
+    value: option.value,
+    label: option.recommended ? `${option.label}${defaultVoiceSuffix}` : option.label,
+  }));
+}
+
 export function defaultVoiceForLanguage(_language: string): string {
   return defaultVoiceForProvider();
 }
