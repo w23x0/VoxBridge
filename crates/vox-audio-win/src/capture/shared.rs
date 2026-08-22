@@ -14,14 +14,98 @@ use windows::Win32::Media::Audio::{IAudioCaptureClient, IAudioClient, AUDCLNT_BU
 use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObject};
 
 use crate::com::{OwnedHandle, WinContext};
-use crate::wave::{bytes_to_f32, WaveInfo};
+use crate::devices;
+use crate::wave::{bytes_to_f32, parse_format, WaveInfo};
 
 /// 等事件的超时。
 ///
 /// 目标软件一声不出时进程环回**根本不会给帧**，所以必须超时轮转，
-/// 把 WAIT_TIMEOUT 当成“正常安静”而不是错误、不是掉线。麦克风路径也用同一个值：
+/// 把 WAIT_TIMEOUT 当成"正常安静"而不是错误、不是掉线。麦克风路径也用同一个值：
 /// 设备被拔掉时事件同样不再触发，靠超时才能回到循环顶部检查停止标志。
 pub(crate) const WAIT_TIMEOUT_MS: u32 = 250;
+
+/// 打开的采集流。全部接口都属于调用它的那个线程。
+pub(crate) struct OpenCapture {
+    pub(crate) client: IAudioClient,
+    pub(crate) capture: IAudioCaptureClient,
+    pub(crate) event: OwnedHandle,
+    pub(crate) info: WaveInfo,
+}
+
+impl OpenCapture {
+    pub(crate) fn format(&self) -> CaptureFormat {
+        CaptureFormat {
+            sample_rate: self.info.sample_rate,
+            channels: self.info.channels,
+        }
+    }
+}
+
+/// 共用的 WASAPI 采集初始化：找设备、激活、GetMixFormat、Initialize（先试
+/// 最短周期再退默认）、建事件、SetEventHandle、GetService、Start。麦克风和
+/// 整机环回只有 flow 方向和 stream flags 不同，其余完全一样。
+///
+/// `what` 是错误信息里的设备描述（如 "麦克风"、"输出设备"），拼进各步骤的
+/// 中文错误文案，排查时能一眼看出是哪条路炸了。
+pub(crate) fn open_capture_client(
+    flow: windows::Win32::Media::Audio::EDataFlow,
+    device_name: Option<&str>,
+    stream_flags: u32,
+    what: &str,
+) -> PortResult<OpenCapture> {
+    use windows::Win32::System::Com::{CoTaskMemFree, CLSCTX_ALL};
+
+    let device = devices::find_device(flow, device_name)?;
+    // SAFETY: device 有效；Activate 只创建 IAudioClient，不带激活参数。
+    let candidate: IAudioClient =
+        unsafe { device.Activate(CLSCTX_ALL, None) }.ctx(&format!("打开{what}失败"))?;
+
+    // SAFETY: GetMixFormat 返回 COM 分配的格式块，解析完立刻释放；
+    // Initialize 期间指针必须有效，所以释放放在 Initialize 之后。
+    let (client, info) = unsafe {
+        let mix = candidate
+            .GetMixFormat()
+            .ctx(&format!("读{what}混音格式失败"))?;
+        let initialized = (|| -> PortResult<(IAudioClient, WaveInfo)> {
+            let parsed = parse_format(mix)?;
+            let client = match crate::client::initialize_min_period(&candidate, stream_flags, mix) {
+                Ok(period) => {
+                    tracing::debug!(period_frames = period, "{what}使用 WASAPI 最短共享周期");
+                    candidate
+                }
+                Err(error) => {
+                    tracing::debug!(error = %error, "{what}最短共享周期不可用，退回系统默认周期");
+                    let fallback: IAudioClient = device
+                        .Activate(CLSCTX_ALL, None)
+                        .ctx(&format!("重新打开{what}失败"))?;
+                    crate::client::initialize_default_period(&fallback, stream_flags, mix)
+                        .ctx(&format!("初始化{what}流失败"))?;
+                    fallback
+                }
+            };
+            Ok((client, parsed))
+        })();
+        CoTaskMemFree(Some(mix as *const _));
+        initialized?
+    };
+
+    let event = create_stream_event()?;
+    // SAFETY: client 已初始化；事件句柄在 OpenCapture 存活期间一直有效，
+    // 而 client 会先于它被丢弃（结构体字段声明顺序：client 在 event 之前）。
+    unsafe { client.SetEventHandle(event.raw()) }.ctx(&format!("绑定{what}事件失败"))?;
+    // SAFETY: client 已初始化，取采集服务接口。
+    let capture: IAudioCaptureClient =
+        unsafe { client.GetService() }.ctx(&format!("获取{what}采集接口失败"))?;
+    // SAFETY: 一切就绪，开始走流。
+    unsafe { client.Start() }.ctx(&format!("启动{what}流失败"))?;
+
+    Ok(OpenCapture {
+        client,
+        capture,
+        event,
+        info,
+    })
+}
 
 /// 启动握手的等待上限。COM 激活和设备初始化偶尔会卡几百毫秒，给足余量。
 const START_TIMEOUT: Duration = Duration::from_secs(8);

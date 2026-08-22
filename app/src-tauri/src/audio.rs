@@ -14,7 +14,10 @@ pub fn capture_factory() -> CaptureFactory {
 }
 
 pub fn playback_factory() -> PlaybackFactory {
-    Box::new(|| Box::new(vox_audio_win::WinPlayback::new()))
+    Box::new(|| {
+        let rf = crate::dsp::resample_factory();
+        Box::new(vox_audio_win::WinPlayback::new(rf))
+    })
 }
 
 /// 设备枚举。无状态，全进程共用一个。

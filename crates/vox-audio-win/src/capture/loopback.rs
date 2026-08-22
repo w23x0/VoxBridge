@@ -33,8 +33,7 @@ use crate::com::{hr_err, WinContext};
 use crate::osver;
 use crate::wave::{float_format, SampleKind, WaveInfo};
 
-use super::mic::OpenCapture;
-use super::shared::create_stream_event;
+use super::shared::{create_stream_event, OpenCapture};
 
 /// 伪设备只吃写死的格式：32 位浮点 / 48 kHz / 双声道 / 掩码 0x3。
 /// 它的 `GetMixFormat` 是不能用的，所以格式必须自己造，而且必须是这一组。

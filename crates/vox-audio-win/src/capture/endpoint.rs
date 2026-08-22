@@ -6,68 +6,19 @@
 
 use vox_core::ports::PortResult;
 use windows::Win32::Media::Audio::{
-    IAudioCaptureClient, IAudioClient, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-    AUDCLNT_STREAMFLAGS_LOOPBACK,
+    eRender, AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_LOOPBACK,
 };
-use windows::Win32::System::Com::{CoTaskMemFree, CLSCTX_ALL};
 
-use crate::com::WinContext;
-use crate::devices;
-use crate::wave::parse_format;
-
-use super::mic::OpenCapture;
-use super::shared::create_stream_event;
+use super::shared::{open_capture_client, OpenCapture};
 
 /// 打开输出设备的环回采集。`None` 用系统默认输出设备。
 pub(crate) fn open_endpoint_loopback(device_name: Option<&str>) -> PortResult<OpenCapture> {
-    // 注意方向是 RENDER：环回抓的是输出设备，不是输入设备。
-    let device = devices::find_device(devices::RENDER, device_name)?;
-    // SAFETY: device 有效；Activate 只创建 IAudioClient。
-    let candidate: IAudioClient =
-        unsafe { device.Activate(CLSCTX_ALL, None) }.ctx("打开输出设备失败")?;
-
-    // SAFETY: GetMixFormat 返回 COM 分配的格式块；Initialize 之后才释放。
-    let (client, info) = unsafe {
-        let mix = candidate.GetMixFormat().ctx("读输出设备混音格式失败")?;
-        let initialized = (|| -> PortResult<(IAudioClient, crate::wave::WaveInfo)> {
-            let parsed = parse_format(mix)?;
-            let flags = AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
-            let client = match crate::client::initialize_min_period(&candidate, flags, mix) {
-                Ok(period) => {
-                    tracing::debug!(period_frames = period, "整机环回使用 WASAPI 最短共享周期");
-                    candidate
-                }
-                Err(error) => {
-                    tracing::debug!(error = %error, "环回最短共享周期不可用，退回系统默认周期");
-                    let fallback: IAudioClient = device
-                        .Activate(CLSCTX_ALL, None)
-                        .ctx("重新打开输出设备失败")?;
-                    crate::client::initialize_default_period(&fallback, flags, mix)
-                        .ctx("初始化整机环回流失败")?;
-                    fallback
-                }
-            };
-            Ok((client, parsed))
-        })();
-        CoTaskMemFree(Some(mix as *const _));
-        initialized?
-    };
-
-    let event = create_stream_event()?;
-    // SAFETY: client 已初始化；事件在 OpenCapture 存活期间有效。
-    unsafe { client.SetEventHandle(event.raw()) }.ctx("绑定环回事件失败")?;
-    // SAFETY: client 已初始化，取采集服务接口。
-    let capture: IAudioCaptureClient =
-        unsafe { client.GetService() }.ctx("获取环回采集接口失败")?;
-    // SAFETY: 一切就绪。
-    unsafe { client.Start() }.ctx("启动整机环回流失败")?;
-
-    Ok(OpenCapture {
-        client,
-        capture,
-        event,
-        info,
-    })
+    open_capture_client(
+        eRender,
+        device_name,
+        AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+        "输出设备",
+    )
 }
 
 #[cfg(test)]

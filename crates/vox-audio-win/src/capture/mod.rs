@@ -266,7 +266,7 @@ fn open_process(
     executable: &str,
     include_tree: bool,
     endpoint_fallback: bool,
-) -> PortResult<mic::OpenCapture> {
+) -> PortResult<shared::OpenCapture> {
     let pid = resolve_pid(executable, include_tree)?;
     match loopback::open_process_loopback(pid, include_tree) {
         Ok(open) => Ok(open),
@@ -410,7 +410,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut p = crate::playback::WinPlayback::new();
+        let mut p = crate::playback::WinPlayback::new(crate::playback::test_resample_factory());
         p.open(None, 24_000).unwrap();
         let tone: Vec<f32> = (0..12_000)
             .map(|i| (i as f32 * 2.0 * std::f32::consts::PI * 440.0 / 24_000.0).sin() * 0.05)

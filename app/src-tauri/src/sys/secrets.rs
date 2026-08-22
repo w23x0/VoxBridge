@@ -353,7 +353,10 @@ mod tests {
             .store_api_key_for(ModelProvider::Gpt, "sk-gpt")
             .unwrap();
         assert_eq!(
-            store.load_api_key_for(ModelProvider::Gpt).unwrap().as_deref(),
+            store
+                .load_api_key_for(ModelProvider::Gpt)
+                .unwrap()
+                .as_deref(),
             Some("sk-gpt")
         );
     }

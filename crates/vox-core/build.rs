@@ -106,16 +106,6 @@ struct MiniApi {
     output_sample_rate: Option<u32>,
 }
 
-#[derive(Deserialize)]
-struct GptCatalog {
-    schema_version: i64,
-    verified_at: String,
-    provider: Provider,
-    model: MiniModel,
-    api: MiniApi,
-    capabilities: Capabilities,
-}
-
 fn lit(value: &str) -> String {
     format!("{value:?}")
 }
@@ -135,7 +125,7 @@ fn main() {
     let gemini: MiniCatalog =
         serde_json::from_str(&gemini_raw).expect("catalog/gemini.json 格式不合法");
     let gpt_raw = fs::read_to_string(&gpt_source).expect("读取 catalog/gpt.json 失败");
-    let gpt: GptCatalog = serde_json::from_str(&gpt_raw).expect("catalog/gpt.json 格式不合法");
+    let gpt: MiniCatalog = serde_json::from_str(&gpt_raw).expect("catalog/gpt.json 格式不合法");
 
     assert_eq!(
         catalog.provider.id, "aliyun",

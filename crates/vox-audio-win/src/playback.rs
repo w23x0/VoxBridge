@@ -16,6 +16,8 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+use vox_core::pipeline::ResampleFactory;
+use vox_core::ports::Resample;
 use vox_core::ports::{PlaybackSink, PlaybackStats, PortError, PortResult};
 use windows::Win32::Foundation::{WAIT_OBJECT_0, WAIT_TIMEOUT};
 use windows::Win32::Media::Audio::{
@@ -27,7 +29,6 @@ use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObj
 use crate::com::{ComGuard, OwnedHandle, WinContext};
 use crate::devices;
 use crate::rates::{choose_output_rate, RateChoice};
-use crate::resample::LinearResampler;
 use crate::ring::{should_warn, DropRing};
 use crate::wave::{duplicate_mono, f32_to_bytes, float_format, parse_format, SampleKind};
 
@@ -77,28 +78,26 @@ struct OpenReport {
 pub struct WinPlayback {
     shared: Option<Arc<Shared>>,
     thread: Option<JoinHandle<()>>,
-    resampler: Option<LinearResampler>,
+    resampler: Option<Box<dyn Resample>>,
+    resample_factory: ResampleFactory,
+    target_rate: u32,
     channels: u16,
     interleave: Vec<f32>,
     source_rate: u32,
 }
 
 impl WinPlayback {
-    pub fn new() -> Self {
+    pub fn new(resample_factory: ResampleFactory) -> Self {
         Self {
             shared: None,
             thread: None,
             resampler: None,
+            resample_factory,
+            target_rate: 0,
             channels: 1,
             interleave: Vec::new(),
             source_rate: 0,
         }
-    }
-}
-
-impl Default for WinPlayback {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -151,7 +150,8 @@ impl PlaybackSink for WinPlayback {
 
         self.channels = report.channels.max(1);
         self.source_rate = source_rate;
-        self.resampler = Some(LinearResampler::new(source_rate, report.rate));
+        self.target_rate = report.rate;
+        self.resampler = Some((self.resample_factory)(source_rate, report.rate));
         self.shared = Some(shared);
         self.thread = Some(thread);
         Ok(report.rate)
@@ -166,23 +166,19 @@ impl PlaybackSink for WinPlayback {
         }
         // 重采样和铺声道都在这条线程上做（流水线线程，允许分配和日志），
         // 渲染线程那边就只剩一次复制。
-        let resampled = match self.resampler.as_mut() {
-            Some(r) if !r.is_passthrough() => r.process(samples),
-            _ => Vec::new(),
-        };
-        let mono: &[f32] = if resampled.is_empty() {
-            match self.resampler.as_ref() {
-                // 直通：直接用原始样本，不复制。
-                Some(r) if r.is_passthrough() => samples,
-                // 重采样器还在攒够两个样本，这次没有输出。
-                _ => return,
-            }
+        if self.source_rate == self.target_rate {
+            // 直通：直接用原始样本，不复制。
+            let mono = samples;
+            self.interleave.clear();
+            duplicate_mono(mono, self.channels, &mut self.interleave);
         } else {
-            &resampled
+            let resampled = match self.resampler.as_mut() {
+                Some(r) => r.process(samples),
+                None => return,
+            };
+            self.interleave.clear();
+            duplicate_mono(&resampled, self.channels, &mut self.interleave);
         };
-
-        self.interleave.clear();
-        duplicate_mono(mono, self.channels, &mut self.interleave);
         let dropped = shared.ring.write(&self.interleave);
         if dropped > 0 {
             let events = shared.ring.drop_events();
@@ -202,10 +198,7 @@ impl PlaybackSink for WinPlayback {
         };
         PlaybackStats {
             queued_samples: shared.ring.len(),
-            sample_rate: self
-                .resampler
-                .as_ref()
-                .map_or(self.source_rate, |r| r.target_rate()),
+            sample_rate: self.target_rate.max(1),
             channels: self.channels,
             rendered_samples: shared.rendered_samples.load(Ordering::Acquire),
             dropped_samples: shared.ring.dropped_samples(),
@@ -481,13 +474,34 @@ fn render_loop(opened: &OpenRender, shared: &Shared) {
 }
 
 #[cfg(test)]
+pub(crate) fn test_resample_factory() -> ResampleFactory {
+    Box::new(|_, _| Box::new(TestPassthrough) as Box<dyn Resample>)
+}
+
+/// 测试用透传重采样器：不做真正的重采样，只保证接口能跑通。
+#[cfg(test)]
+struct TestPassthrough;
+
+#[cfg(test)]
+impl Resample for TestPassthrough {
+    fn process(&mut self, samples: &[f32]) -> Vec<f32> {
+        samples.to_vec()
+    }
+    fn flush(&mut self) -> Vec<f32> {
+        Vec::new()
+    }
+    fn reset(&mut self) {}
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::cable;
 
+    /// 测试用透传重采样工厂：不做真正的重采样，只保证接口能跑通。
     #[test]
     fn push_before_open_is_ignored() {
-        let mut p = WinPlayback::new();
+        let mut p = WinPlayback::new(test_resample_factory());
         p.push(&[0.1, 0.2]);
         p.flush();
         p.close();
@@ -495,14 +509,14 @@ mod tests {
 
     #[test]
     fn zero_source_rate_is_rejected() {
-        let mut p = WinPlayback::new();
+        let mut p = WinPlayback::new(test_resample_factory());
         let err = p.open(None, 0).unwrap_err();
         assert!(err.message.contains("不能是 0"), "{}", err.message);
     }
 
     #[test]
     fn unknown_device_fails_with_chinese_message() {
-        let mut p = WinPlayback::new();
+        let mut p = WinPlayback::new(test_resample_factory());
         let err = p.open(Some("不存在的输出设备 zzz"), 24_000).unwrap_err();
         assert!(err.message.contains("找不到"), "{}", err.message);
     }
@@ -510,7 +524,7 @@ mod tests {
     #[test]
     #[ignore = "需要真声卡（会向默认输出播 0.3 秒静音），手动跑：--ignored"]
     fn default_output_opens_and_accepts_push() {
-        let mut p = WinPlayback::new();
+        let mut p = WinPlayback::new(test_resample_factory());
         let rate = p.open(None, 24_000).unwrap();
         assert!(rate >= 8_000, "拿到的采样率是 {rate}");
         // 推 0.3 秒静音，不该阻塞也不该丢。
@@ -544,7 +558,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut p = WinPlayback::new();
+        let mut p = WinPlayback::new(test_resample_factory());
         p.open(None, 24_000).unwrap();
         // 24 kHz 单声道 440 Hz，振幅 0.05（很轻）。
         let tone: Vec<f32> = (0..12_000)
@@ -573,7 +587,7 @@ mod tests {
             eprintln!("跳过：这台机器没装 VB-CABLE");
             return;
         }
-        let mut p = WinPlayback::new();
+        let mut p = WinPlayback::new(test_resample_factory());
         let rate = p.open(Some(cable::RENDER_ENDPOINT_NAME), 24_000).unwrap();
         assert!(rate >= 8_000);
         p.push(&vec![0.0; 2400]);

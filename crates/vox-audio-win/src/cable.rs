@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-use crate::com::{hr_err, to_wide, ComGuard};
+use crate::com::{hr_err, to_wide, ComGuard, OwnedHandle};
 use crate::devices;
 
 /// 产品名。界面上必须原样出现这个名字，别改成“虚拟声卡”之类的泛称。
@@ -44,6 +44,21 @@ pub const DOWNLOAD_URL: &str =
 
 /// 上面那个包的预期字节数。对不上就不解压、不安装，直接让用户去官网。
 pub const DOWNLOAD_EXPECTED_BYTES: u64 = 1_318_877;
+
+/// SetupAPI 设备信息集守卫。Drop 时销毁列表。
+struct DeviceSetGuard(windows::Win32::Devices::DeviceAndDriverInstallation::HDEVINFO);
+
+impl Drop for DeviceSetGuard {
+    fn drop(&mut self) {
+        // SAFETY: 句柄由本守卫独占。
+        unsafe {
+            let _ =
+                windows::Win32::Devices::DeviceAndDriverInstallation::SetupDiDestroyDeviceInfoList(
+                    self.0,
+                );
+        }
+    }
+}
 
 /// 下载后落盘的文件名。
 pub const ARCHIVE_FILE_NAME: &str = "VBCABLE_Driver_Pack45.zip";
@@ -171,9 +186,8 @@ pub fn detect() -> CableStatus {
 fn cable_endpoint_records_remain() -> bool {
     use windows::core::{GUID, PCWSTR};
     use windows::Win32::Devices::DeviceAndDriverInstallation::{
-        SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInfo, SetupDiGetClassDevsW,
-        SetupDiGetDeviceRegistryPropertyW, DIGCF_ALLCLASSES, HDEVINFO, SPDRP_FRIENDLYNAME,
-        SP_DEVINFO_DATA,
+        SetupDiEnumDeviceInfo, SetupDiGetClassDevsW, SetupDiGetDeviceRegistryPropertyW,
+        DIGCF_ALLCLASSES, SPDRP_FRIENDLYNAME, SP_DEVINFO_DATA,
     };
 
     // AudioEndpoint 设备安装类：系统声音设置和 Get-PnpDevice -Class AudioEndpoint 用的同一类。
@@ -191,15 +205,6 @@ fn cable_endpoint_records_remain() -> bool {
     }) else {
         return false;
     };
-    struct DeviceSetGuard(HDEVINFO);
-    impl Drop for DeviceSetGuard {
-        fn drop(&mut self) {
-            // SAFETY: 句柄由本守卫独占。
-            unsafe {
-                let _ = SetupDiDestroyDeviceInfoList(self.0);
-            }
-        }
-    }
     let _guard = DeviceSetGuard(set);
     let mut index = 0;
     loop {
@@ -250,9 +255,8 @@ fn cable_endpoint_records_remain() -> bool {
 fn driver_root_device_present() -> bool {
     use windows::core::PCWSTR;
     use windows::Win32::Devices::DeviceAndDriverInstallation::{
-        SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInfo, SetupDiGetClassDevsW,
-        SetupDiGetDeviceRegistryPropertyW, DIGCF_PRESENT, GUID_DEVCLASS_MEDIA, SPDRP_HARDWAREID,
-        SP_DEVINFO_DATA,
+        SetupDiEnumDeviceInfo, SetupDiGetClassDevsW, SetupDiGetDeviceRegistryPropertyW,
+        DIGCF_PRESENT, GUID_DEVCLASS_MEDIA, SPDRP_HARDWAREID, SP_DEVINFO_DATA,
     };
 
     // SAFETY: GUID 是系统常量；空 enumerator 表示枚举整个 MEDIA 类。
@@ -266,15 +270,6 @@ fn driver_root_device_present() -> bool {
     }) else {
         return false;
     };
-    struct DeviceSetGuard(windows::Win32::Devices::DeviceAndDriverInstallation::HDEVINFO);
-    impl Drop for DeviceSetGuard {
-        fn drop(&mut self) {
-            // SAFETY: 句柄由本守卫独占。
-            unsafe {
-                let _ = SetupDiDestroyDeviceInfoList(self.0);
-            }
-        }
-    }
     let _guard = DeviceSetGuard(set);
 
     let mut index = 0;
@@ -485,7 +480,7 @@ fn multichannel_pnp_instance_id() -> Option<String> {
 /// 在系统层隐藏或恢复 16 声道端点。PnPUtil 是 Windows 自带工具，禁用设备必须提权。
 pub fn set_multichannel_endpoint_enabled(enabled: bool) -> EndpointToggleOutcome {
     use windows::core::PCWSTR;
-    use windows::Win32::Foundation::{ERROR_CANCELLED, HANDLE};
+    use windows::Win32::Foundation::ERROR_CANCELLED;
     use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
     use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
     use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
@@ -539,16 +534,7 @@ pub fn set_multichannel_endpoint_enabled(enabled: bool) -> EndpointToggleOutcome
     if process.is_invalid() {
         return EndpointToggleOutcome::Failed("系统设备管理工具没有返回进程句柄".into());
     }
-    struct ProcGuard(HANDLE);
-    impl Drop for ProcGuard {
-        fn drop(&mut self) {
-            // SAFETY: 句柄由本守卫独占。
-            unsafe {
-                let _ = windows::Win32::Foundation::CloseHandle(self.0);
-            }
-        }
-    }
-    let _guard = ProcGuard(process);
+    let _guard = OwnedHandle::new(process);
     // SAFETY: process 有效。
     if unsafe { WaitForSingleObject(process, 60_000) } != windows::Win32::Foundation::WAIT_OBJECT_0
     {
@@ -978,7 +964,7 @@ pub fn uninstall_with_audio_reset(
     archive: &Path,
 ) -> InstallOutcome {
     use windows::core::PCWSTR;
-    use windows::Win32::Foundation::{ERROR_CANCELLED, HANDLE};
+    use windows::Win32::Foundation::ERROR_CANCELLED;
     use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
     use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
     use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
@@ -1043,16 +1029,7 @@ pub fn uninstall_with_audio_reset(
     if process.is_invalid() {
         return InstallOutcome::Failed("加强卸载流程没有返回进程句柄".into());
     }
-    struct ProcGuard(HANDLE);
-    impl Drop for ProcGuard {
-        fn drop(&mut self) {
-            // SAFETY: 句柄由本守卫独占。
-            unsafe {
-                let _ = windows::Win32::Foundation::CloseHandle(self.0);
-            }
-        }
-    }
-    let _guard = ProcGuard(process);
+    let _guard = OwnedHandle::new(process);
     // SAFETY: process 有效。
     if unsafe { WaitForSingleObject(process, 120_000) } != windows::Win32::Foundation::WAIT_OBJECT_0
     {
@@ -1081,7 +1058,7 @@ enum SetupAction {
 
 fn run_setup(archive: &Path, action: SetupAction) -> InstallOutcome {
     use windows::core::PCWSTR;
-    use windows::Win32::Foundation::{ERROR_CANCELLED, HANDLE};
+    use windows::Win32::Foundation::ERROR_CANCELLED;
     use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
     use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
     use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
@@ -1136,17 +1113,8 @@ fn run_setup(archive: &Path, action: SetupAction) -> InstallOutcome {
     if process.is_invalid() {
         return InstallOutcome::Failed("安装器没有返回进程句柄，无法确认安装结果".into());
     }
-    // 句柄一定要关，用个小守卫兜住所有返回路径。
-    struct ProcGuard(HANDLE);
-    impl Drop for ProcGuard {
-        fn drop(&mut self) {
-            // SAFETY: SEE_MASK_NOCLOSEPROCESS 把所有权交给了我们，只关一次。
-            unsafe {
-                let _ = windows::Win32::Foundation::CloseHandle(self.0);
-            }
-        }
-    }
-    let _guard = ProcGuard(process);
+    // 句柄一定要关，用守卫兜住所有返回路径。
+    let _guard = OwnedHandle::new(process);
 
     // 静默安装通常十几秒。给 5 分钟上限，别把界面永远卡死。
     // SAFETY: 句柄有效，由上面的守卫持有。

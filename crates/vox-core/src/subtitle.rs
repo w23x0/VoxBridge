@@ -131,9 +131,6 @@ impl SubtitleTrack {
         self.push_text(text, now_ms);
     }
 
-    /// 一段话说完了。这里不清屏——让每个字自己按 TTL 淡掉，视觉上更自然。
-    pub fn finish_segment(&mut self) {}
-
     /// 立刻清空（停流水线、切语言时用）。
     pub fn clear(&mut self) {
         self.chars.clear();

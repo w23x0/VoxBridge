@@ -7,93 +7,19 @@
 //! 唯一保证能 `Initialize` 成功的格式，协商到什么就把什么报给上层，
 //! 由流水线那边负责转到 16 kHz。
 
-use vox_core::ports::{CaptureFormat, PortResult};
-use windows::Win32::Media::Audio::{
-    IAudioCaptureClient, IAudioClient, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-};
-use windows::Win32::System::Com::{CoTaskMemFree, CLSCTX_ALL};
+use vox_core::ports::PortResult;
+use windows::Win32::Media::Audio::{eCapture, AUDCLNT_STREAMFLAGS_EVENTCALLBACK};
 
-use crate::com::{OwnedHandle, WinContext};
-use crate::devices;
-use crate::wave::{parse_format, WaveInfo};
-
-use super::shared::create_stream_event;
-
-/// 打开的采集流。全部接口都属于调用它的那个线程。
-pub(crate) struct OpenCapture {
-    pub(crate) client: IAudioClient,
-    pub(crate) capture: IAudioCaptureClient,
-    pub(crate) event: OwnedHandle,
-    pub(crate) info: WaveInfo,
-}
-
-impl OpenCapture {
-    pub(crate) fn format(&self) -> CaptureFormat {
-        CaptureFormat {
-            sample_rate: self.info.sample_rate,
-            channels: self.info.channels,
-        }
-    }
-}
+use super::shared::{open_capture_client, OpenCapture};
 
 /// 按设备名打开麦克风。`None` 用系统默认输入设备。
 pub(crate) fn open_microphone(device_name: Option<&str>) -> PortResult<OpenCapture> {
-    let device = devices::find_device(devices::CAPTURE, device_name)?;
-    // SAFETY: device 有效；Activate 只创建 IAudioClient，不带激活参数。
-    let candidate: IAudioClient =
-        unsafe { device.Activate(CLSCTX_ALL, None) }.ctx("打开麦克风失败")?;
-
-    // SAFETY: GetMixFormat 返回 COM 分配的格式块，解析完立刻释放；
-    // Initialize 期间指针必须有效，所以释放放在 Initialize 之后。
-    let (client, info) = unsafe {
-        let mix = candidate.GetMixFormat().ctx("读麦克风混音格式失败")?;
-        let initialized = (|| -> PortResult<(IAudioClient, WaveInfo)> {
-            let parsed = parse_format(mix)?;
-            let client = match crate::client::initialize_min_period(
-                &candidate,
-                AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-                mix,
-            ) {
-                Ok(period) => {
-                    tracing::debug!(period_frames = period, "麦克风使用 WASAPI 最短共享周期");
-                    candidate
-                }
-                Err(error) => {
-                    tracing::debug!(error = %error, "最短共享周期不可用，退回系统默认周期");
-                    let fallback: IAudioClient = device
-                        .Activate(CLSCTX_ALL, None)
-                        .ctx("重新打开麦克风失败")?;
-                    crate::client::initialize_default_period(
-                        &fallback,
-                        AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-                        mix,
-                    )
-                    .ctx("初始化麦克风流失败")?;
-                    fallback
-                }
-            };
-            Ok((client, parsed))
-        })();
-        CoTaskMemFree(Some(mix as *const _));
-        initialized?
-    };
-
-    let event = create_stream_event()?;
-    // SAFETY: client 已初始化；事件句柄在 OpenCapture 存活期间一直有效，
-    // 而 client 会先于它被丢弃（结构体字段声明顺序：client 在 event 之前）。
-    unsafe { client.SetEventHandle(event.raw()) }.ctx("绑定麦克风事件失败")?;
-    // SAFETY: client 已初始化，取采集服务接口。
-    let capture: IAudioCaptureClient =
-        unsafe { client.GetService() }.ctx("获取麦克风采集接口失败")?;
-    // SAFETY: 一切就绪，开始走流。
-    unsafe { client.Start() }.ctx("启动麦克风流失败")?;
-
-    Ok(OpenCapture {
-        client,
-        capture,
-        event,
-        info,
-    })
+    open_capture_client(
+        eCapture,
+        device_name,
+        AUDCLNT_STREAMFLAGS_EVENTCALLBACK as u32,
+        "麦克风",
+    )
 }
 
 #[cfg(test)]

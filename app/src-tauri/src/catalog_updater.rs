@@ -58,13 +58,15 @@ async fn fetch(url: &str) -> Result<String, String> {
     if !status.is_success() {
         return Err(format!("远程目录返回 {status}"));
     }
-    resp.text().await.map_err(|e| format!("读取远程目录失败：{e}"))
+    resp.text()
+        .await
+        .map_err(|e| format!("读取远程目录失败：{e}"))
 }
 
 /// 校验远程文本的底线字段（schema_version 与 verified_at）。
 fn validate(text: &str) -> Result<RemoteCatalogHeader, String> {
-    let parsed: RemoteCatalogHeader = serde_json::from_str(text)
-        .map_err(|e| format!("远程目录不是合法 JSON：{e}"))?;
+    let parsed: RemoteCatalogHeader =
+        serde_json::from_str(text).map_err(|e| format!("远程目录不是合法 JSON：{e}"))?;
     if parsed.schema_version < 2 {
         return Err(format!(
             "远程目录 schema_version 过旧（{}，至少应为 2）",
@@ -112,9 +114,7 @@ pub async fn apply_update(
     provider: &str,
 ) -> Result<(String, String), String> {
     let file = catalog_file(provider).ok_or_else(|| format!("未知模型服务商：{provider}"))?;
-    let url = catalog_file(provider)
-        .map(|file| format!("{RAW_BASE}{file}"))
-        .unwrap();
+    let url = remote_url(provider).ok_or_else(|| format!("未知模型服务商：{provider}"))?;
     let text = fetch(&url).await?;
     validate(&text)?;
 

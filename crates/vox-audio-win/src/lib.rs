@@ -19,7 +19,6 @@ mod policy;
 mod proc;
 mod rates;
 mod registry;
-mod resample;
 mod ring;
 mod sessions;
 mod wave;

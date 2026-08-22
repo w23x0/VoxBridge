@@ -10,8 +10,8 @@ use std::sync::Arc;
 use serde::Serialize;
 use serde_json::Value;
 use tauri::Manager;
-use vox_core::event::Pipeline;
 use vox_core::catalog;
+use vox_core::event::Pipeline;
 use vox_core::settings::{ModelProvider, Settings};
 
 use crate::dto::{SettingsDto, SnapshotDto};
@@ -435,8 +435,14 @@ pub fn read_catalog_override(
     if crate::catalog_updater::catalog_file(&provider).is_none() {
         return Err(format!("未知模型服务商：{provider}"));
     }
-    let config_dir = app.path().app_config_dir().map_err(|e| format!("取配置目录失败：{e}"))?;
-    Ok(crate::catalog_updater::read_override(&config_dir, &provider))
+    let config_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("取配置目录失败：{e}"))?;
+    Ok(crate::catalog_updater::read_override(
+        &config_dir,
+        &provider,
+    ))
 }
 
 /// 检查某服务商的模型目录有没有线上更新。只查不写。
@@ -446,7 +452,10 @@ pub async fn check_catalog_update(
     provider: String,
 ) -> Result<CatalogUpdateCheckDto, String> {
     parse_provider(&provider)?;
-    let config_dir = app.path().app_config_dir().map_err(|e| format!("取配置目录失败：{e}"))?;
+    let config_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("取配置目录失败：{e}"))?;
     let latest = crate::catalog_updater::check_update(&provider).await?;
     Ok(CatalogUpdateCheckDto {
         current: crate::catalog_updater::local_verified_at(&config_dir, &provider),
@@ -461,7 +470,10 @@ pub async fn apply_catalog_update(
     provider: String,
 ) -> Result<CatalogUpdateAppliedDto, String> {
     parse_provider(&provider)?;
-    let config_dir = app.path().app_config_dir().map_err(|e| format!("取配置目录失败：{e}"))?;
+    let config_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("取配置目录失败：{e}"))?;
     let (file, verified) = crate::catalog_updater::apply_update(&config_dir, &provider).await?;
     Ok(CatalogUpdateAppliedDto { file, verified })
 }

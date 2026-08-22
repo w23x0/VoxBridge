@@ -16,7 +16,7 @@
 
 use std::ffi::c_void;
 
-use windows::Win32::Foundation::{ERROR_CANCELLED, HANDLE, WAIT_OBJECT_0};
+use windows::Win32::Foundation::{ERROR_CANCELLED, WAIT_OBJECT_0};
 use windows::Win32::Media::Audio::{eCapture, eRender, ERole};
 use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL};
 use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
@@ -24,7 +24,7 @@ use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLE
 use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
 use windows_core::PCWSTR;
 
-use crate::com::{hr_err, to_wide, ComGuard};
+use crate::com::{hr_err, to_wide, ComGuard, OwnedHandle};
 use crate::devices;
 
 /// 未公开的 PolicyConfig 类。IID/CLSID 长期稳定，被 SoundSwitch 等第三方长期使用。
@@ -236,16 +236,7 @@ fn run_self_elevated(exe: &std::path::Path, args: &[String]) -> Result<u32, Stri
     if process.is_invalid() {
         return Err("恢复进程没有返回句柄".into());
     }
-    struct ProcGuard(HANDLE);
-    impl Drop for ProcGuard {
-        fn drop(&mut self) {
-            // SAFETY: 句柄由本守卫独占，只关一次。
-            unsafe {
-                let _ = windows::Win32::Foundation::CloseHandle(self.0);
-            }
-        }
-    }
-    let _guard = ProcGuard(process);
+    let _guard = OwnedHandle::new(process);
     // SAFETY: process 有效。
     if unsafe { WaitForSingleObject(process, 60_000) } != WAIT_OBJECT_0 {
         return Err("等待恢复进程超时".into());

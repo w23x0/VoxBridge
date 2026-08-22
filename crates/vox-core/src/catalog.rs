@@ -34,24 +34,12 @@ pub struct ProviderInfo {
 
 include!(concat!(env!("OUT_DIR"), "/aliyun_catalog.rs"));
 
-pub fn default_model(provider: crate::settings::ModelProvider) -> &'static str {
-    provider_info(provider).default_model
-}
-
 pub fn normalize_model_for(provider: crate::settings::ModelProvider, name: &str) -> &'static str {
     let info = provider_info(provider);
     if MODELS.iter().any(|model| model.name == info.default_model) {
         normalize_model(name)
     } else {
         info.default_model
-    }
-}
-
-pub fn supports_audio_output_for(provider: crate::settings::ModelProvider, language: &str) -> bool {
-    if provider_info(provider).capabilities.voice_selection {
-        supports_audio_output(language)
-    } else {
-        LANGUAGE_LABELS.iter().any(|(code, _)| *code == language)
     }
 }
 

@@ -933,9 +933,6 @@ impl Runtime {
                     slot.push_text(text, now);
                 }
             }
-            if done {
-                slot.finish_segment();
-            }
         }
         self.emit(vec![Event::SubtitleDelta {
             track,

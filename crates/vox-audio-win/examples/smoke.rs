@@ -19,6 +19,7 @@ use std::time::Duration;
 use vox_audio_win::{
     cable, os_build_number, process_loopback_available, WinCapture, WinDeviceRegistry, WinPlayback,
 };
+use vox_core::pipeline::ResampleFactory;
 use vox_core::ports::{
     AudioChunk, CaptureSource, CaptureTarget, DeviceRegistry, PlaybackSink, PortResult,
 };
@@ -203,7 +204,19 @@ fn run_capture(target: CaptureTarget, dur: Duration) -> PortResult<()> {
 /// 往输出设备放 1 秒 440 Hz 正弦（内核推的就是 24 kHz 单声道 f32，这里照样推）。
 fn play_tone(device: Option<&str>) -> PortResult<()> {
     const SOURCE_RATE: u32 = 24_000;
-    let mut sink = WinPlayback::new();
+    // 简单透传：smoke 测的是 WASAPI 链路，不关心音质。
+    struct Passthrough;
+    impl vox_core::ports::Resample for Passthrough {
+        fn process(&mut self, samples: &[f32]) -> Vec<f32> {
+            samples.to_vec()
+        }
+        fn flush(&mut self) -> Vec<f32> {
+            Vec::new()
+        }
+        fn reset(&mut self) {}
+    }
+    let factory: ResampleFactory = Box::new(|_, _| Box::new(Passthrough));
+    let mut sink = WinPlayback::new(factory);
     let rate = sink.open(device, SOURCE_RATE)?;
     println!(
         "打开 {}，设备采样率 {rate} Hz{}",
