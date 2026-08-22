@@ -140,7 +140,7 @@ thiserror / tracing / parking\_lot，**既没有 tokio 也没有 tokio-tungsteni
 | `vox-audio-win` | 麦克风采集；**按设备名**输出到 CABLE Input；**进程环回**采集指定程序的声音；设备枚举与自动选择；输出采样率探测；VB-CABLE 检测与静默安装；**系统版本检测**（进程环回要求 build ≥ 20348） |
 | `vox-overlay-win` | Win32 分层窗（per-pixel alpha 真透明，不用 WebView2）；CPU 渲染中日韩文字；**永久鼠标穿透的纯显示窗**，不包含按钮、状态、token 计数或拖动交互；读取设置中的位置大小 |
 | `vox-input-win` | 全局热键监听（含鼠标侧键） |
-| `app/src-tauri` | 装配：建 Runtime、注入 Windows 实现、起悬浮窗线程、开热键线程、暴露 **10 个** Tauri 命令给前端、托盘、开机自启、单实例。另外自己负责**落盘去抖 + 原子写**（`persist.rs`）、**DPAPI 加密存密钥**（`sys/secrets.rs`）、**系统时钟**（`sys/clock.rs`）、**设备低频轮询**（`devices.rs`）、**事件桥**（`events.rs`：一条事件同时喂前端、悬浮窗、落盘、开机自启开关） |
+| `app/src-tauri` | 装配：建 Runtime、注入 Windows 实现、起悬浮窗线程、开热键线程、暴露 **20 个** Tauri 命令给前端、托盘、开机自启、单实例。另外自己负责**落盘去抖 + 原子写**（`persist.rs`）、**DPAPI 加密存密钥**（`sys/secrets.rs`）、**系统时钟**（`sys/clock.rs`）、**设备低频轮询**（`devices.rs`）、**事件桥**（`events.rs`：一条事件同时喂前端、悬浮窗、落盘、开机自启开关） |
 | `app/ui` | 设置界面。**侧栏切页**，共 **7** 页（见 `nav.ts`）：首页、模型服务商、听人说话、设置、用量、字幕外观、关于。首页分别在两张主卡内配置服务商、语言和音色；模型由服务商能力表固定。服务商页管理密钥并展示完整能力。前端只认一条事件通道 `voxbridge://event`（`api.ts` 里的 `EVENT_CHANNEL`）。运行期依赖只有 react + react-dom + @tauri-apps/api |
 
 ## 6. 线程拓扑

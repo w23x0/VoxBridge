@@ -52,6 +52,13 @@
     标题栏改为固定应用名 "VoxBridge"（页面名只在内容区 h1 出现一次）。
     主按钮**保持蓝色**（用户拍板，不按 glassui 的近黑按钮规则翻转）。
     顺手修了 `index.html` 主题 key 与 `theme.ts` 不一致导致的首帧闪白。
+14. **发版自动化与更新签名密钥轮换**（2026-08-22）。推 `v*` tag 触发
+    `.github/workflows/release.yml`：CI 自动构建 NSIS、用仓库 Secret
+    `TAURI_SIGNING_PRIVATE_KEY` 签名，并创建 GitHub Release 与 `latest.json`。
+    本地不再手动构建发版。签名私钥在 `tools/signing/voxbridge_private.key`
+    （已 gitignore、无密码），Secret 值就是文件原文那一整行 base64。
+    因旧私钥无法在本机恢复使用，轮换到新密钥对：**≤0.1.3 的安装无法应用内
+    升级到 0.1.4，需手动安装一次**；0.1.4 起自更新正常。
 
 ---
 
