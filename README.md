@@ -22,7 +22,7 @@ Built with **Tauri 2 + React 19 + Rust**. The UI handles config and status; audi
 
 ## Develop
 
-Prereqs: Windows 11 x64, Node.js `^20.19.0` or `>=22.12.0`, Rust stable (`x86_64-pc-windows-msvc`), VS Build Tools (C++ desktop), WebView2, and an API key (or the frontend Mock, which needs none).
+Prereqs: Windows 11 x64, Node.js `^20.19.0` or `>=22.12.0`, Rust stable (`x86_64-pc-windows-msvc`), VS Build Tools (C++ desktop), WebView2, and an API key (or the frontend Mock, which needs none). OpenVR bindings are vendored under `vendor/openvr_sys`; LLVM/Clang is not required for the regular build.
 
 ```powershell
 cd app\ui
@@ -42,6 +42,9 @@ Don't use `cargo build --release` for shipping; if you build the binary by hand,
 
 ```powershell
 cargo build --release -p voxbridge --features custom-protocol
+
+# Optional SteamVR/OpenVR overlay build
+cargo build --release -p voxbridge --features "custom-protocol,steamvr-overlay"
 ```
 
 ## Test

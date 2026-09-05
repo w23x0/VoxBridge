@@ -7,6 +7,7 @@ members = [
     "crates/vox-audio-win",
     "crates/vox-input-win",
     "crates/vox-overlay-win",
+    "crates/vox-osc-win",
     # 装配层。放进 workspace 是为了让 `cargo test/clippy --workspace` 真的覆盖到它。
     "app/src-tauri",
 ]
@@ -16,6 +17,11 @@ version = "0.1.4"
 edition = "2021"
 license = "MIT"
 authors = ["VoxBridge"]
+
+[patch.crates-io]
+# openvr_sys 2.0.3 ships checked-in bindings, so ordinary builds do not need
+# bindgen/libclang.  Keep this patch local and reproducible for SteamVR builds.
+openvr_sys = { path = "vendor/openvr_sys" }
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

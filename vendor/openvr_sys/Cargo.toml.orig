@@ -1,0 +1,40 @@
+[package]
+name = "openvr_sys"
+version = "2.1.4"
+edition = "2021"
+rust-version = "1.82.0"
+authors = [
+    "Colin Sherratt",
+    "Erick Tryzelaar",
+    "Rene Eichhorn",
+    "Benjamin Saunders",
+    "Alexander Brook Perry",
+    "Arthur Brainville",
+]
+license = "MIT"
+description = "Raw unsafe system binding for openvr"
+repository = "https://github.com/rust-openvr/rust-openvr-sys"
+keywords = ["vr", "vive", "steamvr"]
+categories = ["hardware-support", "external-ffi-bindings"]
+
+exclude = [
+    "openvr/samples/*",
+    "openvr/bin/*",
+    "openvr/lib/*",
+    "openvr/controller_callouts/*",
+]
+build = "build.rs"
+
+[badges]
+maintenance = { status = "passively-maintained" }
+
+[build-dependencies]
+cmake = "0.1.52"
+bindgen = "0.71.1"
+
+[lib]
+name = "openvr_sys"
+path = "lib.rs"
+
+[features]
+default = []

@@ -135,6 +135,8 @@ export type VoxEvent =
       done: boolean;
       /** 服务端整句重写了。`true` 时 `text` 是完整当前句，要整行替换而不是追加。 */
       replace: boolean;
+      /** 不再会变的那段完整句（已确认前缀；done 时是整句终稿），供整行替换推进用。 */
+      confirmed: string | null;
     }
   | { kind: "subtitle_cleared"; track: Track }
   | { kind: "source_detected"; track: Track; language: string }

@@ -22,7 +22,7 @@ English：[`../README.md`](../README.md) · 日本語：[`ja.md`](ja.md) · 한�
 
 ## 开发
 
-前置：Windows 11 x64、Node.js `^20.19.0` 或 `>=22.12.0`、Rust stable（`x86_64-pc-windows-msvc`）、VS Build Tools（C++ 桌面）、WebView2，以及 API key（或前端 Mock，可不申请 Key）。
+前置：Windows 11 x64、Node.js `^20.19.0` 或 `>=22.12.0`、Rust stable（`x86_64-pc-windows-msvc`）、VS Build Tools（C++ 桌面）、WebView2，以及 API key（或前端 Mock，可不申请 Key）。OpenVR 绑定固定在 `vendor/openvr_sys`，普通版构建不需要 LLVM/Clang。
 
 ```powershell
 cd app\ui
@@ -42,6 +42,9 @@ npm run tauri:build      # 产物在 target/release/bundle/nsis/
 
 ```powershell
 cargo build --release -p voxbridge --features custom-protocol
+
+# 可选 SteamVR/OpenVR Overlay 构建
+cargo build --release -p voxbridge --features "custom-protocol,steamvr-overlay"
 ```
 
 ## 测试

@@ -85,6 +85,84 @@ pub fn toggle_pipeline(state: State<'_>, pipeline: String) -> Result<(), String>
     Ok(())
 }
 
+// ─── VRChat OSC（写回聊天框/头像参数） ────────────────────────────────────────────
+
+#[tauri::command]
+pub fn osc_start(
+    state: State<'_>,
+    port: u16,
+    chatbox_enabled: bool,
+    avatar_param: String,
+    avatar_enabled: bool,
+) -> Result<(), String> {
+    let mut slot = state.osc.lock();
+    if let Some(client) = slot.as_mut() {
+        // 已起时只更新配置，不复建套接字（端口建时定死）。
+        client.set_chat_enabled(chatbox_enabled);
+        client.set_avatar_param(avatar_param);
+        client.set_avatar_enabled(avatar_enabled);
+        return Ok(());
+    }
+    let mut client = vox_osc_win::OscClient::new(port)?;
+    client.set_chat_enabled(chatbox_enabled);
+    client.set_avatar_param(avatar_param);
+    client.set_avatar_enabled(avatar_enabled);
+    *slot = Some(client);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn osc_update(
+    state: State<'_>,
+    chatbox_enabled: bool,
+    avatar_param: String,
+    avatar_enabled: bool,
+) -> Result<(), String> {
+    let mut slot = state.osc.lock();
+    match slot.as_mut() {
+        Some(client) => {
+            client.set_chat_enabled(chatbox_enabled);
+            client.set_avatar_param(avatar_param);
+            client.set_avatar_enabled(avatar_enabled);
+            Ok(())
+        }
+        None => Err("OSC 未启动".into()),
+    }
+}
+
+#[tauri::command]
+pub fn osc_stop(state: State<'_>) -> Result<(), String> {
+    let client = state.osc.lock().take();
+    drop(client);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn osc_send_chatbox(state: State<'_>, text: String) -> Result<(), String> {
+    let slot = state.osc.lock();
+    match slot.as_ref() {
+        // 测试发送 = 真发一条 VRChat 聊天消息（immediate=true，不弹输入框），
+        // 让用户确认 OSC 链路通、VRChat 收到了。
+        Some(client) => client.chatbox(&text, true),
+        None => Err("OSC 未启动".into()),
+    }
+}
+
+#[tauri::command]
+pub fn osc_set_avatar(state: State<'_>, on: bool) -> Result<(), String> {
+    let slot = state.osc.lock();
+    match slot.as_ref() {
+        Some(client) => {
+            let param = client.avatar_param();
+            if param.is_empty() {
+                return Err("尚未配置 OSC 头像参数".into());
+            }
+            client.set_avatar_bool(param, on)
+        }
+        None => Err("OSC 未启动".into()),
+    }
+}
+
 // ─── 用量 ──────────────────────────────────────────────────────────────────────
 
 #[tauri::command]

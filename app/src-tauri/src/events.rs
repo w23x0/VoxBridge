@@ -19,7 +19,7 @@ use vox_core::settings::SubtitleSettings;
 use crate::state::AppState;
 
 /// 前端订阅的唯一事件通道，和 `app/ui/src/api.ts` 里的 `EVENT_CHANNEL` 一致。
-const EVENT_CHANNEL: &str = "voxbridge://event";
+pub(crate) const EVENT_CHANNEL: &str = "voxbridge://event";
 
 /// 装配入口。由 `lib.rs` 的 `assemble` 调一次。
 ///
@@ -49,6 +49,10 @@ pub fn wire(state: &Arc<AppState>, app: tauri::AppHandle) {
     // 用 Mutex 包一份 SubtitleSettings 的克隆。
     let prev_subtitle: Arc<Mutex<SubtitleSettings>> =
         Arc::new(Mutex::new(state.runtime.settings().subtitle.clone()));
+
+    // 上一次推进给 VRChat ChatBox 的已确认前缀。非 done 的逐字推进靠它去重，
+    // 别在同一段前缀下重复发；新一轮说话时清掉，否则上一轮的尾字会卡住这一轮。
+    let osc_last_sent: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
     let listener: Listener = Arc::new(move |event: &Event| {
         // ── 转发给前端 ──────────────────────────────────────────────────
@@ -112,14 +116,80 @@ pub fn wire(state: &Arc<AppState>, app: tauri::AppHandle) {
                 }
                 // 托盘勾选跟着流水线实际状态走——热键、前端、崩溃重连都会走这里。
                 crate::tray::sync(&st);
+                // 对外说话的运行状态 → VRChat 头像指示灯（「正在翻译」亮灯）。
+                // 只在 OSC 头像开关打开且配置了参数名时发，发失败静默。
+                if *pipeline == vox_core::event::Pipeline::Speak {
+                    let slot = st.osc.lock();
+                    if let Some(client) = slot.as_ref() {
+                        if client.avatar_enabled() {
+                            let param = client.avatar_param();
+                            if !param.is_empty() {
+                                let _ = client.set_avatar_bool(param, pipe_state.is_running());
+                            }
+                        }
+                    }
+                    // 一轮说完了（Speak 离开运行态）：清掉上一轮的推进前驱，免得
+                    // 下一轮的同一个已确认前缀因为和上轮尾巴相同而发不出去。
+                    if !pipe_state.is_running() {
+                        *osc_last_sent.lock() = None;
+                    }
+                }
             }
 
             Event::Notice { .. } => {}
 
             // 以下事件只需转发（上面已经 emit 过了），不做额外工作。
             // SubtitleDelta 也很频繁，快路径到此结束。
+            // 高频事件（`GateStatus`、`SubtitleDelta`）保证快路径：只转发，不做 IO。
+            Event::SubtitleDelta {
+                track,
+                text,
+                done,
+                confirmed,
+                ..
+            } => {
+                // 与字幕轨并列的另一条 fast path：把译文实时写进 VRChat 聊天框。
+                // 高帧率下不落盘、不做快照，发送失败静默忽略，绝不因为 OSC
+                // 发不出去打断字幕流。
+                if *track != vox_core::subtitle::Track::Speak {
+                    return;
+                }
+                let slot = st.osc.lock();
+                let Some(client) = slot.as_ref() else {
+                    return;
+                };
+                if !client.chat_enabled() {
+                    return;
+                }
+                if *done {
+                    // 终稿：把完整译文作为一条 VRChat 聊天消息真发出去（immediate=true，
+                    // 不弹输入框、直接发言）。用权威终稿收口，覆盖逐字推进可能残留的中间态。
+                    let line = confirmed.as_deref().unwrap_or(text);
+                    if !line.is_empty() {
+                        let _ = client.chatbox(&truncate_for_chat(line), true);
+                    }
+                    *osc_last_sent.lock() = None;
+                } else if let Some(prefix) = confirmed {
+                    // 逐字推进：拿已确认前缀（不含服务端还会改写的 stash 尾巴），
+                    // 满 STEP 字符才真发一条（immediate=true，VRChat 不弹输入框、直接发出去），
+                    // 让译文以「越变越完整的一条条消息」实时推进。步长控制频度，
+                    // 别逐 token 每帧发——那会刷出一长串碎消息。
+                    let proposed = truncate_for_chat(prefix);
+                    if proposed.is_empty() {
+                        return;
+                    }
+                    let mut last = osc_last_sent.lock();
+                    let grew_enough = last.as_deref().is_none_or(|sent| {
+                        proposed.chars().count()
+                            >= sent.chars().count().saturating_add(OSC_CHAT_STEP_CHARS)
+                    });
+                    if grew_enough {
+                        let _ = client.chatbox(&proposed, true);
+                        *last = Some(proposed);
+                    }
+                }
+            }
             Event::MicActive { .. } => {}
-            Event::SubtitleDelta { .. } => {}
             Event::SubtitleCleared { .. } => {}
             Event::SourceDetected { .. } => {}
             Event::LatencyChanged { .. } => {}
@@ -128,6 +198,26 @@ pub fn wire(state: &Arc<AppState>, app: tauri::AppHandle) {
     });
 
     state.runtime.add_listener(listener);
+}
+
+// VRChat ChatBox 逐字推进的参数。
+/// 已确认前缀涨满多少个字符才再发一次。逐 token/逐帧发会闪、会吵，VRChat 的
+/// 气泡也压不住；攒够一小段再发既够"实时"又不糊。
+const OSC_CHAT_STEP_CHARS: usize = 6;
+/// VRChat 聊天框 /chatbox/input 一次能塞的字符上限附近（估 144），超出截断加省略号。
+const OSC_CHAT_MAX_CHARS: usize = 144;
+
+/// 把一长句截到 ChatBox 一次能发的长度，末尾补 `…`。按字符边界切，不劈开 UTF-8。
+fn truncate_for_chat(text: &str) -> String {
+    let boundary = text.char_indices().nth(OSC_CHAT_MAX_CHARS).map(|(i, _)| i);
+    match boundary {
+        Some(idx) => {
+            let mut s = text[..idx].to_string();
+            s.push('…');
+            s
+        }
+        None => text.to_string(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +281,7 @@ fn subtitle_style_changed(prev: &SubtitleSettings, curr: &SubtitleSettings) -> b
         || prev.font_size != curr.font_size
         || prev.speak_color != curr.speak_color
         || prev.listen_color != curr.listen_color
+        || prev.vr_overlay_enabled != curr.vr_overlay_enabled
         || prev.background_alpha != curr.background_alpha
         || prev.geometry != curr.geometry
 }
@@ -208,6 +299,21 @@ mod tests {
     use vox_core::usage::UsageLedger;
 
     // -- 字幕样式比较 --
+
+    #[test]
+    fn chat_truncate_keeps_the_head_and_appends_ellipsis() {
+        let short = "短句".to_string();
+        assert_eq!(truncate_for_chat(&short), "短句", "没超长原样返回");
+
+        let long = "あ".repeat(OSC_CHAT_MAX_CHARS + 2);
+        let cut = truncate_for_chat(&long);
+        assert!(cut.ends_with('…'), "超长要补省略号：{cut}");
+        assert_eq!(
+            cut.chars().count(),
+            OSC_CHAT_MAX_CHARS + 1,
+            "截断后 = 上限字符 + 省略号"
+        );
+    }
 
     #[test]
     fn same_style_returns_false() {
@@ -303,6 +409,7 @@ mod tests {
             text: "你好".into(),
             done: true,
             replace: true,
+            confirmed: None,
         });
         assert_eq!(json["kind"], "subtitle_delta");
         assert_eq!(json["track"], "listen");

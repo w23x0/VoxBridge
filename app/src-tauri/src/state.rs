@@ -30,6 +30,8 @@ pub struct AppState {
     gates: Mutex<BTreeMap<Pipeline, GateStatus>>,
     /// 悬浮窗，起完才有。
     pub overlay: OnceLock<OverlayHandle>,
+    /// VRChat OSC 客户端（把译文写进聊天框/头像参数），起完才有。
+    pub osc: Mutex<Option<vox_osc_win::OscClient>>,
 }
 
 impl AppState {
@@ -46,6 +48,7 @@ impl AppState {
             persist,
             gates: Mutex::new(BTreeMap::new()),
             overlay: OnceLock::new(),
+            osc: Mutex::new(None),
         }
     }
 

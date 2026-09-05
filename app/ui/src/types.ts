@@ -75,6 +75,8 @@ export interface SpeakSettings {
   output_device: string | null;
   show_translation: boolean;
   speak_translation: boolean;
+  /** 是否走实时翻译；关掉 = 不调用云端 API，把原声直通到输出设备。 */
+  translate: boolean;
   monitor_translation: boolean;
   activation_mode: ActivationMode;
   hotkey: Hotkey;
@@ -98,6 +100,7 @@ export interface ListenSettings {
 
 export interface SubtitleSettings {
   visible: boolean;
+  vr_overlay_enabled: boolean;
   font_family: string;
   font_size: number;
   speak_color: string;

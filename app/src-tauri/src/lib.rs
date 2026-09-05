@@ -36,6 +36,8 @@ mod persist;
 mod state;
 mod sys;
 mod tray;
+#[cfg(feature = "steamvr-overlay")]
+mod vr_overlay;
 mod winminmax;
 
 use state::AppState;
@@ -68,6 +70,11 @@ pub fn run() {
             commands::start_pipeline,
             commands::stop_pipeline,
             commands::toggle_pipeline,
+            commands::osc_start,
+            commands::osc_update,
+            commands::osc_stop,
+            commands::osc_send_chatbox,
+            commands::osc_set_avatar,
             commands::reset_usage,
             commands::reset_usage_model,
             commands::refresh_devices,
@@ -185,14 +192,17 @@ fn assemble(app: &tauri::AppHandle) -> Result<Arc<AppState>, Box<dyn std::error:
 
     // 6. 纯显示悬浮窗 + 字幕帧线程。悬浮窗永久穿透，不处理按钮或设置命令。
     overlay::start(&state);
+    // 7. SteamVR 头显字幕。不可用时只在后台等待，不影响桌面字幕和 VRChat OSC。
+    #[cfg(feature = "steamvr-overlay")]
+    vr_overlay::start(runtime.clone());
 
-    // 7. 设备枚举（首次同步一把，之后低频轮询）。
+    // 8. 设备枚举（首次同步一把，之后低频轮询）。
     devices::start(&state);
 
-    // 8. 事件桥：落盘、推给前端、同步开机自启。
+    // 9. 事件桥：落盘、推给前端、同步开机自启。
     events::wire(&state, app.clone());
 
-    // 9. 热键。注入 host 会触发一次 rebind，把当前绑定推下去。
+    // 10. 热键。注入 host 会触发一次 rebind，把当前绑定推下去。
     //
     // 放在 events::wire 之后：热键线程一起来就可能立刻回调 `on_hotkey` →
     // `update_settings`，要是那会儿 listener 还没挂上，这次改动就不会被标脏，
@@ -204,7 +214,7 @@ fn assemble(app: &tauri::AppHandle) -> Result<Arc<AppState>, Box<dyn std::error:
         ))),
     }
 
-    // 10. 托盘。起不来不致命——设置窗和悬浮窗都还在。
+    // 11. 托盘。起不来不致命——设置窗和悬浮窗都还在。
     if let Err(e) = tray::install(app, &state) {
         runtime.notify(vox_core::event::Notice::warning(format!(
             "托盘图标没建起来：{e}"
@@ -236,9 +246,14 @@ fn shutdown(app: &tauri::AppHandle) {
     input::stop();
     devices::stop();
     overlay::stop();
+    #[cfg(feature = "steamvr-overlay")]
+    vr_overlay::stop();
     state.engine.shutdown();
     if let Some(overlay) = state.overlay.get() {
         overlay.shutdown();
+    }
+    if let Some(client) = state.osc.lock().take() {
+        drop(client);
     }
     state.persist.flush();
 }

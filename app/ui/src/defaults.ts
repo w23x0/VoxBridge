@@ -30,6 +30,7 @@ export const DEFAULT_SETTINGS: Settings = {
     output_device: null,
     show_translation: true,
     speak_translation: true,
+    translate: true,
     monitor_translation: false,
     activation_mode: "toggle",
     hotkey: { ctrl: false, alt: false, shift: false, key: "V" },
@@ -50,6 +51,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   subtitle: {
     visible: true,
+    vr_overlay_enabled: false,
     font_family: "Microsoft YaHei UI",
     font_size: 30,
     speak_color: "#fff4de",

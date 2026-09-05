@@ -21,6 +21,7 @@ tauri-build = { version = "2", features = [] }
 # `cargo tauri build` 会自动带上这个 feature，手工 `cargo build --release`
 # 不会——所以手工出包务必加 `--features custom-protocol`。
 custom-protocol = ["tauri/custom-protocol"]
+steamvr-overlay = ["dep:openvr"]
 
 [dependencies]
 vox-core.workspace = true
@@ -41,11 +42,12 @@ tauri-plugin-updater = "2"
 # 进程级的 CryptoProvider 已由 vox-net::ws 里 install_default() 装好，reqwest 直接共享。
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
-# 装配层只在 Windows 上构建：音频、热键、悬浮窗三样全是 Win32 实现，
+# 装配层只在 Windows 上构建：音频、热键、悬浮窗、OSC 全是 Win32 实现，
 # 没有别的平台的等价物，硬造一层 cfg 假实现只会掩盖问题。
 vox-audio-win = { path = "../../crates/vox-audio-win" }
 vox-input-win = { path = "../../crates/vox-input-win" }
 vox-overlay-win = { path = "../../crates/vox-overlay-win" }
+vox-osc-win = { path = "../../crates/vox-osc-win" }
 windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Security_Cryptography",
@@ -58,3 +60,6 @@ windows = { workspace = true, features = [
     # 发布构建是 windows_subsystem="windows"，stderr 直接进黑洞。
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+[target.'cfg(windows)'.dependencies]
+openvr = { version = "0.9", optional = true }
