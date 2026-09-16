@@ -145,6 +145,8 @@ impl Decoder {
                 self.output_parts.push_str(piece);
                 ServerEvent::TextDelta {
                     text: self.output_parts.clone(),
+                    // delta 累积出来的整句就是已确认部分。
+                    confirmed: Some(self.output_parts.clone()),
                 }
             }
             None => ServerEvent::Other {
@@ -249,12 +251,12 @@ mod tests {
         let mut decoder = Decoder::new();
         let a = decoder.decode(r#"{"type":"session.output_transcript.delta","delta":"こん"}"#);
         assert!(matches!(
-            &a[0].event, Ev::TextDelta { text } if text == "こん"
+            &a[0].event, Ev::TextDelta { text, .. } if text == "こん"
         ));
 
         let b = decoder.decode(r#"{"type":"session.output_transcript.delta","delta":"にちは"}"#);
         assert!(matches!(
-            &b[0].event, Ev::TextDelta { text } if text == "こんにちは"
+            &b[0].event, Ev::TextDelta { text, .. } if text == "こんにちは"
         ));
         assert_eq!(decoder.pending(), "こんにちは");
     }

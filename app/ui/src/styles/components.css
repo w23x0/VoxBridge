@@ -201,6 +201,36 @@
   border-bottom: 1px solid var(--divider);
 }
 
+/* 首页 Pipeline 卡片的层级：状态最醒目，常用配置居中，高级设备配置单独成区。 */
+.pipeline-card {
+  gap: 0;
+}
+
+.pipeline-status {
+  min-height: 52px;
+}
+
+.pipeline-primary {
+  background: color-mix(in srgb, var(--bg-subtle) 42%, transparent);
+  border-radius: var(--radius-sm);
+  padding-inline: 12px;
+}
+
+.pipeline-advanced {
+  padding-top: 2px;
+  border-top: 1px solid var(--divider);
+}
+
+.pipeline-action {
+  width: 100%;
+  min-height: 36px;
+  margin-top: 16px !important;
+}
+
+@supports not (background: color-mix(in srgb, white, black)) {
+  .pipeline-primary { background: var(--bg-subtle); }
+}
+
 .pipeline-config-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -230,7 +260,7 @@
   margin-bottom: 6px;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   .pipeline-config-grid {
     grid-template-columns: 1fr;
   }
@@ -1012,6 +1042,32 @@
   gap: 20px;
   padding: 18px 0;
   border-bottom: 1px solid var(--divider);
+}
+
+@media (max-width: 760px) {
+  .settings-group {
+    padding-inline: 16px;
+  }
+
+  .settings-item {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .si-control,
+  .si-control-w {
+    width: 100%;
+    max-width: none;
+    flex-wrap: wrap;
+  }
+
+  .si-control > .dropdown,
+  .si-control-w > .dropdown,
+  .si-control > .form-input,
+  .si-control-w > .form-input {
+    width: 100%;
+  }
 }
 
 .settings-item:last-child {

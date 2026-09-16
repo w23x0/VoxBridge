@@ -101,7 +101,9 @@ export function PipelineCard({ pipeline }: { pipeline: HomePipeline }) {
   /** 开不了的原因。null 表示能开。 */
   const blocked = ((): string | null => {
     if (!snapshot) return t("pipeline.openFailReason");
-    if (!snapshot.api_keys[activeProvider]) {
+    // 对外说话关掉「翻译」= 直通原声，不走云端，也就不需要 API 密钥。
+    const needsKey = pipeline === "listen" || speak.translate;
+    if (needsKey && !snapshot.api_keys[activeProvider]) {
       return t("pipeline.blockedNoApiKey", {
         provider: catalog.providerLabel(activeProvider, uiLang),
       });
@@ -125,10 +127,10 @@ export function PipelineCard({ pipeline }: { pipeline: HomePipeline }) {
 
   return (
     <div
-      className="stat-card"
+      className="stat-card pipeline-card"
       style={{ flexDirection: "column", alignItems: "stretch" }}
     >
-      <div className="row" style={{ gap: 16 }}>
+      <div className="row pipeline-status" style={{ gap: 16 }}>
         <div className={`stat-icon ${card.tone}`}>
           <Icon size={26} />
         </div>
@@ -157,7 +159,7 @@ export function PipelineCard({ pipeline }: { pipeline: HomePipeline }) {
         </div>
       ) : null}
 
-      <div className="pipeline-config">
+      <div className="pipeline-config pipeline-primary">
         <div className="pipeline-config-grid">
           <div style={{ minWidth: 0 }}>
             <label
@@ -197,6 +199,20 @@ export function PipelineCard({ pipeline }: { pipeline: HomePipeline }) {
 
           {pipeline === "speak" ? (
             <div style={{ minWidth: 0 }}>
+              <div className="pipeline-inline-toggle"
+              style={{ marginBottom: 8, width: "100%", justifyContent: "space-between" }}>
+                <span>{t("pipeline.translate")}</span>
+                <Toggle
+                  checked={speak.translate}
+                  label={t("pipeline.translate")}
+                  onChange={(checked) => patch({ speak: { translate: checked } })}
+                />
+              </div>
+              {!speak.translate ? (
+                <div className="hint" style={{ marginBottom: 8 }}>
+                  {t("pipeline.translateOffHint")}
+                </div>
+              ) : null}
               <label className="stat-label" htmlFor="dd-home-target-language">
                 {t("pipeline.targetLanguage")}
               </label>
@@ -205,6 +221,7 @@ export function PipelineCard({ pipeline }: { pipeline: HomePipeline }) {
                 label={t("pipeline.targetLanguageAria")}
                 value={speak.target_language}
                 options={speakLanguageOptions}
+                disabled={!speak.translate}
                 onChange={(targetLanguage) => {
                   rememberSpeakLanguage(targetLanguage);
                   const nextVoice =
@@ -227,6 +244,7 @@ export function PipelineCard({ pipeline }: { pipeline: HomePipeline }) {
                 <span>{t("pipeline.showTranslation")}</span>
                 <Toggle
                   checked={speak.show_translation}
+                  disabled={!speak.translate}
                   label={t("pipeline.showTranslation")}
                   onChange={(checked) => patch({ speak: { show_translation: checked } })}
                 />
@@ -282,7 +300,8 @@ export function PipelineCard({ pipeline }: { pipeline: HomePipeline }) {
               options={voiceDropdownOptions}
               disabled={
                 !catalog.supportsVoiceSelection(activeProvider) ||
-                (pipeline === "listen" && !listen.speak_translation)
+                (pipeline === "listen" && !listen.speak_translation) ||
+                (pipeline === "speak" && !speak.translate)
               }
               onChange={(voice) => {
                 if (pipeline === "speak") {
@@ -348,7 +367,7 @@ export function PipelineCard({ pipeline }: { pipeline: HomePipeline }) {
       </div>
 
       {pipeline === "speak" ? (
-        <div style={{ marginTop: 10 }}>
+        <div className="pipeline-advanced" style={{ marginTop: 10 }}>
           <label className="stat-label" htmlFor="dd-home-input-device">
             {t("pipeline.inputDevice")}
           </label>
@@ -393,7 +412,7 @@ export function PipelineCard({ pipeline }: { pipeline: HomePipeline }) {
             <div className="stat-label">{t("pipeline.monitorTranslation")}</div>
             <Toggle
               checked={speak.monitor_translation}
-              disabled={!snapshot}
+              disabled={!snapshot || !speak.translate}
               label={t("pipeline.monitorTranslation")}
               onChange={(enabled) =>
                 patch({ speak: { monitor_translation: enabled } })
@@ -404,7 +423,7 @@ export function PipelineCard({ pipeline }: { pipeline: HomePipeline }) {
       ) : null}
 
       {pipeline === "listen" ? (
-        <div style={{ marginTop: 10 }}>
+        <div className="pipeline-advanced" style={{ marginTop: 10 }}>
           <label className="stat-label" htmlFor="dd-home-listen-target">
             {t("pipeline.listenTarget")}
           </label>
@@ -455,7 +474,7 @@ export function PipelineCard({ pipeline }: { pipeline: HomePipeline }) {
 
       <button
         type="button"
-        className={running ? "btn btn-secondary btn-sm" : "btn btn-dark btn-sm"}
+        className={running ? "btn btn-secondary btn-sm pipeline-action" : "btn btn-dark btn-sm pipeline-action"}
         style={{ marginTop: "auto", justifyContent: "center" }}
         disabled={!snapshot || (!running && blocked !== null)}
         data-focus-item

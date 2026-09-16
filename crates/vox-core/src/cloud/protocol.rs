@@ -198,8 +198,13 @@ impl ClientEvent {
 /// 服务端回过来的东西。认得的都拆开，认不得的原样留着，方便调试面板显示。
 #[derive(Debug, Clone, PartialEq)]
 pub enum ServerEvent {
-    /// 译文增量。`text` 是**到目前为止拼好的整句**。
-    TextDelta { text: String },
+    /// 译文增量。`text` 是**到目前为止拼好的整句**（渲染值，含临时 stash 尾巴），
+    /// `confirmed` 那部分不再会变、可安全交给外部整行替换（如 VRChat ChatBox）：
+    /// 已确认前缀（LiveTranslate 的 `.text` 事件）或已累积的整句（delta 类型）。
+    TextDelta {
+        text: String,
+        confirmed: Option<String>,
+    },
     /// 这一句完了。
     TextDone { text: String },
     /// 服务端回报的**源文识别语种**。自动识别（`source_language` 为 None）时才有；
@@ -368,6 +373,8 @@ impl Decoder {
                 self.parts.push_str(piece);
                 ServerEvent::TextDelta {
                     text: self.parts.clone(),
+                    // delta 类型的累积是单调增长的整句，整句就是已确认部分。
+                    confirmed: Some(self.parts.clone()),
                 }
             }
             // 空增量当没发生过。
@@ -392,7 +399,12 @@ impl Decoder {
             };
         }
         self.parts = confirmed.to_string();
-        ServerEvent::TextDelta { text: render }
+        ServerEvent::TextDelta {
+            text: render,
+            // 渲染值里只有 confirmed 是稳的（stash 每次都会被服务端重写），
+            // 对外逐字推进只该用 confirmed 这段，别拿会变的尾巴占位置。
+            confirmed: Some(confirmed.to_string()),
+        }
     }
 
     /// 收尾。done 里没带文字就拿累积的凑。（坑 4）
@@ -589,7 +601,8 @@ mod tests {
         assert_eq!(
             a.event,
             ServerEvent::TextDelta {
-                text: "こん".into()
+                text: "こん".into(),
+                confirmed: Some("こん".into())
             }
         );
 
@@ -599,7 +612,8 @@ mod tests {
         assert_eq!(
             b.event,
             ServerEvent::TextDelta {
-                text: "こんにち".into()
+                text: "こんにち".into(),
+                confirmed: Some("こんにち".into())
             }
         );
 
@@ -609,7 +623,8 @@ mod tests {
         assert_eq!(
             c.event,
             ServerEvent::TextDelta {
-                text: "こんにちは".into()
+                text: "こんにちは".into(),
+                confirmed: Some("こんにちは".into())
             },
             "增量要吐到目前为止的整句"
         );
@@ -660,9 +675,10 @@ mod tests {
         assert_eq!(
             first.event,
             ServerEvent::TextDelta {
-                text: "こんにち".into()
+                text: "こんにち".into(),
+                confirmed: Some("こん".into())
             },
-            "渲染值 = 确认前缀 + 尾巴"
+            "渲染值 = 确认前缀 + 尾巴；已确认段单独漏出来给外部逐字推进"
         );
         assert_eq!(dec.pending(), "こん", "确认前缀才进累积，stash 不落账");
 
@@ -673,7 +689,8 @@ mod tests {
         assert_eq!(
             second.event,
             ServerEvent::TextDelta {
-                text: "こんにちは".into()
+                text: "こんにちは".into(),
+                confirmed: Some("こんにち".into())
             }
         );
         assert_eq!(dec.pending(), "こんにち");
@@ -693,7 +710,8 @@ mod tests {
         assert_eq!(
             corrected.event,
             ServerEvent::TextDelta {
-                text: "訂正後の訳文".into()
+                text: "訂正後の訳文".into(),
+                confirmed: Some("訂正後の訳".into())
             }
         );
         assert_eq!(
@@ -712,7 +730,8 @@ mod tests {
         assert_eq!(
             ev.event,
             ServerEvent::TextDelta {
-                text: "你好呀".into()
+                text: "你好呀".into(),
+                confirmed: Some("你好".into())
             }
         );
         assert_eq!(dec.pending(), "你好");

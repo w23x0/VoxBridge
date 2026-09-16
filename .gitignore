@@ -32,3 +32,6 @@ V2V/
 /tools/signing/
 /tools/bundle/
 
+
+# 本地 VR 验证用的独立构建目录（编译产物，2.3GB）
+/target-vr-check/

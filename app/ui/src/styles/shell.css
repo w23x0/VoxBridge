@@ -291,7 +291,7 @@ body {
 .page-scroll {
   max-width: var(--content-max);
   margin: 0 auto;
-  padding: 28px 32px;
+  padding: 28px clamp(20px, 3vw, 32px) 40px;
 }
 
 .page-scroll.narrow {
@@ -308,6 +308,17 @@ body {
   font-weight: 800;
   letter-spacing: -0.5px;
   color: var(--accent);
+}
+
+@media (max-width: 900px) {
+  .app-layout {
+    margin-left: calc(var(--sidebar-width) + 20px);
+    margin-right: 12px;
+  }
+
+  .page-scroll {
+    padding-inline: 16px;
+  }
 }
 
 /* ---- 主题切换的圆形扩散 ---- */

@@ -39,6 +39,8 @@ enum ResamplerInner {
         resampler: Box<SincFixedIn<f32>>,
         /// 等待凑满一帧的输入缓冲。
         buffer: Vec<f32>,
+        /// 复用的处理帧，避免每次 `process` 都分配临时 Vec。
+        chunk: Vec<f32>,
         /// rubato 每次要求的输入帧数。
         frames_needed: usize,
     },
@@ -67,6 +69,7 @@ impl Resampler {
             inner: ResamplerInner::Active {
                 resampler: Box::new(resampler),
                 buffer: Vec::with_capacity(frames_needed),
+                chunk: vec![0.0; frames_needed],
                 frames_needed,
             },
         }
@@ -88,15 +91,19 @@ impl Resampler {
             ResamplerInner::Active {
                 resampler,
                 buffer,
+                chunk,
                 frames_needed,
             } => {
                 buffer.extend_from_slice(input);
-                let mut output = Vec::new();
+                let mut output = Vec::with_capacity(buffer.len().saturating_mul(2));
                 while buffer.len() >= *frames_needed {
-                    let chunk: Vec<f32> = buffer.drain(..*frames_needed).collect();
+                    let frame_len = *frames_needed;
+                    chunk[..frame_len].copy_from_slice(&buffer[..frame_len]);
+                    buffer.copy_within(frame_len.., 0);
+                    buffer.truncate(buffer.len() - frame_len);
                     // rubato 的 process 接口：&[impl AsRef<[T]>]，每个元素是一个声道。
                     let result = resampler
-                        .process(&[&chunk], None)
+                        .process(&[&chunk[..frame_len]], None)
                         .expect("输入长度正确，不应失败");
                     output.extend_from_slice(&result[0]);
                     // 下一帧要求的输入长度可能变化（SincFixedIn 实际不变，但接口允许）。
@@ -135,6 +142,7 @@ impl Resampler {
                 resampler,
                 buffer,
                 frames_needed,
+                ..
             } => {
                 resampler.reset();
                 buffer.clear();

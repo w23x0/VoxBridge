@@ -10,7 +10,12 @@
 
 import { createMockApi } from "./mock/backend";
 import type { ModelProvider, PipelineName, Settings } from "./types";
-import type { AudioApp, Snapshot, SettingsPatch, VoxEvent } from "./types.snapshot";
+import type {
+  AudioApp,
+  Snapshot,
+  SettingsPatch,
+  VoxEvent,
+} from "./types.snapshot";
 
 export const EVENT_CHANNEL = "voxbridge://event";
 
@@ -40,6 +45,20 @@ export interface VoxApi {
   updateSettings(patch: SettingsPatch): Promise<Settings>;
   setApiKey(provider: ModelProvider, key: string): Promise<void>;
   togglePipeline(pipeline: PipelineName): Promise<void>;
+  /** VRChat(OSC) 外部模块：启动同步（聊天框开关 + 头像开关/参数名 + 端口）。 */
+  oscStart(
+    chatboxEnabled: boolean,
+    avatarEnabled: boolean,
+    avatarParam: string,
+    port: number,
+  ): Promise<void>;
+  /** 运行中改配置热更新（端口建时定死，不在热更新里）。 */
+  oscUpdate(chatboxEnabled: boolean, avatarEnabled: boolean, avatarParam: string): Promise<void>;
+  oscStop(): Promise<void>;
+  /** 往 VRChat ChatBox 送一条文本。 */
+  oscSendChatbox(text: string): Promise<void>;
+  /** 手动设一个头像状态参数（旁路测试用；自动跟随交由后端）。 */
+  oscSetAvatar(on: boolean): Promise<void>;
   resetUsage(): Promise<void>;
   resetUsageModel(model: string): Promise<void>;
   refreshDevices(): Promise<void>;
@@ -85,6 +104,13 @@ function createTauriApi(): VoxApi {
     setApiKey: async (provider, key) =>
       void (await call<unknown>("set_api_key", { provider, key })),
     togglePipeline: async (pipeline) => void (await call<unknown>("toggle_pipeline", { pipeline })),
+    oscStart: async (chatboxEnabled, avatarEnabled, avatarParam, port) =>
+      void (await call<unknown>("osc_start", { port, chatboxEnabled, avatarParam, avatarEnabled })),
+    oscUpdate: async (chatboxEnabled, avatarEnabled, avatarParam) =>
+      void (await call<unknown>("osc_update", { chatboxEnabled, avatarParam, avatarEnabled })),
+    oscStop: async () => void (await call<unknown>("osc_stop")),
+    oscSendChatbox: async (text) => void (await call<unknown>("osc_send_chatbox", { text })),
+    oscSetAvatar: async (on) => void (await call<unknown>("osc_set_avatar", { on })),
     resetUsage: async () => void (await call<unknown>("reset_usage")),
     resetUsageModel: async (model) => void (await call<unknown>("reset_usage_model", { model })),
     refreshDevices: async () => void (await call<unknown>("refresh_devices")),

@@ -67,7 +67,7 @@ export class FakeTyper {
     const demo = correctedLine(this.line);
     if (demo && this.cursor >= demo.half.length) {
       this.cursor = demo.full.length;
-      emit({ kind: "subtitle_delta", track: this.track, text: demo.full, done: false, replace: true });
+      emit({ kind: "subtitle_delta", track: this.track, text: demo.full, done: false, replace: true, confirmed: demo.full });
       this.phase = "hold";
       this.nextAt = now + 900;
       return demo.full.length;
@@ -78,7 +78,7 @@ export class FakeTyper {
     const chunk = demo ? demo.half.slice(this.cursor, this.cursor + take) : text.slice(this.cursor, this.cursor + take);
     this.cursor += chunk.length;
     const done = !demo && this.cursor >= text.length;
-    emit({ kind: "subtitle_delta", track: this.track, text: chunk, done, replace: false });
+    emit({ kind: "subtitle_delta", track: this.track, text: chunk, done, replace: false, confirmed: demo ? demo.half : text });
     if (done) {
       this.phase = "hold";
       this.nextAt = now + 900;

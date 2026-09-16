@@ -177,6 +177,7 @@ impl Decoder {
                 "serverContent.outputTranscription",
                 ServerEvent::TextDelta {
                     text: self.output_text.clone(),
+                    confirmed: Some(self.output_text.clone()),
                 },
             ));
         }

@@ -24,6 +24,7 @@ const PAGES = [
   { id: "home", label: "首页" },
   { id: "providers", label: "模型服务商" },
   { id: "subtitle", label: "字幕外观" },
+  { id: "vrchat", label: "VRChat" },
   { id: "usage", label: "用量" },
   { id: "about", label: "关于" },
   { id: "settings", label: "设置" },
@@ -126,13 +127,13 @@ const AUDIT = () => {
     if (el.closest("[aria-hidden=true]")) continue;
     // 整块关掉的区域：原因写在那块外面的总开关上，逐行再报一遍是噪音
     if (el.closest("[data-block-disabled]")) continue;
-    const row = el.closest(".settings-item, .card");
+    const row = el.closest(".settings-item, .card, .panel");
     const txt = row ? row.textContent || "" : "";
     /*
      * 关键词判断本来就糙：文案换个说法就会误报。
      * 宁可放宽 —— 漏判一个不如天天喊狼来了，那样这条检查就没人看了。
      */
-    if (!/不生效|用不了|先|没有|没在|已关闭|需要|才能|当前|固定|没选|没扫到|不在|要先|粘贴/.test(txt)) {
+    if (!/不生效|用不了|先|没有|没在|已关闭|等待|暂无|需要|才能|当前|固定|没选|没扫到|不在|要先|粘贴/.test(txt)) {
       out.silentDisabled.push(
         `${el.tagName.toLowerCase()} —— 所在行：${txt.replace(/\s+/g, " ").trim().slice(0, 60) || "（找不到行）"}`,
       );

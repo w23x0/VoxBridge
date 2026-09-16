@@ -238,7 +238,7 @@ const en = {
     background: "Backdrop opacity",
     backgroundDesc: "0 = text only, no backdrop",
     charTtl: "Char lifetime",
-    charTtlDesc: "How long each character stays on screen",
+    charTtlDesc: "How long the subtitle stays after its last update",
     charFade: "Fadeout",
     charFadeDesc: "Fade speed after the lifetime ends; 0 = vanish instantly",
     dimZeros: "Keep non-speech subtitles",

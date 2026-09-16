@@ -10,6 +10,7 @@ import {
   IconKey,
   IconSettings,
   IconSubtitles,
+  IconVrc,
 } from "./ui/icons";
 
 export type LabelFn = (t: (key: string, params?: TParams) => string) => string;
@@ -37,6 +38,11 @@ export const NAV: NavItem[] = [
     id: "subtitle",
     label: (t) => t("nav.subtitle"),
     icon: IconSubtitles,
+  },
+  {
+    id: "vrchat",
+    label: (t) => t("nav.vrchat"),
+    icon: IconVrc,
   },
   {
     id: "settings",

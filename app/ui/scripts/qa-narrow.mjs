@@ -25,6 +25,7 @@ const ORDER = [
   ["home", "首页", "首页"],
   ["providers", "模型服务商", "模型服务商"],
   ["subtitle", "字幕", "字幕外观"],
+  ["vrchat", "VRChat", "VRChat"],
   ["settings", "设置", "设置"],
   ["usage", "用量", "用量"],
   ["about", "关于", "关于"],

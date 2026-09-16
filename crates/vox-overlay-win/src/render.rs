@@ -42,19 +42,10 @@ struct RowStyle {
     radius: f32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct CharIdentity {
     previous: Vec<char>,
     ids: Vec<u64>,
-}
-
-impl Default for CharIdentity {
-    fn default() -> Self {
-        Self {
-            previous: Vec::new(),
-            ids: Vec::new(),
-        }
-    }
 }
 
 impl CharIdentity {
@@ -320,7 +311,7 @@ impl Renderer {
                 let key = self.row_key(
                     track,
                     placed,
-                    &match track {
+                    match track {
                         Track::Listen => listen_ids.as_slice(),
                         Track::Speak => speak_ids.as_slice(),
                     },

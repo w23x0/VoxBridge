@@ -60,6 +60,7 @@ export function createMockApi(): VoxApi {
   /** 假的「按住说话」相位：hold 模式下自动一按一放，好让人看到门控切换。 */
   let holdUntil = 0;
   let holdNextAt = 0;
+  let oscRunning = false;
 
   const lanes: Record<PipelineName, Lane> = {
     speak: mkLane(SPEAK_SCRIPT, "speak"),
@@ -195,7 +196,8 @@ export function createMockApi(): VoxApi {
         setMic(speak.gate.active);
       }
       emit({ kind: "gate_status", pipeline: "speak", status: speak.gate });
-      if (speak.gate.active && speak.typer) {
+      // 关掉「翻译」= 直通原声：不走云端，只有说话状态，没有字幕、不烧 token。
+      if (settings.speak.translate && speak.gate.active && speak.typer) {
         const n = speak.typer.step(now, emit);
         if (n > 0 && Math.random() < 0.35) bumpUsage(settings.speak.model_name, n);
       }
@@ -231,7 +233,8 @@ export function createMockApi(): VoxApi {
   }
 
   function ensureTimer(): void {
-    const anyLive = (["speak", "listen"] as const).some((p) => isRunning(lanes[p].state));
+    const anyLive =
+      (["speak", "listen"] as const).some((p) => isRunning(lanes[p].state));
     if (anyLive && timer === null) {
       lastTick = performance.now();
       timer = setInterval(tick, TICK_MS);
@@ -358,6 +361,24 @@ export function createMockApi(): VoxApi {
     async togglePipeline(pipeline) {
       if (isRunning(lanes[pipeline].state)) await stop(pipeline);
       else await start(pipeline);
+    },
+    // VRChat(OSC) 假后端：状态本地存、命令成功占位。
+    async oscStart() {
+      if (!oscRunning) oscRunning = true;
+      await wait(280);
+    },
+    async oscUpdate() {
+      await wait(180);
+    },
+    async oscStop() {
+      oscRunning = false;
+      await wait(180);
+    },
+    async oscSendChatbox() {
+      await wait(220);
+    },
+    async oscSetAvatar() {
+      await wait(180);
     },
     async resetUsage() {
       usage = {};

@@ -22,8 +22,8 @@ import aliyun from "../../../catalog/aliyun.json";
 import gemini from "../../../catalog/gemini.json";
 import gpt from "../../../catalog/gpt.json";
 import type { ModelProvider } from "./types";
+import type { VoxApi } from "./api";
 import type { UiLang } from "./i18n/types";
-import { getApi } from "./api";
 
 /** catalog JSON 里 label/name/description 的多语对象。键是 zh / en / ja。 */
 export interface CatalogLabel {
@@ -148,6 +148,11 @@ function notifyChanged() {
 
 let initPromise: Promise<void> | null = null;
 
+async function loadApi(): Promise<VoxApi> {
+  const { getApi } = await import("./api");
+  return getApi();
+}
+
 /** 启动时把 Rust 落盘的覆盖版目录灌进来。只会调用一次。 */
 export function ensureCatalogLoaded(): Promise<void> {
   if (!initPromise) {
@@ -157,9 +162,9 @@ export function ensureCatalogLoaded(): Promise<void> {
 }
 
 async function loadOverrides(): Promise<void> {
-  let api: ReturnType<typeof getApi>;
+  let api: VoxApi;
   try {
-    api = getApi();
+    api = await loadApi();
   } catch {
     return;
   }
@@ -198,10 +203,16 @@ function get(provider: ModelProvider): RegistryEntry | undefined {
  * 调它把刚落盘的目录也灌进内存。任何一处失败都保持原状态。
  */
 export async function reloadCatalog(): Promise<void> {
+  let api: VoxApi;
+  try {
+    api = await loadApi();
+  } catch {
+    return;
+  }
   const ids = ["aliyun", "gemini", "gpt"] as const;
   for (const id of ids) {
     try {
-      const text = await getApi().readCatalogOverride(id);
+      const text = await api.readCatalogOverride(id);
       if (!text) continue;
       const parsed = JSON.parse(text) as unknown;
       if (!(parsed && typeof parsed === "object" && "schema_version" in parsed)) continue;

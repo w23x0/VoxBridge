@@ -27,6 +27,7 @@ pub(crate) fn plan(config: &SessionConfig) -> Result<Plan, PortError> {
             include_tree: target.include_process_tree,
         },
         denoise: false,
+        passthrough: false,
         playback_device: config.voice.as_ref().map(|_| config.output_device.clone()),
         monitor_translation: false,
         hot_update: false,

@@ -51,6 +51,8 @@ pub struct SessionConfig {
     pub gate_active: bool,
     pub input_device: Option<String>,
     pub output_device: Option<String>,
+    /// 对外说话是否走实时翻译；`false` = 原声直通，不接云端。
+    pub translate: bool,
     /// 是否把译文额外回放到系统默认播放设备，供本人测试。
     pub monitor_translation: bool,
     /// 抓哪个程序（只有听人说话用）。
@@ -532,6 +534,14 @@ impl Runtime {
                     });
                 }
 
+                // 「对外翻译」是按会话启动时决定的：运行中点它发不了活指令，走重启。
+                if new.speak.translate != old.speak.translate && speak_live {
+                    events.push(Event::Notice {
+                        notice: Notice::info("对外翻译设置已保存，重启「对外说话」后生效")
+                            .on(Pipeline::Speak),
+                    });
+                }
+
                 if new.speak.monitor_translation != old.speak.monitor_translation {
                     commands.push(PipelineCommand::SetMonitorTranslation {
                         session_id: speak_session,
@@ -618,7 +628,16 @@ impl Runtime {
                 Pipeline::Speak => s.settings.speak.provider,
                 Pipeline::Listen => s.settings.listen.provider,
             };
-            let Some(api_key) = s.api_keys.get(&provider).cloned().filter(|k| !k.is_empty()) else {
+            // 对外说话关闭翻译（直通原声）不走云端，不需要 API 密钥。
+            let needs_key_or_translate =
+                pipeline != Pipeline::Speak || s.settings.speak.translate;
+            let Some(api_key) = s
+                .api_keys
+                .get(&provider)
+                .cloned()
+                .filter(|k| !k.is_empty())
+                .or_else(|| (!needs_key_or_translate).then(String::new))
+            else {
                 drop(s);
                 self.notify(Notice::error("请先配置 API 密钥").on(pipeline));
                 return;
@@ -675,6 +694,7 @@ impl Runtime {
                 gate_active: mic_active,
                 input_device: settings.speak.input_device.clone(),
                 output_device: settings.speak.output_device.clone(),
+                translate: settings.speak.translate,
                 monitor_translation: settings.speak.monitor_translation,
                 loopback_target: None,
                 denoise: settings.speak.denoise,
@@ -701,6 +721,7 @@ impl Runtime {
                 gate_active: true,
                 input_device: None,
                 output_device: settings.listen.output_device.clone(),
+                translate: true,
                 monitor_translation: false,
                 loopback_target: settings.listen.target.clone(),
                 // 数字音源本来就干净，不降噪。
@@ -903,6 +924,8 @@ impl Runtime {
     }
 
     /// 模型吐字幕。`done` = 这一段说完了；`replace` = 服务端整句重写，字幕要整行替换。
+    /// `confirmed` = 不再会变的那段完整句（已确认前缀/done 终稿），给外层（如 VRChat
+    /// ChatBox）做整行替换推进用；`None` = 没有可用确认前缀。
     pub fn on_subtitle_delta(
         &self,
         pipeline: Pipeline,
@@ -910,6 +933,7 @@ impl Runtime {
         text: &str,
         done: bool,
         replace: bool,
+        confirmed: Option<&str>,
     ) {
         let track = pipeline.track();
         {
@@ -933,12 +957,15 @@ impl Runtime {
                     slot.push_text(text, now);
                 }
             }
+            if done {
+            }
         }
         self.emit(vec![Event::SubtitleDelta {
             track,
             text: text.to_string(),
             done,
             replace,
+            confirmed: confirmed.map(str::to_string),
         }]);
     }
 
@@ -1282,7 +1309,7 @@ mod tests {
         let (rt, rec) = fixture();
         let old = bring_up(&rt, &rec, Pipeline::Speak);
         rt.stop(Pipeline::Speak);
-        rt.on_subtitle_delta(Pipeline::Speak, old, "幽灵字幕", true, false);
+        rt.on_subtitle_delta(Pipeline::Speak, old, "幽灵字幕", true, false, None);
         rt.on_gate_status(Pipeline::Speak, old, gate_status(true));
         let snap = rt.snapshot();
         assert!(rt.subtitle_frame().lines.is_empty(), "旧会话的字幕不该出现");
@@ -1296,7 +1323,7 @@ mod tests {
         rt.stop(Pipeline::Speak);
         let second = bring_up(&rt, &rec, Pipeline::Speak);
         assert_ne!(first, second, "重启要换新会话号");
-        rt.on_subtitle_delta(Pipeline::Speak, second, "こんにちは", false, false);
+        rt.on_subtitle_delta(Pipeline::Speak, second, "こんにちは", false, false, None);
         assert_eq!(rt.subtitle_frame().lines.len(), 1);
     }
 
@@ -1304,8 +1331,8 @@ mod tests {
     fn subtitle_delta_replace_swaps_the_track_line_instead_of_doubling() {
         let (rt, rec) = fixture();
         let session = bring_up(&rt, &rec, Pipeline::Speak);
-        rt.on_subtitle_delta(Pipeline::Speak, session, "错误句子", false, false);
-        rt.on_subtitle_delta(Pipeline::Speak, session, "订正句子", false, true);
+        rt.on_subtitle_delta(Pipeline::Speak, session, "错误句子", false, false, None);
+        rt.on_subtitle_delta(Pipeline::Speak, session, "订正句子", false, true, None);
         let text: String = rt
             .subtitle_frame()
             .lines
@@ -1412,6 +1439,26 @@ mod tests {
     }
 
     #[test]
+    fn closing_translate_starts_speak_without_an_api_key() {
+        let (rt, rec) = fixture();
+        rt.update_settings(|s| s.speak.translate = false);
+        rt.start(Pipeline::Speak);
+        // 直通不走云端，不需要密钥：启动命令该照发，不许弹「先配置 API 密钥」。
+        assert!(
+            rec.drain().iter().any(|c| matches!(c, PipelineCommand::Start(_))),
+            "关掉翻译对外说话也该能启动"
+        );
+        assert!(
+            !rt
+                .snapshot()
+                .notices
+                .iter()
+                .any(|n| n.text.contains("密钥") || n.text.contains("API")),
+            "直通不需密钥，不该提示配置密钥"
+        );
+    }
+
+    #[test]
     fn listen_without_target_refuses() {
         let (rt, rec) = fixture();
         rt.start(Pipeline::Listen);
@@ -1482,7 +1529,7 @@ mod tests {
     fn hidden_translation_clears_and_stops_subtitle_events() {
         let (rt, rec) = fixture();
         let session = bring_up(&rt, &rec, Pipeline::Speak);
-        rt.on_subtitle_delta(Pipeline::Speak, session, "こんにちは", false, false);
+        rt.on_subtitle_delta(Pipeline::Speak, session, "こんにちは", false, false, None);
         assert_eq!(rt.subtitle_frame().lines.len(), 1);
 
         let events = Arc::new(Mutex::new(Vec::<Event>::new()));
@@ -1498,7 +1545,7 @@ mod tests {
         )));
 
         events.lock().clear();
-        rt.on_subtitle_delta(Pipeline::Speak, session, "幽灵字幕", true, false);
+        rt.on_subtitle_delta(Pipeline::Speak, session, "幽灵字幕", true, false, None);
         assert!(rt.subtitle_frame().lines.is_empty());
         assert!(
             events
@@ -1662,8 +1709,8 @@ mod tests {
         rec.drain();
         let speak = bring_up(&rt, &rec, Pipeline::Speak);
         let listen = bring_up(&rt, &rec, Pipeline::Listen);
-        rt.on_subtitle_delta(Pipeline::Speak, speak, "はい", false, false);
-        rt.on_subtitle_delta(Pipeline::Listen, listen, "好的", false, false);
+        rt.on_subtitle_delta(Pipeline::Speak, speak, "はい", false, false, None);
+        rt.on_subtitle_delta(Pipeline::Listen, listen, "好的", false, false, None);
         let frame = rt.subtitle_frame();
         assert_eq!(frame.lines.len(), 2);
         assert_eq!(frame.lines[0].track, Track::Listen, "听人说话在上面一行");

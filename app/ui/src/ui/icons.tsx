@@ -78,6 +78,18 @@ export const IconSubtitles = (p: IconProps) => (
   </Svg>
 );
 
+export const IconVrc = (p: IconProps) => (
+  <Svg {...p}>
+    {/* 虚拟形象：圆形面具脸 + 网格，暗合 VRChat 的 OSCInput 形象调试 */}
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 3v18M3 12h18" />
+    <path d="M6.4 6.4l11.2 11.2M17.6 6.4 6.4 17.6" />
+    <circle cx="9" cy="9" r="1" />
+    <circle cx="15" cy="9" r="1" />
+    <path d="M8 14h8" />
+  </Svg>
+);
+
 export const IconSettings = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="12" cy="12" r="3" />
@@ -145,6 +157,13 @@ export const IconInfo = (p: IconProps) => (
   </Svg>
 );
 
+export const IconSend = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M22 2 11 13" />
+    <path d="M22 2 15 22l-4-9-9-4 20-7z" />
+  </Svg>
+);
+
 export const IconSave = (p: IconProps) => (
   <Svg {...p}>
     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -162,6 +181,13 @@ export const IconPlay = (p: IconProps) => (
 export const IconStop = (p: IconProps) => (
   <Svg {...p}>
     <rect x="6" y="6" width="12" height="12" rx="2" />
+  </Svg>
+);
+
+export const IconCopy = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="9" y="9" width="12" height="12" rx="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
   </Svg>
 );
 

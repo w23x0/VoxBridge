@@ -36,11 +36,11 @@ impl std::fmt::Debug for ConnectRequest {
             .field("url", &url)
             .field(
                 "auth_header",
-                &self
-                    .auth_header
-                    .is_empty()
-                    .then_some("none")
-                    .unwrap_or("redacted"),
+                &if self.auth_header.is_empty() {
+                    "none"
+                } else {
+                    "redacted"
+                },
             )
             .finish()
     }
@@ -762,7 +762,13 @@ mod tests {
         let ev = s
             .on_message(r#"{"type":"response.audio_transcript.delta","transcript":"hi"}"#)
             .unwrap();
-        assert_eq!(ev.event, ServerEvent::TextDelta { text: "hi".into() });
+        assert_eq!(
+            ev.event,
+            ServerEvent::TextDelta {
+                text: "hi".into(),
+                confirmed: Some("hi".into())
+            }
+        );
         assert!(s.on_message("垃圾").is_none());
     }
 

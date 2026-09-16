@@ -87,6 +87,9 @@ pub(crate) struct Plan {
     pub target: CaptureTarget,
     /// 上传前要不要降噪。数字源（环回）本来就干净，白降一遍还费 CPU。
     pub denoise: bool,
+    /// 直通模式：不起云端会话、不开 WS，把闸门放行的原声直接推给播放汇。
+    /// 对外说话关掉「翻译」时用；带云端的会话恒为 `false`。
+    pub passthrough: bool,
     /// 收到的语音往哪放。`None` = 这条会话不出声（纯文字）。
     pub playback_device: Option<Option<String>>,
     /// 是否把同一份译音额外回放到系统默认播放设备。
@@ -648,31 +651,34 @@ impl Worker {
         }
         self.report(PipelineState::Starting);
 
-        let mut transport = (self.deps.transport)();
-        let connect_started = Instant::now();
-        let now = self.now();
-        cloud::open(transport.as_mut(), &mut self.session, now)?;
-        self.latency
-            .set_connect(connect_started.elapsed().as_millis() as u64);
-        self.session_opened_at = self.now();
-        self.upload_timeline.reset();
-        if self.stopping() {
-            transport.close();
-            return Ok(false);
-        }
-        self.transport = Some(transport);
+        // 直通（关翻译）模式不起云端会话；只有带翻译的会话才连 WS、开 24k 播放汇。
+        if !self.plan.passthrough {
+            let mut transport = (self.deps.transport)();
+            let connect_started = Instant::now();
+            let now = self.now();
+            cloud::open(transport.as_mut(), &mut self.session, now)?;
+            self.latency
+                .set_connect(connect_started.elapsed().as_millis() as u64);
+            self.session_opened_at = self.now();
+            self.upload_timeline.reset();
+            if self.stopping() {
+                transport.close();
+                return Ok(false);
+            }
+            self.transport = Some(transport);
 
-        // 出声的会话才开播放汇。内核推 24 kHz，设备率由外壳自己换。
-        if let Some(device) = self.plan.playback_device.clone() {
-            let mut sink = (self.deps.playback)();
-            sink.open(device.as_deref(), OUTPUT_SAMPLE_RATE)?;
-            self.sink = Some(sink);
-        }
-        if self.plan.monitor_translation {
-            self.set_monitor_translation(true);
-        }
-        if self.stopping() {
-            return Ok(false);
+            // 出声的会话才开播放汇。内核推 24 kHz，设备率由外壳自己换。
+            if let Some(device) = self.plan.playback_device.clone() {
+                let mut sink = (self.deps.playback)();
+                sink.open(device.as_deref(), OUTPUT_SAMPLE_RATE)?;
+                self.sink = Some(sink);
+            }
+            if self.plan.monitor_translation {
+                self.set_monitor_translation(true);
+            }
+            if self.stopping() {
+                return Ok(false);
+            }
         }
 
         // 采集回调跑在音频驱动线程上，只往信箱里塞，绝不做重活。
@@ -707,18 +713,37 @@ impl Worker {
                 tracing::warn!(rate = format.sample_rate, "采集率不是 48 kHz，跳过降噪");
             }
         }
-        self.resampler = Some((self.deps.resample)(
-            format.sample_rate,
-            self.session.input_sample_rate(),
-        ));
+        // 直通模式：把原声推给播放汇，源率就是采集率（外壳自己再换到设备率）。
+        if self.plan.passthrough {
+            if let Some(device) = self.plan.playback_device.clone() {
+                let mut sink = (self.deps.playback)();
+                match sink.open(device.as_deref(), format.sample_rate) {
+                    Ok(_) => self.sink = Some(sink),
+                    Err(err) => {
+                        tracing::warn!(error = %err, "原声输出设备打不开");
+                        self.runtime.notify(
+                            Notice::warning(format!("原声输出失败：{}", err.message))
+                                .on(self.pipeline()),
+                        );
+                    }
+                }
+            }
+        } else {
+            self.resampler = Some((self.deps.resample)(
+                format.sample_rate,
+                self.session.input_sample_rate(),
+            ));
+        }
 
         if self.stopping() {
             return Ok(false);
         }
         // 一律先报"待命"，之后由阀门状态驱动 Ready↔Active，免得两处判断打架。
         self.report(PipelineState::Ready);
-        self.backoff.succeed();
-        self.emit_latency(true);
+        if !self.plan.passthrough {
+            self.backoff.succeed();
+            self.emit_latency(true);
+        }
         Ok(true)
     }
 
@@ -790,6 +815,10 @@ impl Worker {
 
     /// 主循环。一拍最多阻塞 `POLL_MS`，所以 Stop 最坏 5 ms 就能响应。
     fn pump(&mut self) {
+        if self.plan.passthrough {
+            self.pump_passthrough();
+            return;
+        }
         while !self.stopping() {
             for note in self.inbox.take_notes() {
                 self.handle_note(note);
@@ -834,6 +863,29 @@ impl Worker {
             }
             self.poll_playback();
             self.emit_latency(false);
+        }
+    }
+
+    /// 直通循环：不起 WS、不收消息，只把闸门放行的原声一块块推给播放汇。
+    /// 命令（切闸/换门）照常吃，但没有任何云端消息、延迟统计或重连。
+    fn pump_passthrough(&mut self) {
+        while !self.stopping() {
+            for note in self.inbox.take_notes() {
+                self.handle_note(note);
+            }
+            for _ in 0..MAX_AUDIO_PER_TICK {
+                let Some(queued) = self.inbox.take_audio() else {
+                    break;
+                };
+                self.feed_passthrough(&queued.chunk);
+                self.inbox.mark_processed();
+                if self.stopping() {
+                    return;
+                }
+            }
+            if self.inbox.wait(POLL_MS as u64) {
+                return;
+            }
         }
     }
 
@@ -965,6 +1017,30 @@ impl Worker {
         }
     }
 
+    /// 直通（关翻译）：闸门放行的原声直接推给播放汇，不重采样、不上传。
+    /// 降噪照旧（麦克风收的是空气声）；无译文，所以没有尾巴、没有云端。
+    fn feed_passthrough(&mut self, chunk: &AudioChunk) {
+        let mono = chunk.to_mono();
+        let cleaned = match self.denoiser.as_mut() {
+            Some(denoiser) => denoiser.process(&mono),
+            None => mono,
+        };
+        if cleaned.is_empty() {
+            return;
+        }
+        let Some(gate) = self.gate.as_mut() else {
+            return;
+        };
+        let (accepted, status) = gate.process(&cleaned);
+        self.emit_gate_status(status);
+        self.track_local_gate(status);
+        if let Some(sink) = self.sink.as_mut() {
+            for block in &accepted {
+                sink.push(block);
+            }
+        }
+    }
+
     /// 记录本地阀门状态，并在上升沿打开流水线时兜底记一个"开始说话"起点。
     ///
     /// 只有 Speak 的本地门控需要这个兜底（它有一个会开合的真阀门）；Listen 的
@@ -1052,9 +1128,9 @@ impl Worker {
 
     fn handle_server_event(&mut self, parsed: crate::cloud::ParsedEvent) {
         match parsed.event {
-            ServerEvent::TextDelta { text } => {
+            ServerEvent::TextDelta { text, confirmed } => {
                 let now = self.now();
-                self.push_text(&text, false);
+                self.push_text(&text, false, confirmed.as_deref());
                 if let Some(probe) = self.turn_probe.as_mut() {
                     if !probe.first_text_seen {
                         probe.first_text_seen = true;
@@ -1065,7 +1141,8 @@ impl Worker {
                 }
             }
             ServerEvent::TextDone { text } => {
-                self.push_text(&text, true);
+                // done 是终稿，整句都算已确认，交给外层（如 ChatBox）发整行。
+                self.push_text(&text, true, Some(text.as_str()));
                 self.sent_text.clear();
                 let now = self.now();
                 if let Some(probe) = self.turn_probe.as_mut() {
@@ -1188,7 +1265,11 @@ impl Worker {
     ///
     /// 服务端的 delta 带的是**到目前为止的整句**，而 `SubtitleTrack::push_text`
     /// 是往后追加的，所以这里得自己算增量，不然屏幕上会一句话叠一句话。
-    fn push_text(&mut self, full: &str, done: bool) {
+    ///
+    /// `confirmed` 是不再会变的那段（已确认前缀；delta 类型累积的整句就是它）。
+    /// 它单独透传出去：字幕轨只需要增量 `delta`，但外层订阅（如 VRChat ChatBox）
+    /// 要做**整行替换**推进，需要的是完整已确认句，不是增量后缀。
+    fn push_text(&mut self, full: &str, done: bool, confirmed: Option<&str>) {
         let (delta, replace) = match full.strip_prefix(self.sent_text.as_str()) {
             // 前缀延续：只发新增的后缀，字幕按它爬动。
             Some(rest) => (rest.to_string(), false),
@@ -1201,8 +1282,16 @@ impl Worker {
         if delta.is_empty() && !done {
             return;
         }
-        self.runtime
-            .on_subtitle_delta(self.pipeline(), self.session_id(), &delta, done, replace);
+        // 给外部逐字推进的完整句：确认前缀优先；done 时回落到整句终稿。
+        let for_external = confirmed.or_else(|| done.then_some(full));
+        self.runtime.on_subtitle_delta(
+            self.pipeline(),
+            self.session_id(),
+            &delta,
+            done,
+            replace,
+            for_external,
+        );
     }
 
     /// 吃一条引擎派来的通知。
@@ -1252,6 +1341,10 @@ impl Worker {
     /// 即时开关本地回听。主输出已经是系统默认时不再开第二路，避免双重声音。
     /// 回听只是辅助功能，打开失败不拖垮正在工作的对外翻译主链路。
     fn set_monitor_translation(&mut self, enabled: bool) {
+        // 直通（关翻译）没有译文，回听毫无意义，直接忽略。
+        if self.plan.passthrough {
+            return;
+        }
         self.config.monitor_translation = enabled;
         self.plan.monitor_translation = enabled;
         if !enabled {
@@ -1711,6 +1804,7 @@ pub(crate) mod tests {
             gate_active: false,
             input_device: None,
             output_device: Some("CABLE Input".to_string()),
+            translate: true,
             monitor_translation: false,
             loopback_target: None,
             denoise: true,
@@ -1733,6 +1827,7 @@ pub(crate) mod tests {
             gate_active: true,
             input_device: None,
             output_device: None,
+            translate: true,
             monitor_translation: false,
             loopback_target: Some(ListenTarget {
                 executable: "Discord.exe".to_string(),
@@ -1847,6 +1942,18 @@ pub(crate) mod tests {
                 .expect("Start 不该失败");
             self.wait_until(|| {
                 self.mic.target().is_some() && self.wire.connects.load(Ordering::SeqCst) > connects
+            });
+            session_id
+        }
+
+        /// 直通（关翻译）模式起会话：不连 WS，等采集 + 播放汇都开起来。
+        fn start_passthrough(&self, config: SessionConfig) -> u64 {
+            let session_id = config.session_id;
+            self.engine
+                .apply(PipelineCommand::Start(Box::new(config)))
+                .expect("Start 不该失败");
+            self.wait_until(|| {
+                self.mic.target().is_some() && self.speaker.opens.load(Ordering::SeqCst) >= 1
             });
             session_id
         }
@@ -2115,6 +2222,55 @@ pub(crate) mod tests {
 
         rig.feed(vec![0.5; 1764]);
         assert_eq!(rig.dsp.denoise_calls.load(Ordering::SeqCst), 0);
+        rig.engine.shutdown();
+    }
+
+    // --- 直通（关翻译=输出原声） -------------------------------------------
+
+    #[test]
+    fn passthrough_sends_original_voice_to_the_output_device_without_connecting() {
+        let rig = Rig::new();
+        let mut config = speak_config();
+        config.translate = false;
+        config.gate_active = true;
+        rig.start_passthrough(config);
+
+        // 直通不连云端：没有握手、没有传输。
+        assert_eq!(
+            rig.wire.connects.load(Ordering::SeqCst),
+            0,
+            "直通不该连 WS"
+        );
+
+        // 闸门开着，灌一块响音频 → 原声进播放汇，不上传。
+        rig.feed(loud_block());
+        rig.wait_until(|| !rig.speaker.played.lock().is_empty());
+        let played = rig.speaker.played.lock().clone();
+        assert!(!played.is_empty(), "原声该进输出设备");
+        assert!(
+            played.iter().all(|&s| (s - 0.5).abs() < 0.01),
+            "播放的原声该是被推的整块值"
+        );
+        assert_eq!(rig.wire.audio_frames(), 0, "直通没有上传帧");
+        rig.engine.shutdown();
+    }
+
+    #[test]
+    fn passthrough_stays_silent_while_the_gate_is_closed() {
+        let rig = Rig::new();
+        let mut config = speak_config();
+        config.translate = false;
+        // 闸门默认关着（热键没按）。
+        rig.start_passthrough(config);
+
+        rig.feed(loud_block());
+        rig.feed(loud_block());
+
+        assert!(
+            rig.speaker.played.lock().is_empty(),
+            "闸关着不许把原声送出去"
+        );
+        assert_eq!(rig.wire.audio_frames(), 0);
         rig.engine.shutdown();
     }
 

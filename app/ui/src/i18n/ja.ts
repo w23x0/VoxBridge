@@ -242,7 +242,7 @@ const ja = {
     background: "背景の不透明度",
     backgroundDesc: "0 = 字幕のみ・背景なし",
     charTtl: "文字の滞在時間",
-    charTtlDesc: "各文字が画面に表示される時間",
+    charTtlDesc: "最後の更新後に字幕を保持する時間",
     charFade: "フェードアウト時間",
     charFadeDesc: "滞在時間終了後のフェード速度。0 = 即座に消える",
     dimZeros: "0 系統の字幕を保持",

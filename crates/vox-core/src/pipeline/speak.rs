@@ -13,16 +13,26 @@ use crate::runtime::SessionConfig;
 use super::Plan;
 
 pub(crate) fn plan(config: &SessionConfig) -> Plan {
+    // 关掉「翻译」= 直通原声：不起云端会话，只把麦克风原声经闸门/降噪推给输出设备。
+    // 此时没有译文/译音/字幕，`params` 里的语言音色都用不上。
+    let passthrough = !config.translate;
     Plan {
         // `None` = 系统默认麦克风。
         target: CaptureTarget::Microphone(config.input_device.clone()),
         // 麦克风收的是真实空气声，空调、键盘、风扇都在里面，得降。
         denoise: config.denoise,
+        passthrough,
         // 译文语音要出声；具体推哪个设备由设置定（一般是 VB-CABLE）。
-        playback_device: config.voice.as_ref().map(|_| config.output_device.clone()),
+        // 直通模式下同样是送去 output_device，只是内容成了原声、打开率用采集率。
+        playback_device: if passthrough {
+            Some(config.output_device.clone())
+        } else {
+            config.voice.as_ref().map(|_| config.output_device.clone())
+        },
         // 测试时再复制一份到系统默认播放设备；没要语音时自然也无需回听。
-        monitor_translation: config.monitor_translation && config.voice.is_some(),
-        hot_update: true,
+        // 直通没有译文，回听没意义。
+        monitor_translation: !passthrough && config.monitor_translation && config.voice.is_some(),
+        hot_update: !passthrough,
         params: SessionParams {
             model_name: config.model_name.clone(),
             target_language: config.target_language.clone(),
@@ -84,5 +94,30 @@ mod tests {
         // 0 次 = 不复刻。
         config.voice_clone_frequency = Some(0);
         assert_eq!(plan(&config).params.clone_frequency, None);
+    }
+
+    #[test]
+    fn closing_translate_turns_speak_into_original_voice_passthrough() {
+        let mut config = speak_config();
+        config.translate = false;
+        let plan = plan(&config);
+        assert!(
+            plan.passthrough,
+            "关掉翻译就该是原声直通，不接云端"
+        );
+        assert!(
+            !plan.monitor_translation,
+            "直通没有译文，不该开回听"
+        );
+        assert!(
+            plan.playback_device == Some(config.output_device.clone()),
+            "直通要把原声送到设置的输出设备（VB-CABLE），而不是跟着音色走空"
+        );
+    }
+
+    #[test]
+    fn opened_translate_always_keeps_translate_mode() {
+        let config = speak_config();
+        assert!(!plan(&config).passthrough, "开着翻译就是正常对外说话");
     }
 }

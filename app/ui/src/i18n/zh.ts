@@ -241,7 +241,7 @@ const zh = {
     background: "底衬不透明度",
     backgroundDesc: "0 = 只显字幕、无底衬",
     charTtl: "字符停留",
-    charTtlDesc: "每个字在屏幕上保留多久",
+    charTtlDesc: "字幕在最后一次更新后保留多久",
     charFade: "淡出时长",
     charFadeDesc: "停留结束后的渐隐速度，0 = 直接消失",
     dimZeros: "保留 0 类字幕",

@@ -101,6 +101,16 @@ impl SubtitleTrack {
     /// ``⌀`` 是 0 类段定界符：成对出现，夹在中间的字（含空格）标记为 0 类。
     /// 增量 push 中段可能半开，用 `noise_open` 保留未闭合状态。
     pub fn push_text(&mut self, text: &str, now_ms: u64) {
+        // 容量到顶时整句重置。只丢队首会让仍在显示的字符整体左移，
+        // 违反“字符槽位固定”的展示规则。
+        let incoming = text
+            .chars()
+            .filter(|&ch| ch != '\r' && ch != NOISE_DELIM)
+            .count();
+        if self.chars.len().saturating_add(incoming) > self.max_chars {
+            self.chars.clear();
+            self.noise_open = false;
+        }
         let mut is_noise = self.noise_open;
         for ch in text.chars() {
             if ch == '\r' {
@@ -117,9 +127,6 @@ impl SubtitleTrack {
             });
         }
         self.noise_open = is_noise;
-        while self.chars.len() > self.max_chars {
-            self.chars.pop_front();
-        }
     }
 
     /// 服务端整句重写了（改译、纠错）时用：**清掉当前这句、换成新的整句**。
@@ -137,15 +144,16 @@ impl SubtitleTrack {
         self.noise_open = false;
     }
 
-    /// 丢掉已经完全透明的字。定时调用，防止无界增长。
-    /// 永存的 0 类字不参与过期判定，但跟普通字一样受 `max_chars` 挤出。
+    /// 整行已经完全透明时才清空。单个过期字必须保留为透明占位，
+    /// 否则后面的字会自动向前补齐，造成阅读位置跳动。
     pub fn prune(&mut self, now_ms: u64) {
         let ttl = self.timing.char_ttl_ms as u64;
-        let dim_zeros = self.timing.dim_zeros;
-        // 永久保留的 0 类字可能夹在普通字前面，不能因为它挡住队首就
-        // 停止清理后面的过期字符；队列长度仍由 max_chars 兜底。
-        self.chars
-            .retain(|c| (dim_zeros && c.is_noise) || now_ms.saturating_sub(c.born_ms) < ttl);
+        let has_live = self.chars.iter().any(|c| {
+            self.persists(c) || now_ms.saturating_sub(c.born_ms) < ttl
+        });
+        if !has_live {
+            self.chars.clear();
+        }
     }
 
     /// 开关开了的 0 类字：永不主动消失。
@@ -180,7 +188,7 @@ impl SubtitleTrack {
                     });
                 }
                 if age >= ttl {
-                    return None;
+                    return Some(RenderedChar { ch: c.ch, alpha: 0.0 });
                 }
                 let alpha = if age <= fade_start || fade == 0 {
                     1.0
@@ -197,7 +205,7 @@ impl SubtitleTrack {
 
     /// 当前该画的纯文本（不含透明度），给 UI 的历史面板用。
     pub fn text(&self, now_ms: u64) -> String {
-        self.render(now_ms).into_iter().map(|c| c.ch).collect()
+        self.render(now_ms).into_iter().filter(|c| c.alpha > 0.0).map(|c| c.ch).collect()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -287,7 +295,7 @@ mod tests {
         assert_eq!(t.render(800)[0].alpha, 1.0);
         let mid = t.render(900)[0].alpha;
         assert!((mid - 0.5).abs() < 0.01, "半程应该约 0.5，实际 {mid}");
-        assert!(t.render(1000).is_empty(), "到 ttl 就不画了");
+        assert_eq!(t.render(1000)[0].alpha, 0.0, "到 ttl 变透明占位");
     }
 
     #[test]
@@ -296,8 +304,9 @@ mod tests {
         t.push_text("早", 0);
         t.push_text("晚", 600);
         let r = t.render(1000);
-        assert_eq!(r.len(), 1, "先来的字先消失");
-        assert_eq!(r[0].ch, '晚');
+        assert_eq!(r.len(), 2, "过期字保留透明占位，不能让后面的字移动");
+        assert_eq!(r[0].alpha, 0.0);
+        assert_eq!(r[1].ch, '晚');
     }
 
     #[test]
@@ -323,8 +332,9 @@ mod tests {
 
         t.prune(10_000);
 
-        let text: String = t.chars.iter().map(|c| c.ch).collect();
+        let text: String = t.text(10_000);
         assert_eq!(text, "噪声");
+        assert_eq!(t.chars.len(), 6, "过期普通字仍保留槽位，不能让噪声前移");
     }
 
     #[test]
@@ -346,7 +356,7 @@ mod tests {
         });
         t.push_text("X", 0);
         assert_eq!(t.render(499)[0].alpha, 1.0);
-        assert!(t.render(500).is_empty());
+        assert!(t.text(500).is_empty());
     }
 
     #[test]
@@ -422,7 +432,7 @@ mod tests {
         let mut t = SubtitleTrack::new(timing);
         t.push_text("消⌀留⌀", 0);
         // ttl = 1000：普通字消失，0 类字稳定停在 dim_alpha。
-        let r = t.render(10_000);
+        let r: Vec<_> = t.render(10_000).into_iter().filter(|c| c.alpha > 0.0).collect();
         assert_eq!(r.len(), 1);
         assert_eq!(r[0].ch, '留');
         let gap = r[0].alpha - 0.3;
@@ -449,6 +459,6 @@ mod tests {
         timing.dim_zeros = true;
         let mut t = SubtitleTrack::new(timing);
         t.push_text("普通字", 0);
-        assert!(t.render(10_000).is_empty(), "非 0 类字不受永存影响");
+        assert!(t.text(10_000).is_empty(), "非 0 类字不受永存影响");
     }
 }

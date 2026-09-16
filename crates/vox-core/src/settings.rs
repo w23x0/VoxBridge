@@ -108,6 +108,9 @@ pub struct SpeakSettings {
     /// 是否让服务端合成译文语音并推到输出设备。对外说话固定为 `true`；
     /// 字段保留用于兼容设置契约。
     pub speak_translation: bool,
+    /// 是否走实时翻译。关掉 = 不调用云端 API，把麦克风原声直通到输出设备
+    /// （受激活方式/音量闸门控制，仅在"说话"时送出）。
+    pub translate: bool,
     /// 把译文语音额外回放到系统默认播放设备，供本人戴耳机测试。
     pub monitor_translation: bool,
     pub activation_mode: ActivationMode,
@@ -132,6 +135,7 @@ impl Default for SpeakSettings {
             output_device: None,
             show_translation: true,
             speak_translation: true,
+            translate: true,
             monitor_translation: false,
             activation_mode: ActivationMode::Toggle,
             hotkey: Hotkey::plain("V"),
@@ -198,6 +202,9 @@ pub struct ListenTarget {
 #[serde(default)]
 pub struct SubtitleSettings {
     pub visible: bool,
+    /// 在 SteamVR/OpenVR 头显中复制显示 Listen 字幕。
+    #[serde(default)]
+    pub vr_overlay_enabled: bool,
     pub font_family: String,
     pub font_size: u32,
     /// 对外说话那行的字色（暖白）。
@@ -206,9 +213,9 @@ pub struct SubtitleSettings {
     pub listen_color: String,
     /// 底衬透明度 0..255。
     pub background_alpha: u8,
-    /// 每个字的存活时长。
+    /// 一句字幕在最近一次更新后保持可读的时长。
     pub char_ttl_ms: u32,
-    /// 每个字的淡出时长。
+    /// 整句字幕的淡出时长。
     pub char_fade_ms: u32,
     /// 0 类字（纯噪声/填充词/无意义发音）Lifetime 结束后永久淡到浅灰而非消失：
     /// Lifetime 到了之后用一段比 `char_fade_ms` 更短的淡出压到 `dim_alpha`，位置保留。
@@ -225,6 +232,7 @@ impl Default for SubtitleSettings {
     fn default() -> Self {
         Self {
             visible: true,
+            vr_overlay_enabled: false,
             font_family: "Microsoft YaHei UI".to_string(),
             font_size: 30,
             speak_color: "#fff4de".to_string(),
