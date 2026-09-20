@@ -146,7 +146,8 @@
 
 ## 6. 工程落地（预想，没动代码）
 
-- **新 crate**：`crates/vox-osc-win/`（Windows 侧，纯 UDP 发包，无重依赖，可普通 `std::net::UdpSocket`）。
+- **新 crate**：`crates/vox-osc/`（纯 UDP 发包，无重依赖，普通 `std::net::UdpSocket`；
+  VRChat 在 Linux 上同样收 `127.0.0.1:9000`，所以这个 crate 是跨平台的）。
   - 只管「把一条 OSC 消息组包发到 127.0.0.1:port」。不做协议内其他东西。
   - 对外裸露两个入口：`send_chatbox(text)`、`set_parameter(name, value)`；附带 `friendly_name` 注册/落盘。
 - **装配层接线**（`app/src-tauri`）：
@@ -177,7 +178,7 @@
 
 ## B. 与现有架构的接合（预想，没动代码）
 
-- **新 crate** 位：`crates/vox-osc-win/`——只做「UDP OSC 帧拼装 + 发送 + `friendlyName` 落盘」。
+- **新 crate** 位：`crates/vox-osc/`——只做「UDP OSC 帧拼装 + 发送 + `friendlyName` 落盘」。
   跟现有 `vox-net`（WS）无关，跟 `vox-window-ocr-win`（读）方向相对。
 - **零侵入核心**：RNNoise、16k 采样约定、重采样、音量阀门、VB-CABLE、`snake_case` 字段、单事件通道全部不变。
 - **只新增一条出站边**：从 `SubtitleDelta(Speak, done)` 连一条可选边到 OSC 包发送。

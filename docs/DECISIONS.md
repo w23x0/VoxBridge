@@ -59,6 +59,22 @@
     （已 gitignore、无密码），Secret 值就是文件原文那一整行 base64。
     因旧私钥无法在本机恢复使用，轮换到新密钥对：**≤0.1.3 的安装无法应用内
     升级到 0.1.4，需手动安装一次**；0.1.4 起自更新正常。
+15. **Linux 端开工**（2026-09-20）。平台范围从 PLATFORM_SCOPE 的"只做 Windows"改成
+    "Win 为主线 + Linux 并行"，执行方案与全部实测证据见 `docs/PLATFORM_LINUX.md`。
+    拍下来的三条：
+    - **音频锚定 PipeWire**。依据：PipeWire 已是主流发行版的默认音频服务
+      （Fedora 34 → Pop!_OS 22.04 → Ubuntu 22.10 → Debian 12）。PipeWire 下
+      「按进程抓音」和「虚拟麦」都不需要装任何东西，Windows 上那套 VB-CABLE
+      下载/UAC/静默安装整段消失。**不满足 PipeWire 的环境明确报错，不做整机环回降级。**
+    - **会话层不写分支**：Wayland 与 X11 都支持。GNOME 的 Wayland 会话里悬浮窗走 XWayland
+      （实测：绝对定位 + `_NET_WM_STATE_ABOVE` + RGBA 透明都成立；Wayland 原生协议层
+      没有"客户端自定坐标"和"置顶"这两个协议，做不到）。纯 Wayland 且无 XWayland 时
+      降级成主窗口内字幕。
+    - **全局热键走 evdev**，需要把用户加进 `input` 组；GNOME 不支持
+      `GlobalShortcuts` portal，XWayland 下的 `XGrabKey` 只在有 X11 窗口聚焦时有效。
+    约束：内核 `vox-core` / `vox-net` / `vox-dsp` 不动，Linux 侧写三个兄弟 crate
+    （`vox-audio-linux` / `vox-input-linux` / `vox-overlay-linux`），装配层按
+    `cfg(target_os)` 分流。
 
 ---
 
