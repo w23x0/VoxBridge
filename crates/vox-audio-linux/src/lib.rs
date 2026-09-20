@@ -15,12 +15,14 @@
 #![cfg(target_os = "linux")]
 
 mod capture;
+mod link_keeper;
 mod playback;
 mod probe;
 mod registry;
 mod virtual_sink;
 
 pub use capture::LinuxCapture;
+pub use link_keeper::LinkKeeper;
 pub use playback::LinuxPlayback;
 pub use registry::LinuxDeviceRegistry;
 pub use virtual_sink::{description as virtual_mic_description, VirtualSink};

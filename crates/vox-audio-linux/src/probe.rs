@@ -44,6 +44,17 @@ pub(crate) struct NodeRecord {
     pub running: bool,
 }
 
+/// 一个端口。混音（把同一程序的其它流接进来）要按 node/port id 显式建链，
+/// 靠它找到两边的端口。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PortRecord {
+    pub id: u32,
+    /// `port.name`：`output_FL` / `input_FL` 这种。
+    pub name: String,
+    /// `port.direction`：`in` / `out`。
+    pub direction: String,
+}
+
 /// 一个客户端进程（一条流属于谁）。
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ClientRecord {
@@ -57,6 +68,8 @@ pub(crate) struct ClientRecord {
 pub(crate) struct GraphSnapshot {
     pub nodes: HashMap<u32, NodeRecord>,
     pub clients: HashMap<u32, ClientRecord>,
+    /// 按节点分组的端口：`node id -> 端口`。
+    pub ports: HashMap<u32, Vec<PortRecord>>,
     /// 默认输入设备的 `node.name`（wireplumber 的 `default.audio.source`）。
     pub default_source: Option<String>,
     /// 默认输出设备的 `node.name`。
@@ -92,6 +105,25 @@ impl GraphSnapshot {
             .collect();
         streams.sort_by_key(|node| node.name.clone());
         streams
+    }
+
+    /// 某个节点的端口，按名字排序（`input_FL` 在 `input_FR` 前面，建链顺序稳定）。
+    pub fn ports_of(&self, node_id: u32) -> Vec<&PortRecord> {
+        let mut ports: Vec<&PortRecord> = self
+            .ports
+            .get(&node_id)
+            .map(|ports| ports.iter().collect())
+            .unwrap_or_default();
+        ports.sort_by(|a, b| a.name.cmp(&b.name));
+        ports
+    }
+
+    /// 某个节点某个方向的端口。
+    pub fn ports_of_dir(&self, node_id: u32, direction: &str) -> Vec<&PortRecord> {
+        self.ports_of(node_id)
+            .into_iter()
+            .filter(|port| port.direction == direction)
+            .collect()
     }
 
     /// 某个节点的所属客户端（可能没有：系统创建的设备节点没有 client）。
@@ -188,6 +220,37 @@ pub(crate) fn snapshot() -> PortResult<GraphSnapshot> {
                             .register();
                         keep.borrow_mut()
                             .push((Box::new(client), Box::new(listener)));
+                    }
+                    ObjectType::Port => {
+                        let Ok(port) = registry.bind::<pw::port::Port, _>(obj) else {
+                            return;
+                        };
+                        let listener = port
+                            .add_listener_local()
+                            .info({
+                                let graph = Rc::clone(&graph);
+                                move |info| {
+                                    let props = DictLookup(info.props());
+                                    let Some(node_id) =
+                                        props.get("node.id").and_then(|v| v.parse().ok())
+                                    else {
+                                        return;
+                                    };
+                                    let record = PortRecord {
+                                        id: info.id(),
+                                        name: props.get("port.name").unwrap_or_default(),
+                                        direction: props.get("port.direction").unwrap_or_default(),
+                                    };
+                                    graph
+                                        .borrow_mut()
+                                        .ports
+                                        .entry(node_id)
+                                        .or_default()
+                                        .push(record);
+                                }
+                            })
+                            .register();
+                        keep.borrow_mut().push((Box::new(port), Box::new(listener)));
                     }
                     ObjectType::Metadata => {
                         let Ok(metadata) = registry.bind::<pw::metadata::Metadata, _>(obj) else {

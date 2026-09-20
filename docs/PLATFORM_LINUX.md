@@ -66,10 +66,14 @@ pw-link pw-play:output_FR pw-record:input_FR     # rc=0
 → 录到的音频 peak=0.0884 / rms=0.0542（源正弦 peak=0.0884），**不是静音**
 ```
 
-对照实验（关键坑）：`pw-record --target=<sink>` 会被 wireplumber 忽略，它自作主张连到
-**默认源**上（实测连到了 HDMI sink 的 monitor，录出全 0）；**只有显式连线才靠谱**。
-→ 结论：Linux 后端**不能依赖 session manager 的 target 策略**，必须自己用
-`link-factory` 按 node/port id 建链（`node.autoconnect=false`）。
+对照实验（关键坑，纠正过一次）：`target.object` **指向程序的播放流节点也不被认**——
+wireplumber 照样按策略把采集流连到**默认源**上。早先"抓到了"是巧合：那会儿默认源是
+HDMI 的 monitor，而目标程序正好在往 HDMI 放音，于是"默认源"里就有同一段声音。
+本机插上 USB 耳机（默认源变成真麦克风）之后立刻暴露：props 里 `target.object` 明明写着
+目标节点，链路却连到 `alsa_input...`，录到的是环境噪声（peak 0.0124，而目标是 0.175）。
+
+→ 结论：**按程序抓音一律不依赖 session manager**：`node.autoconnect=false` +
+`link-factory` 按 node/port id 显式建链（`link_keeper.rs`）。麦克风才走自动连接。
 
 ### 2.2 虚拟麦成立（替代 VB-CABLE，且不用装东西、不用提权）
 
@@ -296,7 +300,7 @@ for note in platform::startup_notes() { runtime.notify(…); }     // linux: Pip
 | 端口 | 实现 |
 | --- | --- |
 | `CaptureSource::start(Microphone(None/Some))` | **已落地**：`pw_stream` 方向 input，请求 **f32 / 48 kHz / 2ch**，`target.object` 指定设备或走默认源；返回**协商结果**。真机实测：流按 48 kHz 跑起来、样本数精确（2 秒 = 95 040 个单声道样本）。⚠️ 本机没接麦克风，真麦音频要硬件才能验 |
-| `CaptureSource::start(ProcessLoopback{executable, include_tree})` | **已落地**：按 `application.process.binary` 找目标程序的播放流节点，主目标走 `target.object`（实测可靠）。`include_tree=true` 时沿 `/proc/<pid>/task/*/children` 递归把子进程的流也算进来。真机实测：抓 pw-play 的 440 Hz，样本数精确（4 秒 = 192 000 个单声道样本）、峰值 0.0884 与源一致。⚠️ **多条流只抓主目标**，其余记 warn（见 §9.8） |
+| `CaptureSource::start(ProcessLoopback{executable, include_tree})` | **已落地**：按 `application.process.binary` 找目标程序的**全部**播放流节点，`node.autoconnect=false`，由 `link_keeper`（自己的连接 + 线程）按 node/port id 把它们的输出端口连到我们的输入端口——**多条流混音**。`include_tree=true` 时沿 `/proc/<pid>/task/*/children` 递归把子进程的流也算进来。真机实测（两条流 220 Hz + 880 Hz）：拓扑上我们的输入端口各收两条 `pw-play:output_* → input_*` 链路，音频上 peak 0.1762、**RMS 0.0881 = √2 × 单条（0.0624）= 两条不同频率正弦的数字混音** |
 | `CaptureSource::stop` | 见上（销毁 link + stream，join 线程） |
 | `DeviceRegistry::input_devices` | 枚举 `media.class == Audio/Source` 的节点（含 `Audio/Source/Virtual`）；`is_default` 读 wireplumber metadata `default.audio.source` |
 | `DeviceRegistry::output_devices` | 同上，`Audio/Sink` + `default.audio.sink` |
@@ -467,7 +471,7 @@ CI 的事）。有了这条，改跨平台代码不用再靠一台 Windows 机�
 顺序不能改：P0 是所有事的前提；P1 风险最高（进程环回是 `PLATFORM_SCOPE` §C5 里排第一的难点），
 所以先做。
 
-**已落地（P0 全部完成；P1 的设备目录 / 环缓冲 / 虚拟麦 / 采集 / 播放）**：
+**已落地（P0–P4 全部完成）**：
 
 ```
 Linux   : cargo check --workspace                       → 通过（含装配层）
@@ -491,7 +495,10 @@ Linux   : smoke -- tone 3       → 渲染 264 696 样本、丢弃 0、设备延
 Linux   : smoke -- app pw-cat 4 → 协商 48k/2ch、192 000 个单声道样本（精确）、峰值 0.0884
 Linux   : smoke -- vmic 20 + pw-record 录 monitor（pw-link 显式连）
           → 录音峰值 0.3000（= 播放源幅度），有声起点正是建链那一刻 → 回环 PASS
-Linux   : smoke -- mic 2        → 流按 48 kHz 跑起来（本机没麦克风，音频要硬件验）
+Linux   : smoke -- app pw-cat 8（两条 220/880 Hz 流同时放）
+          → 拓扑：采集流（autoconnect=False）的输入端口各收两条 pw-play 链路；
+            音频：peak 0.1762、RMS 0.0881 = √2 × 单条 = 两条不同频率的数字混音
+Linux   : smoke -- mic 2        → 自动连到默认源（本机后来插了 USB 耳机，有真麦克风）
 Linux   : cargo run -p vox-overlay-linux --example live + xwininfo/xprop/xshape
           → 悬浮窗 880x200 置顶（_NET_WM_STATE_ABOVE）、Depth 32（真透明）、
             输入域 0 矩形（鼠标完全穿透）、connect_draw 每帧在跑
@@ -555,14 +562,16 @@ WebKit 的 `WEBKIT_INSPECTOR_SERVER` 虽然起来了但 WIR 协议没能从命�
    已知黑屏/花屏问题，必要时 `WEBKIT_DISABLE_DMABUF_RENDERER=1`。主界面首次启动就要验。
 7. **托盘**：GNOME 默认不带托盘，靠 `ubuntu-appindicators` 扩展（本机已启用，别的机器不一定）
    → 关窗收托盘的行为在裸 GNOME 上要有兜底（比如保留窗口）。
-8. **同一程序多条播放流只抓主目标**（Chromium 每个标签页一条流那种）。做过一版
-   "主目标走 `target.object` + 其余用 `link-factory` 显式连进来混音"，但那条路上采集流
-   进不了 Streaming（启动必然 8 秒超时），所以没留。现状是抓第一条、其余记 warn 日志。
-   **根因已定位**（实测）：在采集线程里调 `probe::roundtrip()` 会 `main_loop.quit()`，
-   之后再 `main_loop.run()` 会立刻返回（quit 状态还在）→ 线程退出、流被拆掉、`start`
-   等不到协商结果。所以**建链不能复用采集线程那个主循环**：要另起一个连接（自己的
-   主循环 + 一个"链路守护"线程持有 link 代理，drop 代理会连带删掉链路），或者干脆在
-   `process` 回调里聚合多条流。等真有用户需要再上。
+8. ~~同一程序多条播放流只抓主目标~~ **已实现**（`link_keeper.rs`）。做这一版踩出来
+   三个坑，都记在这儿，免得下次重踩：
+   - **不能在采集线程的主循环上 roundtrip**：`probe::roundtrip()` 会 `main_loop.quit()`，
+     之后再 `run()` 立刻返回 → 流被拆掉、`start` 等不到协商结果（实测必然超时）。
+     所以建链另起一个连接（守护线程自己的主循环）。
+   - **`stream.node_id()` 在服务端建出节点之前返回 `PW_ID_ANY`**（实测 4294967295），
+     而"等节点建出来"又需要 roundtrip —— 绕回来了。解法：采集流用一个**唯一名字**
+     （`voxbridge-capture-<pid>-<纳秒>`），守护按名字在图里找它。
+   - **守护的 `start()` 不能等第一次结果**：采集线程要接着跑主循环、节点才会被建出来，
+     在 `start()` 里等就成了死锁（守护等节点、采集线程等守护，2 秒后双双超时）。
 
 ---
 

@@ -176,6 +176,7 @@ mod tests {
         GraphSnapshot {
             nodes: nodes.into_iter().collect(),
             clients: clients.into_iter().collect(),
+            ports: HashMap::new(),
             default_source: None,
             default_sink: None,
         }

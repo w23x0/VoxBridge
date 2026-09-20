@@ -9,17 +9,18 @@
 //!
 //! 实测结论（决定这里怎么写）：
 //!
-//! - `target.object` 指向**某个程序的播放流节点**时，wireplumber 会正确连过去
-//!   （`pw-record --target=<node id>` 抓 pw-play 的 peak 与源一致）。所以主目标走
-//!   `target.object` + 自动连接这条最省事的路。
-//! - 但 `target.object` 对**采集流连 sink**（monitor）会被忽略，会偷偷连到默认源上、
-//!   录出全 0 —— 这也是为什么虚拟麦的回环验证要用 `pw-link` 显式连，不能靠 target。
+//! - **按程序抓音不能靠 `target.object`**：把它设成某个程序的播放流节点，
+//!   wireplumber 会**忽略**它、按策略把采集流连到默认源上（本机插上 USB 耳机后
+//!   暴露得很清楚：`target.object` 明明在 props 里，链路却连到 `alsa_input...`，
+//!   录到的是环境噪声）。早先"抓到了"是巧合——那会儿默认源是 HDMI 的 monitor，
+//!   而目标程序正好在往 HDMI 放音。
+//! - 所以按程序抓音一律 **`node.autoconnect=false` + 自己用 `link-factory` 按
+//!   node/port id 显式建链**（`link_keeper.rs`）。麦克风才走自动连接。
 //!
-//! **已知限制**：`target.object` 一次只认一个节点，所以同一程序有多条播放流时
-//! （Chromium 每个标签页一条）只抓主目标，其余记一条 warn 日志。做过一版"主目标走
-//! `target.object` + 其余用 `link-factory` 显式连进来混音"的实现，但那条路上流根本
-//! 进不了 Streaming（启动必然超时），没敢留——混音要么另找办法（在 `process` 里多流
-//! 汇聚），要么等真有用户需要再说。
+//! **同一程序多条流**（Chromium 每个标签页一条）：`target.object` 一次只认一个节点，
+//! 所以主目标交给 session manager 连，**其余交给 `link_keeper`** 显式接进来混音。
+//! 建链**不能在本线程的主循环上做**——`probe::roundtrip()` 会把它 quit 掉，之后
+//! `run()` 立刻返回、流当场被拆（实测启动必然超时），所以守护线程自己开一个连接。
 //!
 //! **故意不设 `RT_PROCESS`**：PipeWire 的 process 回调默认跑在实时线程上，而内核的
 //! `on_chunk` 会加锁 + 分配 `AudioChunk`（`ports.rs` 定的接口形状），在实时线程里干这个
@@ -47,21 +48,17 @@ const START_TIMEOUT: Duration = Duration::from_secs(8);
 /// 我们向图请求的格式。48 kHz 是 RNNoise 的原生率，让图去转比我们转省事。
 const REQUEST_RATE: u32 = 48_000;
 const REQUEST_CHANNELS: u16 = 2;
-const NODE_NAME: &str = "VoxBridge 采集";
+/// 采集流名字前缀。**每条流带唯一后缀**：`stream.node_id()` 在连上之前是
+/// `PW_ID_ANY`，所以链路守护只能按名字找自己（见 `link_keeper.rs`）。
+const NODE_NAME_PREFIX: &str = "voxbridge-capture";
 
 /// 采集计划：`start` 时定下来，之后线程照着做。
 #[derive(Debug)]
 enum Plan {
     /// 麦克风（`None` = 默认源）。
     Microphone(Option<String>),
-    /// 按程序抓音：主目标的节点 id，以及同一程序**没被抓**的其它流数量。
-    ///
-    /// 多条流混音还没做（见模块头的"已知限制"），但至少要让用户/日志知道少抓了。
-    Process {
-        primary: String,
-        skipped: usize,
-        label: String,
-    },
+    /// 按程序抓音：要抓的流节点（可能多条，全部由 `link_keeper` 显式连进来）。
+    Process { targets: Vec<u32>, label: String },
 }
 
 /// 从流水线线程发给采集线程的命令。
@@ -128,24 +125,26 @@ impl CaptureSource for LinuxCapture {
             thread,
         });
 
-        match report_rx.recv_timeout(START_TIMEOUT) {
-            Ok(Ok(format)) => Ok(format),
+        let format = match report_rx.recv_timeout(START_TIMEOUT) {
+            Ok(Ok(format)) => format,
             Ok(Err(e)) => {
                 self.stop();
-                Err(e)
+                return Err(e);
             }
             Err(RecvTimeoutError::Timeout) => {
                 self.stop();
-                Err(PortError::new(format!(
+                return Err(PortError::new(format!(
                     "采集启动超时（等了 {} 秒还没就绪）",
                     START_TIMEOUT.as_secs()
-                )))
+                )));
             }
             Err(RecvTimeoutError::Disconnected) => {
                 self.stop();
-                Err(PortError::new("采集线程意外退出"))
+                return Err(PortError::new("采集线程意外退出"));
             }
-        }
+        };
+
+        Ok(format)
     }
 
     fn stop(&mut self) {
@@ -228,13 +227,8 @@ fn resolve_plan(target: &CaptureTarget) -> PortResult<Plan> {
                     "找到了「{executable}」的音频流，但定位不到它的进程（拿不到 pid）"
                 )));
             }
-            let primary = targets
-                .first()
-                .ok_or_else(|| PortError::new("目标音频流列表是空的"))?
-                .to_string();
             Ok(Plan::Process {
-                primary,
-                skipped: targets.len() - 1,
+                targets,
                 label: executable.clone(),
             })
         }
@@ -294,24 +288,33 @@ fn capture_thread(
             }
         });
 
+        // 名字唯一：进程号 + 纳秒时间戳（同一个进程里连开两次也不会撞）。
+        let node_name = format!(
+            "{NODE_NAME_PREFIX}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        );
         let mut props = properties! {
             *pw::keys::MEDIA_TYPE => "Audio",
             *pw::keys::MEDIA_CATEGORY => "Capture",
             *pw::keys::MEDIA_ROLE => "Communication",
-            *pw::keys::NODE_NAME => NODE_NAME,
+            *pw::keys::NODE_NAME => node_name.as_str(),
         };
         match &plan {
             Plan::Microphone(Some(device)) => {
                 props.insert("target.object", device.as_str());
             }
             Plan::Microphone(None) => {}
-            Plan::Process { primary, .. } => {
-                // 主目标交给 session manager 连（实测可靠）；多出来的流后面自己连。
-                props.insert("target.object", primary.as_str());
+            Plan::Process { .. } => {
+                // 不让 session manager 插手：链路全部由 `link_keeper` 显式建。
+                props.insert(*pw::keys::NODE_AUTOCONNECT, "false");
             }
         }
 
-        let stream = pw::stream::StreamBox::new(&core, NODE_NAME, props).map_err(map_err)?;
+        let stream = pw::stream::StreamBox::new(&core, &node_name, props).map_err(map_err)?;
 
         struct UserData {
             shared: Arc<Shared>,
@@ -436,23 +439,29 @@ fn capture_thread(
             Pod::from_bytes(&values).ok_or_else(|| PortError::new("音频格式序列化结果不合法"))?;
         let mut params = [pod];
 
+        // 麦克风走自动连接（wireplumber 认设备节点）；按程序抓音不自动连，
+        // 链路由下面的守护显式建（见模块头）。
+        let flags = match &plan {
+            Plan::Microphone(_) => {
+                pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS
+            }
+            Plan::Process { .. } => pw::stream::StreamFlags::MAP_BUFFERS,
+        };
         stream
-            .connect(
-                spa::utils::Direction::Input,
-                None,
-                pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS,
-                &mut params,
-            )
+            .connect(spa::utils::Direction::Input, None, flags, &mut params)
             .map_err(map_err)?;
 
-        // 同一程序多条流：主目标已经由 session manager 连上；剩下的暂时不抓（见模块头）。
-        if let Plan::Process { skipped, label, .. } = &plan {
-            if *skipped > 0 {
-                tracing::warn!(
-                    "「{label}」还有 {skipped} 条音频流没抓：多条流混音还没做，当前只抓主目标"
-                );
+        // 链路守护：自己开连接，把目标程序的输出端口连到我们的输入端口。
+        // 它必须在本线程 `run()` **之前**起：不连上就没有格式协商，流到不了
+        // Streaming，`start()` 会等到超时。守护随本线程结束一起收工（Drop 会停它，
+        // 代理一 drop 服务端就删链路）。
+        let _keeper = match &plan {
+            Plan::Process { targets, label } => {
+                tracing::debug!("「{label}」交给链路守护（{} 条流）", targets.len());
+                Some(crate::LinkKeeper::start(node_name.clone(), targets.clone())?)
             }
-        }
+            Plan::Microphone(_) => None,
+        };
 
         main_loop.run();
         Ok(())
