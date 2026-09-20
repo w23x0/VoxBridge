@@ -1,23 +1,24 @@
 # VoxBridge
 
-Ein Windows-Desktop-Übersetzer für Echtzeit-Sprache in Live-Gesprächen. Zwei unabhängige Pipelines laufen gleichzeitig:
+Ein Desktop-Übersetzer für Echtzeit-Sprache in Live-Gesprächen (**Windows** und **Linux**). Zwei unabhängige Pipelines laufen gleichzeitig:
 
 | Pipeline | Eingang | Ausgang |
 | --- | --- | --- |
 | **Speak out** | dein Mikrofon | übersetzte Sprache in ein virtuelles Mikrofon + Live-Untertitel |
 | **Listen in** | Audio eines gewählten Programms | chinesische Sprache zu deinen Kopfhörern + Live-Untertitel |
 
-Basiert auf **Tauri 2 + React 19 + Rust**. Die UI steuert Konfiguration und Status; Audioaufnahme, Rauschunterdrückung, Resampling, WebSocket-Transport, Hotkeys und das Overlay-Untertitelfenster liegen in Rust/Win32.
+Basiert auf **Tauri 2 + React 19 + Rust**. Die UI steuert Konfiguration und Status; Audioaufnahme, Rauschunterdrückung, Resampling, WebSocket-Transport, Hotkeys und das Overlay-Untertitelfenster liegen in Rust, aufgeteilt in plattformspezifische Shells (Windows: `vox-*-win`; Linux: `vox-*-linux`). Der Kern (`vox-core` / `vox-net` / `vox-dsp`) ist plattformunabhängig.
 
 English： [`../README.md`](../README.md) · 简体中文： [`zh-CN.md`](zh-CN.md) · 日本語： [`ja.md`](ja.md) · 한국어： [`ko.md`](ko.md) · Español： [`es.md`](es.md) · Français： [`fr.md`](fr.md) · Deutsch： [`de.md`](de.md)
 
 ## Umfang
 
-- Nur Windows; Prozess-Loopback („Listen in") benötigt **Win11 / Server 2022 (Build 20348+)**.
+- **Windows**: Prozess-Loopback („Listen in") benötigt **Win11 / Server 2022 (Build 20348+)**.
+- **Linux**: **PipeWire** erforderlich (Standard bei gängigen Distributionen). „Listen in" erfasst die Audiostreams des Zielprogramms direkt; das virtuelle Mikrofon ist ein PipeWire-Sink (nichts zu installieren); in Wayland-Sitzungen läuft das Overlay über XWayland, um sich zu positionieren und oben zu bleiben; globale Hotkeys werden aus `/dev/input` (evdev) gelesen. Andere Audio-Stacks als PipeWire werden nicht unterstützt.
 - Anbieter — **Alibaba Cloud Bailian**, **Google Gemini**, **OpenAI Realtime** — pro Pipeline wählbar, jeweils ein festes Echtzeit-Übersetzungsmodell.
 - „Listen in" übersetzt immer **ins Chinesische**; die Quellsprache wird automatisch erkannt oder manuell festgelegt.
 - UI-Sprache: 简体中文 / 日本語 / English, unabhängig von den Übersetzungssprachen.
-- API-Schlüssel der Anbieter werden lokal gespeichert und pro Benutzer mit **Windows DPAPI** verschlüsselt.
+- API-Schlüssel der Anbieter werden lokal gespeichert und pro Benutzer verschlüsselt: **DPAPI** unter Windows, **Secret Service** (gnome-keyring / KWallet, via `keyring`) unter Linux.
 - Anbieter-Metadaten liegen in [`catalog/*.json`](../catalog/), nicht im Quellcode.
 
 ## Entwickeln
@@ -84,7 +85,7 @@ VoxBridge ist bewusst konservativ: der Kern-Umfang ist fest. Externe Module sind
 
 ## Doku
 
-`docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/QWEN_PROTOCOL.md`, `docs/GEMINI_PROTOCOL.md`, `docs/PROVIDER_CATALOG.md`, `docs/DISCORD_PROTOCOL.md`.
+`docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/PLATFORM_SCOPE.md`, `docs/PLATFORM_LINUX.md`, `docs/QWEN_PROTOCOL.md`, `docs/GEMINI_PROTOCOL.md`, `docs/PROVIDER_CATALOG.md`, `docs/DISCORD_PROTOCOL.md`.
 
 ## Lizenz
 

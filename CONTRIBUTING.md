@@ -18,11 +18,11 @@ That's the bar: if your idea fits as an out-of-process module on the existing ed
 
 ## Report a bug
 
-Use the [issue template](.github/ISSUE_TEMPLATE/bug.yml). This is a realtime-audio Windows app: reproduce on a real sound card / loopback / live provider, and include the Windows build number, provider + pipeline, and steps.
+Use the [issue template](.github/ISSUE_TEMPLATE/bug.yml). This is a realtime-audio desktop app (Windows and Linux): reproduce on a real sound card / loopback / live provider, and include your OS (Windows build number, or distro + PipeWire version), provider + pipeline, and steps.
 
 ## Set up the app
 
-Prereqs: Windows 11 x64, Node.js `^20.19.0` / `>=22.12.0`, Rust stable (`x86_64-pc-windows-msvc`), VS Build Tools (C++ desktop), WebView2, an API key (or the Mock).
+Prereqs: Node.js `^20.19.0` / `>=22.12.0`, Rust stable, an API key (or the Mock). Windows: Windows 11 x64, VS Build Tools (C++ desktop), WebView2, target `x86_64-pc-windows-msvc`. Linux: the dev packages listed in [`README.md`](README.md#develop) (PipeWire + GTK/WebKit + clang for bindgen).
 
 ```powershell
 cd app\ui
@@ -36,7 +36,7 @@ npm run dev                  # UI only: http://127.0.0.1:5183/?mock=1
 - Frontend/backend fields are `snake_case` — no camelCase aliases.
 - Every status flows over one event channel: `voxbridge://event`.
 - WebSocket JSON shapes live only in `crates/vox-core/src/cloud/protocol.rs`.
-- `vox-core` stays free of Tauri, Win32, tokio, and audio devices — platform abilities come in as traits.
+- `vox-core` stays free of Tauri, Win32/PipeWire, tokio, and audio devices — platform abilities come in as traits. Platform shells live in `vox-*-win` / `vox-*-linux`; see [`docs/PLATFORM_LINUX.md`](docs/PLATFORM_LINUX.md).
 - Provider metadata is edited in `catalog/*.json` (or the Rust build checks/`catalog_updater`), never hard-coded.
 - API keys go through `SecretStore` only (DPAPI); never in config, logs, or git.
 

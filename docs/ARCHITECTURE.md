@@ -8,7 +8,12 @@
 
 ## 0. 它是什么
 
-一个 Windows 桌面实时语音翻译器，不绑定任何游戏或软件。两个能力：
+> **平台口径（2026-09-20）**：本文写于只有 Windows 的时候，正文里"Windows 外壳"的说法
+> 现在指**平台外壳**——Windows 是 `vox-*-win`，Linux 是 `vox-*-linux`（见
+> `docs/PLATFORM_LINUX.md`）。内核、端口 trait、线程拓扑、数据流这些与平台无关的部分
+> 仍然逐条有效。
+
+一个桌面实时语音翻译器（Windows / Linux），不绑定任何游戏或软件。两个能力：
 
 | 能力 | 输入 | 输出 | 触发 |
 | --- | --- | --- | --- |
@@ -47,9 +52,10 @@ RNNoise 只吃 **48 kHz、480 采样一帧**，所以降噪必须放在重采样
 
 ## 2. 分层原则
 
-**轻内核 + Windows 外壳**。内核不 `use windows::*`，不碰 Tauri，不知道 WASAPI 存在。
+**轻内核 + 平台外壳**。内核不 `use windows::*`，不碰 Tauri，不知道 WASAPI / PipeWire 存在。
 内核要用平台能力时，只认 `ports.rs` 里的 trait；Windows 那边负责实现并在启动时注入。
-想搬到 macOS/Linux，只需要重写外壳那几个 crate。
+搬到新平台只需要重写外壳那几个 crate —— Linux 就是这么做的（`vox-audio-linux` /
+`vox-input-linux` / `vox-overlay-linux` + 装配层的 `platform/` 分派），内核一行没改。
 
 ## 3. 目录结构
 
@@ -68,9 +74,13 @@ VoxBridge/
 │  ├─ vox-core/                # 【内核】平台无关，零重依赖
 │  ├─ vox-net/                 # WS 传输实现（tokio + tokio-tungstenite）
 │  ├─ vox-dsp/                 # 降噪（RNNoise）+ 重采样（rubato）
-│  ├─ vox-audio-win/           # Windows 音频 I/O
+│  ├─ vox-audio-win/           # Windows 音频 I/O（WASAPI）
 │  ├─ vox-overlay-win/         # Win32 原生悬浮字幕窗
-│  └─ vox-input-win/           # Windows 全局热键
+│  ├─ vox-input-win/           # Windows 全局热键
+│  ├─ vox-audio-linux/         # Linux 音频 I/O（PipeWire）
+│  ├─ vox-overlay-linux/       # GTK 悬浮字幕窗（XWayland）
+│  └─ vox-input-linux/         # Linux 全局热键（evdev）
+│  （另有平台中立的 vox-overlay-core：画布/布局/帧合成，两个平台共用）
 └─ app/
    ├─ src-tauri/               # 【外壳】Tauri 主程序，装配一切
    └─ ui/                      # 设置界面前端
@@ -128,7 +138,7 @@ thiserror / tracing / parking\_lot，**既没有 tokio 也没有 tokio-tungsteni
 
 （以上六条是旧版踩出来的坑，新版不许踩回去。）
 
-## 5. Windows 外壳
+## 5. 平台外壳（Windows 为主，Linux 见 PLATFORM_LINUX.md）
 
 头两个 crate 其实**跟 Windows 无关**（纯 Rust，能跟着内核一起搬平台），
 列在这里只是因为它们是「外壳侧实现」而不是内核。

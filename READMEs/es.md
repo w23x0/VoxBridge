@@ -1,23 +1,24 @@
 # VoxBridge
 
-Un traductor de voz en tiempo real para escritorio Windows, pensado para conversaciones en vivo. Dos pipelines independientes corren a la vez:
+Un traductor de voz en tiempo real de escritorio (**Windows** y **Linux**), pensado para conversaciones en vivo. Dos pipelines independientes corren a la vez:
 
 | Pipeline | Entrada | Salida |
 | --- | --- | --- |
 | **Speak out** | tu micrófono | voz traducida a un micrófono virtual + subtítulos en vivo |
 | **Listen in** | el audio de un programa elegido | voz en chino a tus auriculares + subtítulos en vivo |
 
-Construido con **Tauri 2 + React 19 + Rust**. La UI maneja configuración y estado; la captura de audio, reducción de ruido, remuestreo, transporte WebSocket, atajos de teclado y la ventana flotante de subtítulos viven en Rust/Win32.
+Construido con **Tauri 2 + React 19 + Rust**. La UI maneja configuración y estado; la captura de audio, reducción de ruido, remuestreo, transporte WebSocket, atajos de teclado y la ventana flotante de subtítulos viven en Rust, repartidos en shells por plataforma (Windows: `vox-*-win`; Linux: `vox-*-linux`). El núcleo (`vox-core` / `vox-net` / `vox-dsp`) es neutral respecto a la plataforma.
 
 English： [`../README.md`](../README.md) · 简体中文： [`zh-CN.md`](zh-CN.md) · 日本語： [`ja.md`](ja.md) · 한국어： [`ko.md`](ko.md) · Español： [`es.md`](es.md) · Français： [`fr.md`](fr.md) · Deutsch： [`de.md`](de.md)
 
 ## Alcance
 
-- Solo Windows; el loopback por proceso ("Listen in") necesita **Win11 / Server 2022 (build 20348+)**.
+- **Windows**: el loopback por proceso ("Listen in") necesita **Win11 / Server 2022 (build 20348+)**.
+- **Linux**: requiere **PipeWire** (predeterminado en las distros habituales). "Listen in" captura los flujos de audio del propio programa; el micrófono virtual es un sink de PipeWire (no hay nada que instalar); en sesiones Wayland la ventana flotante usa XWayland para posicionarse y quedar encima; los atajos globales se leen de `/dev/input` (evdev). No se admiten otras pila de audio distintas de PipeWire.
 - Proveedores — **Alibaba Cloud Bailian**, **Google Gemini**, **OpenAI Realtime** — seleccionables por pipeline, cada uno con un modelo fijo de traducción en tiempo real.
 - "Listen in" siempre traduce **al chino**; el idioma de origen se detecta automáticamente o se fija a mano.
 - Idioma de la UI: 简体中文 / 日本語 / English, independiente de los idiomas de traducción.
-- Las API keys de los proveedores se guardan localmente, cifradas por usuario con **Windows DPAPI**.
+- Las API keys de los proveedores se guardan localmente y se cifran por usuario: **DPAPI** en Windows, **Secret Service** (gnome-keyring / KWallet, vía `keyring`) en Linux.
 - Los metadatos de proveedores viven en [`catalog/*.json`](../catalog/), no en el código fuente.
 
 ## Desarrollar
@@ -84,7 +85,7 @@ VoxBridge es deliberadamente conservador: el alcance del núcleo es fijo. Los m�
 
 ## Documentación
 
-`docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/QWEN_PROTOCOL.md`, `docs/GEMINI_PROTOCOL.md`, `docs/PROVIDER_CATALOG.md`, `docs/DISCORD_PROTOCOL.md`.
+`docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/PLATFORM_SCOPE.md`, `docs/PLATFORM_LINUX.md`, `docs/QWEN_PROTOCOL.md`, `docs/GEMINI_PROTOCOL.md`, `docs/PROVIDER_CATALOG.md`, `docs/DISCORD_PROTOCOL.md`.
 
 ## Licencia
 

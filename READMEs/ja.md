@@ -1,23 +1,24 @@
 # VoxBridge
 
-ライブ会話のための Windows デスクトップ向けリアルタイム音声翻訳アプリ。2 つの独立したパイプラインが同時に動作します:
+ライブ会話のためのデスクトップ向けリアルタイム音声翻訳アプリ（**Windows** / **Linux**）。2 つの独立したパイプラインが同時に動作します:
 
 | パイプライン | 入力 | 出力 |
 | --- | --- | --- |
 | **Speak out** | 自分のマイク | バーチャルマイクへの翻訳音声 + ライブ字幕 |
 | **Listen in** | 選択したプログラムの音声 | ヘッドホンへの中国語音声 + ライブ字幕 |
 
-**Tauri 2 + React 19 + Rust** で構築されています。UI は設定と状態を担当し、音声キャプチャ・ノイズ除去・リサンプリング・WebSocket 転送・ホットキー・字幕オーバーレイウィンドウは Rust/Win32 側に実装されています。
+**Tauri 2 + React 19 + Rust** で構築されています。UI は設定と状態を担当し、音声キャプチャ・ノイズ除去・リサンプリング・WebSocket 転送・ホットキー・字幕オーバーレイウィンドウは Rust 側に実装され、プラットフォームごとのシェル（Windows: `vox-*-win`、Linux: `vox-*-linux`）に分かれています。コア（`vox-core` / `vox-net` / `vox-dsp`）はプラットフォーム非依存です。
 
 English： [`../README.md`](../README.md) · 简体中文： [`zh-CN.md`](zh-CN.md) · 한국어： [`ko.md`](ko.md) · Español： [`es.md`](es.md) · Français： [`fr.md`](fr.md) · Deutsch： [`de.md`](de.md)
 
 ## スコープ
 
-- Windows のみ。プロセスループバック（"Listen in"）は **Win11 / Server 2022（build 20348+）** が必要。
+- **Windows**: プロセスループバック（"Listen in"）は **Win11 / Server 2022（build 20348+）** が必要。
+- **Linux**: **PipeWire** が必要（主要ディストリビューションでは標準）。"Listen in" は対象プログラム自身の音声ストリームを直接取り込みます。仮想マイクは PipeWire の sink そのもの（インストール不要）。Wayland セッションでは、位置指定と最前面表示のためにオーバーレイは XWayland 経由で動作します。グローバルホットキーは `/dev/input`（evdev）を直接読みます。PipeWire 以外の音声基盤は非対応。
 - プロバイダ — **Alibaba Cloud Bailian**、**Google Gemini**、**OpenAI Realtime** — パイプラインごとに選択可能で、それぞれ固定のリアルタイム翻訳モデルを 1 つ使用。
 - "Listen in" は常に **中国語へ** 翻訳。翻訳元の言語は自動検出または手動指定。
 - UI 言語は 简体中文 / 日本語 / English で、翻訳の言語とは独立。
-- プロバイダの API キーはローカルに保存され、ユーザーごとに **Windows DPAPI** で暗号化。
+- プロバイダの API キーはローカルに保存され、ユーザーごとに暗号化されます: Windows は **DPAPI**、Linux は **Secret Service**（gnome-keyring / KWallet、`keyring` 経由）。
 - プロバイダのメタデータは [`catalog/*.json`](../catalog/) 内に置かれ、ソースコードには含めない。
 
 ## 開発 (Develop)
@@ -84,7 +85,7 @@ VoxBridge は意図的に保守的で、コアスコープは固定されてい�
 
 ## ドキュメント
 
-`docs/ARCHITECTURE.md`、`docs/DECISIONS.md`、`docs/QWEN_PROTOCOL.md`、`docs/GEMINI_PROTOCOL.md`、`docs/PROVIDER_CATALOG.md`、`docs/DISCORD_PROTOCOL.md`。
+`docs/ARCHITECTURE.md`、`docs/DECISIONS.md`、`docs/PLATFORM_SCOPE.md`、`docs/PLATFORM_LINUX.md`、`docs/QWEN_PROTOCOL.md`、`docs/GEMINI_PROTOCOL.md`、`docs/PROVIDER_CATALOG.md`、`docs/DISCORD_PROTOCOL.md`。
 
 ## ライセンス
 

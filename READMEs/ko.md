@@ -1,23 +1,24 @@
 # VoxBridge
 
-라이브 대화를 위한 Windows 데스크톱 실시간 음성 번역기. 두 개의 독립적인 파이프라인이 동시에 실행됩니다:
+라이브 대화를 위한 데스크톱 실시간 음성 번역기(**Windows** / **Linux**). 두 개의 독립적인 파이프라인이 동시에 실행됩니다:
 
 | 파이프라인 | 입력 | 출력 |
 | --- | --- | --- |
 | **Speak out** | 내 마이크 | 가상 마이크로 번역 음성 + 라이브 자막 |
 | **Listen in** | 선택한 프로그램의 오디오 | 헤드폰으로 중국어 음성 + 라이브 자막 |
 
-**Tauri 2 + React 19 + Rust**로 제작되었습니다. UI는 설정과 상태를 담당하고, 오디오 캡처·노이즈 제거·리샘플링·WebSocket 전송·단축키·자막 오버레이 창은 Rust/Win32에 구현되어 있습니다.
+**Tauri 2 + React 19 + Rust**로 제작되었습니다. UI는 설정과 상태를 담당하고, 오디오 캡처·노이즈 제거·리샘플링·WebSocket 전송·단축키·자막 오버레이 창은 Rust로 구현되어 있으며 플랫폼별 셸(Windows: `vox-*-win`, Linux: `vox-*-linux`)로 나뉩니다. 코어(`vox-core` / `vox-net` / `vox-dsp`)는 플랫폼 비의존입니다.
 
 English： [`../README.md`](../README.md) · 简体中文： [`zh-CN.md`](zh-CN.md) · 日本語： [`ja.md`](ja.md) · 한국어： [`ko.md`](ko.md) · Español： [`es.md`](es.md) · Français： [`fr.md`](fr.md) · Deutsch： [`de.md`](de.md)
 
 ## 범위
 
-- Windows 전용. 프로세스 루프백("Listen in")은 **Win11 / Server 2022(build 20348+)**가 필요.
+- **Windows**: 프로세스 루프백("Listen in")은 **Win11 / Server 2022(build 20348+)**가 필요.
+- **Linux**: **PipeWire**가 필요합니다(주요 배포판 기본). "Listen in"은 대상 프로그램의 오디오 스트림을 직접 캡처합니다. 가상 마이크는 PipeWire sink 자체(설치 불필요). Wayland 세션에서는 위치 지정과 항상 위 표시를 위해 오버레이가 XWayland로 동작합니다. 전역 단축키는 `/dev/input`(evdev)을 직접 읽습니다. PipeWire 이외의 오디오 스택은 지원하지 않습니다.
 - 프로바이더 — **Alibaba Cloud Bailian**, **Google Gemini**, **OpenAI Realtime** — 파이프라인별로 선택 가능하며, 각각 고정된 실시간 번역 모델 1개를 사용.
 - "Listen in"은 항상 **중국어로** 번역. 원본 언어는 자동 감지 또는 수동 지정.
 - UI 언어는 简体中文 / 日本語 / English이며, 번역 언어와는 독립적.
-- 프로바이더 API 키는 로컬에 저장되며, 사용자별로 **Windows DPAPI**로 암호화.
+- 프로바이더 API 키는 로컬에 저장되고 사용자별로 암호화됩니다: Windows는 **DPAPI**, Linux는 **Secret Service**(gnome-keyring / KWallet, `keyring` 사용).
 - 프로바이더 메타데이터는 [`catalog/*.json`](../catalog/)에 있으며 소스 코드에는 포함하지 않음.
 
 ## 개발 (Develop)
@@ -84,7 +85,7 @@ VoxBridge는 의도적으로 보수적으로 유지되며, 핵심 범위는 고�
 
 ## 문서
 
-`docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/QWEN_PROTOCOL.md`, `docs/GEMINI_PROTOCOL.md`, `docs/PROVIDER_CATALOG.md`, `docs/DISCORD_PROTOCOL.md`.
+`docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/PLATFORM_SCOPE.md`, `docs/PLATFORM_LINUX.md`, `docs/QWEN_PROTOCOL.md`, `docs/GEMINI_PROTOCOL.md`, `docs/PROVIDER_CATALOG.md`, `docs/DISCORD_PROTOCOL.md`.
 
 ## 라이선스
 

@@ -14,18 +14,21 @@
 
 ## 0. 结论速览
 
+> **状态（2026-09-20）：P0–P4 全部落地**，真机验证见 §8。下面这张表是开工时的结论，
+> 逐条都实现了（"编译过不了"那条现在是历史）。
+
 | 层 | 结论 | 依据 |
 | --- | --- | --- |
 | 内核 `vox-core` / `vox-net` / `vox-dsp` | **一行都不用改**（除热键码表，见 §6） | 零平台依赖，已核对 |
 | 九个 `ports` trait | **签名全都不用改**，Linux 端照着实现即可 | `crates/vox-core/src/ports.rs` |
 | 音频 | 锚定 **PipeWire**（按进程抓音 + 虚拟麦都成立，且**不需要装任何东西**）；锚定范围已拍板，见 §9.1 | §2.1 §2.2 |
 | 悬浮窗 | 锚定 **XWayland**（绝对定位 / 置顶 / RGBA 透明实测成立）；GNOME Wayland 原生**做不到** | §2.3 |
-| 全局热键 | 锚定 **evdev**（要 `input` 组）；GNOME 不支持 GlobalShortcuts portal | §2.4 |
+| 全局热键 | 锚定 **evdev**（`input` 组**通常不需要**——logind 的 uaccess ACL 会给活跃会话开权限）；GNOME 不支持 GlobalShortcuts portal | §2.4 |
 | 密钥 | Secret Service（本机 `org.freedesktop.secrets` 在线） | §1 |
 | VB-CABLE | `crates/vox-audio-win/src/cable.rs` 那 1362 行**整段删掉**，换成一个 PipeWire 虚拟 sink | §2.2 §5.1 |
-| 编译 | 现状**连 `cargo check` 都过不了**（装配层 `#![cfg(windows)]` + 无条件依赖 Win crate） | §3.1 |
+| 编译 | 开工时**连 `cargo check` 都过不了**（装配层 `#![cfg(windows)]` + 无条件依赖 Win crate）→ **已打通**：`cargo test --workspace` 374 passed | §3.1 §8 |
 
-第一步（P0）不是写新功能，是**让 workspace 在 Linux 上编译通过**：见 §8。
+顺序是 P0 编译打通 → P1 音频 → P2 悬浮窗与密钥 → P3 热键 → P4 打包与 CI，四步都做完了（§8）。
 
 ---
 
