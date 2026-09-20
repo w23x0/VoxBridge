@@ -55,6 +55,11 @@ impl DropRing {
         w.saturating_sub(r)
     }
 
+    /// 有没有待播数据。空的时候补静音，播放统计也用它。
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// 写入。返回这次丢掉的样本数（0 表示没溢出）。绝不阻塞。
     pub fn write(&self, data: &[f32]) -> usize {
         if data.is_empty() {

@@ -75,6 +75,25 @@ impl GraphSnapshot {
         v
     }
 
+    /// 某个程序名对应的所有播放流节点（大小写不敏感）。
+    ///
+    /// 同一程序多条流（Chromium 每个标签页一条）会全部返回，调用方负责全连上混音。
+    pub fn output_streams_of(&self, executable: &str) -> Vec<&NodeRecord> {
+        let want = executable.to_ascii_lowercase();
+        let mut streams: Vec<&NodeRecord> = self
+            .nodes
+            .values()
+            .filter(|node| node.media_class == CLASS_OUTPUT_STREAM)
+            .filter(|node| {
+                self.binary_of(node)
+                    .map(|binary| binary.to_ascii_lowercase() == want)
+                    .unwrap_or(false)
+            })
+            .collect();
+        streams.sort_by_key(|node| node.name.clone());
+        streams
+    }
+
     /// 某个节点的所属客户端（可能没有：系统创建的设备节点没有 client）。
     pub fn client_of<'a>(&'a self, node: &'a NodeRecord) -> Option<&'a ClientRecord> {
         node.client_id.and_then(|id| self.clients.get(&id))

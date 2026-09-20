@@ -241,23 +241,7 @@ pub(crate) fn f32_to_bytes(samples: &[f32], kind: SampleKind, out: &mut [u8]) {
     out[count * step..].fill(0);
 }
 
-/// 单声道铺到多声道（交错）。
-///
-/// 内核只给单声道，设备大多要立体声甚至 7.1，直接复制到每个声道就行——
-/// 语音不需要声场，复制比补零更自然（补零会让某些设备只有一边有声）。
-pub(crate) fn duplicate_mono(mono: &[f32], channels: u16, out: &mut Vec<f32>) {
-    let channels = channels.max(1) as usize;
-    out.reserve(mono.len() * channels);
-    if channels == 1 {
-        out.extend_from_slice(mono);
-        return;
-    }
-    for &s in mono {
-        for _ in 0..channels {
-            out.push(s);
-        }
-    }
-}
+pub(crate) use vox_dsp::channels::duplicate_mono;
 
 #[cfg(test)]
 mod tests {
@@ -363,13 +347,4 @@ mod tests {
         assert_eq!(&f32_bytes[8..], &(1.0f32).to_le_bytes());
     }
 
-    #[test]
-    fn mono_duplicates_to_stereo() {
-        let mut out = Vec::new();
-        duplicate_mono(&[1.0, -1.0], 2, &mut out);
-        assert_eq!(out, vec![1.0, 1.0, -1.0, -1.0]);
-        out.clear();
-        duplicate_mono(&[0.25], 1, &mut out);
-        assert_eq!(out, vec![0.25]);
-    }
 }

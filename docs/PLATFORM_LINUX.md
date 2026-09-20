@@ -273,6 +273,15 @@ for note in platform::startup_notes() { runtime.notify(…); }     // linux: Pip
    Spa JSON。实测能读出来（本机默认输出正确标成了 HDMI）。
 3. `application.process.binary` 才是**真实二进制名**（`pw-play` 报的是 `pw-cat`，
    因为它是同一个二进制的软链），用它做 `executable` 与"按程序抓音"的匹配键是对的。
+4. **采集只认 `chunk.size()` 指的那一段**：`Data::data()` 给的是整个映射缓冲，后面的
+   字节是上一轮的残留。按整块算会把样本数放大十几倍（实测 4 秒抓出 4 608 000 个样本，
+   正确值是 192 000）——而且峰值还是对的，不看样本数根本发现不了。
+5. **`target.object` 认"程序的播放流节点"，不认 sink**：指向 app 的流节点时 wireplumber
+   连得对（`pw-record --target=<node id>` 抓到与源一致的峰值）；指向 sink（想抓 monitor）
+   会被忽略、偷偷连默认源，录出全 0。所以虚拟麦的回环验证必须用 `pw-link` 显式连。
+6. 采集流**不要设 `RT_PROCESS`**：PipeWire 的 process 回调默认在实时线程上，而内核的
+   `on_chunk` 会加锁 + 分配 `AudioChunk`，在实时线程里干这个是自找优先级反转。
+   Windows 侧也是自己起的普通线程在采集。
 
 **线程模型**（对应 `ARCHITECTURE.md` §6 的"采集线程 / 播放渲染线程"）：
 每个 `CaptureSource` / `PlaybackSink` 起一个**自己的 PipeWire 主循环线程**
@@ -282,14 +291,14 @@ for note in platform::startup_notes() { runtime.notify(…); }     // linux: Pip
 
 | 端口 | 实现 |
 | --- | --- |
-| `CaptureSource::start(Microphone(None/Some))` | `pw_stream` 方向 input，请求 **f32 / 48 kHz / 2ch**（PipeWire 图内自动转换，本机实测可协商），`target.object` 指定设备或走默认源。返回 `CaptureFormat` 用**协商结果** |
-| `CaptureSource::start(ProcessLoopback{executable, include_tree})` | 自己解析目标节点，**`node.autoconnect=false`**，用 `link-factory` 按 **node/port id** 建链（实测：靠 session manager 的 target 会被忽略，见 §2.1）。目标解析：node 属性 `application.process.binary` / `application.name` / client `application.process.id` → `/proc/<pid>/exe`；`include_tree=true` 时沿 `/proc/<pid>/task/*/children` 递归取子进程的节点。同一程序的多个节点（Chromium 每标签页一条流）**全部连进来混合** |
+| `CaptureSource::start(Microphone(None/Some))` | **已落地**：`pw_stream` 方向 input，请求 **f32 / 48 kHz / 2ch**，`target.object` 指定设备或走默认源；返回**协商结果**。真机实测：流按 48 kHz 跑起来、样本数精确（2 秒 = 95 040 个单声道样本）。⚠️ 本机没接麦克风，真麦音频要硬件才能验 |
+| `CaptureSource::start(ProcessLoopback{executable, include_tree})` | **已落地**：按 `application.process.binary` 找目标程序的播放流节点，主目标走 `target.object`（实测可靠）。`include_tree=true` 时沿 `/proc/<pid>/task/*/children` 递归把子进程的流也算进来。真机实测：抓 pw-play 的 440 Hz，样本数精确（4 秒 = 192 000 个单声道样本）、峰值 0.0884 与源一致。⚠️ **多条流只抓主目标**，其余记 warn（见 §9.8） |
 | `CaptureSource::stop` | 见上（销毁 link + stream，join 线程） |
 | `DeviceRegistry::input_devices` | 枚举 `media.class == Audio/Source` 的节点（含 `Audio/Source/Virtual`）；`is_default` 读 wireplumber metadata `default.audio.source` |
 | `DeviceRegistry::output_devices` | 同上，`Audio/Sink` + `default.audio.sink` |
 | `DeviceRegistry::audio_apps` | 枚举 `Stream/Output/Audio` 节点，按 client 归组 → `executable`（binary 名）/ `display_name`（application.name）/ `pid`；`active = node.state == RUNNING` |
 | `DeviceRegistry::virtual_cable_installed` | Linux 上语义变为"PipeWire 可用"（虚拟设备随时能建）。UI 侧 VB-CABLE 那一页在 Linux 隐藏（见 §5.4） |
-| `PlaybackSink::open(device, 24 kHz 输入率)` | `pw_stream` 方向 output，请求 48k/2ch f32；`vox-dsp` 的 `DropRing`（从 `-win` 下放）供渲染回调取数据；24k → 设备率用注入的 `ResampleFactory`（结构与 `WinPlayback::new(rf)` 一致，`app/src-tauri/src/audio.rs:16`） |
+| `PlaybackSink::open(device, 24 kHz 输入率)` | **已落地**：`pw_stream` 方向 output，请求 48k/2ch f32；`vox-dsp::ring::DropRing` 供渲染回调取数据；24k → 目标率用注入的 `ResampleFactory`。真机实测：3 秒音渲染 264 696 个样本（≈2.75 s × 48 k × 2ch）、丢弃 0、`device_latency_ms` 21 ms（真的从 `pw_stream_get_time` 读出来的） |
 | `PlaybackSink::stats()` | `pw_stream_get_time()` → `queued_samples` / `device_latency_ms`；`dropped_samples` 由环缓冲计数 |
 | 虚拟麦 | **已落地**（`vox-audio-linux/src/virtual_sink.rs`）：`create_object("adapter", …)` + `factory.name=support.null-audio-sink` + `media.class=Audio/Sink`，固定名 `voxbridge_virtual_mic`。真机验证：`wpctl status` 里出现「VoxBridge 虚拟麦」，端口是 `playback_FL/FR` + `monitor_FL/FR`（立体声），退出即删不留幽灵设备；`cargo run -p vox-audio-linux --example virtual_mic` 可手动复现 |
 | 能力门（替代 `osver.rs`） | 连不上 PipeWire socket / 版本 < 1.0 → `PortError` 带明确文案（"需要 PipeWire；纯 PulseAudio/ALSA 环境不支持按进程抓音"）。**不偷偷降级成整机环回**（沿用 `audio.rs:1-8` 的既有方针） |
@@ -430,13 +439,13 @@ CI 的事）。有了这条，改跨平台代码不用再靠一台 Windows 机�
 顺序不能改：P0 是所有事的前提；P1 风险最高（进程环回是 `PLATFORM_SCOPE` §C5 里排第一的难点），
 所以先做。
 
-**本轮已落地（P0 全部完成 + P1 的第一块）**：
+**已落地（P0 全部完成；P1 的设备目录 / 环缓冲 / 虚拟麦 / 采集 / 播放）**：
 
 ```
 Linux   : cargo check --workspace                       → 通过（含装配层）
-Linux   : cargo test --workspace                        → 295 passed / 0 failed
-          （vox-core 211、voxbridge 53、vox-dsp 12、vox-net 8、
-            vox-input-win 6、vox-osc 3、vox-audio-linux 2）
+Linux   : cargo test --workspace                        → 311 passed / 0 failed
+          （vox-core 211、voxbridge 53、vox-dsp 26、vox-net 8、vox-input-win 6、
+            vox-osc 3、vox-audio-linux 5）
 Linux   : cargo clippy --workspace --all-targets        → 新增代码零警告（vox-core/vox-net
             的 3 条是既有的，不在本轮范围内）
 Linux   : ./target/debug/voxbridge（GDK_BACKEND=x11）    → 真机启动成功：窗口 960x640、
@@ -449,6 +458,11 @@ Linux   : cargo test -p vox-audio-linux -- --ignored virtual_sink_lifecycle
           → 虚拟麦"建 → 图里查得到 → 删 → 查不到"往返通过（真机 PipeWire）
 Linux   : cargo run -p vox-audio-linux --example virtual_mic + wpctl/pw-dump
           → 系统 Sinks 里出现「VoxBridge 虚拟麦」，monitor_FL/FR 端口齐全，退出后消失
+Linux   : smoke -- tone 3       → 渲染 264 696 样本、丢弃 0、设备延迟 21 ms
+Linux   : smoke -- app pw-cat 4 → 协商 48k/2ch、192 000 个单声道样本（精确）、峰值 0.0884
+Linux   : smoke -- vmic 20 + pw-record 录 monitor（pw-link 显式连）
+          → 录音峰值 0.3000（= 播放源幅度），有声起点正是建链那一刻 → 回环 PASS
+Linux   : smoke -- mic 2        → 流按 48 kHz 跑起来（本机没麦克风，音频要硬件验）
 Windows : cargo check -p voxbridge --target x86_64-pc-windows-gnu       → 通过（全量，含装配层）
 Windows : cargo check -p vox-audio-win -p vox-overlay-win -p vox-osc --target
           x86_64-pc-windows-msvc --all-targets                          → 通过
@@ -495,6 +509,10 @@ WebKit 的 `WEBKIT_INSPECTOR_SERVER` 虽然起来了但 WIR 协议没能从命�
    已知黑屏/花屏问题，必要时 `WEBKIT_DISABLE_DMABUF_RENDERER=1`。主界面首次启动就要验。
 7. **托盘**：GNOME 默认不带托盘，靠 `ubuntu-appindicators` 扩展（本机已启用，别的机器不一定）
    → 关窗收托盘的行为在裸 GNOME 上要有兜底（比如保留窗口）。
+8. **同一程序多条播放流只抓主目标**（Chromium 每个标签页一条流那种）。做过一版
+   "主目标走 `target.object` + 其余用 `link-factory` 显式连进来混音"，但那条路上采集流
+   进不了 Streaming（启动必然 8 秒超时），所以没留。现状是抓第一条、其余记 warn 日志。
+   真要混音得换思路（比如在 `process` 回调里聚合多条流），或者等有用户提。
 
 ---
 

@@ -3,6 +3,7 @@
 //! 麦克风、进程环回、整机环回三条路只有“怎么拿到 IAudioClient”不一样，
 //! 拿到之后的循环完全相同，所以循环写在这里。
 
+use vox_dsp::chunk::Blocker;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::Arc;
@@ -175,47 +176,6 @@ pub(crate) fn await_start(
     }
 }
 
-/// 把连续的样本切成固定大小的块交给回调。
-pub(crate) struct Blocker {
-    frames_per_block: usize,
-    channels: u16,
-    sample_rate: u32,
-    staging: Vec<f32>,
-}
-
-impl Blocker {
-    pub(crate) fn new(info: &WaveInfo, block_ms: u32) -> Self {
-        // block_ms 为 0 或过小的时候按 10 ms 兜底：再小的块只会让下游白挨调用开销。
-        let block_ms = block_ms.max(10);
-        let frames_per_block = ((info.sample_rate as u64 * block_ms as u64) / 1000).max(1) as usize;
-        Self {
-            frames_per_block,
-            channels: info.channels,
-            sample_rate: info.sample_rate,
-            staging: Vec::with_capacity(frames_per_block * info.channels as usize * 2),
-        }
-    }
-
-    fn block_samples(&self) -> usize {
-        self.frames_per_block * self.channels.max(1) as usize
-    }
-
-    /// 吃进一段交错样本，凑够一块就调一次回调。
-    pub(crate) fn feed(&mut self, samples: &[f32], on_chunk: &mut dyn FnMut(AudioChunk)) {
-        self.staging.extend_from_slice(samples);
-        let block = self.block_samples();
-        while self.staging.len() >= block {
-            let rest = self.staging.split_off(block);
-            let chunk = std::mem::replace(&mut self.staging, rest);
-            on_chunk(AudioChunk {
-                samples: chunk,
-                sample_rate: self.sample_rate,
-                channels: self.channels,
-            });
-        }
-    }
-}
-
 /// 采集事件循环。
 ///
 /// 这个函数跑在我们自己开的采集线程上，是 ARCHITECTURE §6 说的“音频回调线程”。
@@ -231,7 +191,7 @@ pub(crate) fn capture_loop(
     control: &CaptureControl,
     mut on_chunk: Box<dyn FnMut(AudioChunk) + Send>,
 ) {
-    let mut blocker = Blocker::new(&info, block_ms);
+    let mut blocker = Blocker::new(info.sample_rate, info.channels, block_ms);
     let mut scratch: Vec<f32> = Vec::with_capacity(4096);
 
     while !control.stopping() {
@@ -306,58 +266,7 @@ pub(crate) fn create_stream_event() -> PortResult<OwnedHandle> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::wave::SampleKind;
 
-    fn info(rate: u32, channels: u16) -> WaveInfo {
-        WaveInfo {
-            sample_rate: rate,
-            channels,
-            kind: SampleKind::F32,
-            block_align: 4 * channels as usize,
-        }
-    }
-
-    #[test]
-    fn blocker_emits_fixed_size_blocks() {
-        let mut b = Blocker::new(&info(48_000, 1), 20); // 960 帧一块
-        let got = std::cell::RefCell::new(Vec::<usize>::new());
-        let mut sink = |c: AudioChunk| got.borrow_mut().push(c.samples.len());
-        b.feed(&vec![0.0; 500], &mut sink);
-        assert!(got.borrow().is_empty(), "还没凑够一块就不该发");
-        b.feed(&vec![0.0; 500], &mut sink);
-        assert_eq!(*got.borrow(), vec![960]);
-        b.feed(&vec![0.0; 2000], &mut sink);
-        assert_eq!(*got.borrow(), vec![960, 960, 960]);
-    }
-
-    #[test]
-    fn blocker_counts_frames_not_samples_for_stereo() {
-        let mut b = Blocker::new(&info(48_000, 2), 10); // 480 帧 = 960 个样本
-        let mut sizes = Vec::new();
-        let mut sink = |c: AudioChunk| {
-            assert_eq!(c.channels, 2);
-            assert_eq!(c.sample_rate, 48_000);
-            sizes.push(c.samples.len());
-        };
-        b.feed(&vec![0.0; 960], &mut sink);
-        assert_eq!(sizes, vec![960]);
-    }
-
-    #[test]
-    fn blocker_keeps_sample_order_across_blocks() {
-        let mut b = Blocker::new(&info(1000, 1), 10); // 10 帧一块
-        let mut flat = Vec::new();
-        let mut sink = |c: AudioChunk| flat.extend(c.samples);
-        let input: Vec<f32> = (0..25).map(|i| i as f32).collect();
-        b.feed(&input, &mut sink);
-        assert_eq!(flat, (0..20).map(|i| i as f32).collect::<Vec<_>>());
-    }
-
-    #[test]
-    fn tiny_block_ms_is_clamped() {
-        let b = Blocker::new(&info(48_000, 1), 0);
-        assert_eq!(b.frames_per_block, 480); // 兜底 10 ms
-    }
 
     #[test]
     fn control_stop_is_visible_and_idempotent() {
