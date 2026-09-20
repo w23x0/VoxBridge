@@ -112,3 +112,16 @@ pub fn virtual_device_status() -> VirtualDeviceStatus {
 pub fn startup_notes() -> Vec<String> {
     Vec::new()
 }
+
+/// 有没有东西在显示托盘图标。
+///
+/// Windows 的通知区域永远在，所以恒为 `true`：托盘真的建不起来只可能是我们自己的
+/// 错，那种情况由 `tray::install()` 的 `Err` 体现，不用在这里判。
+pub fn tray_host_available() -> bool {
+    true
+}
+
+/// 托盘看不见时给用户的解释（Linux 上才有意义，Windows 走不到这里）。
+pub fn tray_missing_hint() -> &'static str {
+    ""
+}

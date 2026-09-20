@@ -5919,6 +5919,7 @@ dependencies = [
  "vox-overlay-linux",
  "vox-overlay-win",
  "windows 0.62.2",
+ "zbus",
 ]
 
 [[package]]

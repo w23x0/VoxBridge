@@ -9,11 +9,15 @@
 //! | 密钥库 | DPAPI 加密落盘 | Secret Service（`keyring`） |
 //! | 启动期致命提示 | `MessageBoxW` | stderr + 日志 |
 //! | 音频三件套 | WASAPI（`vox-audio-win`） | PipeWire（`vox-audio-linux`） |
-//! | 全局热键 | `GetAsyncKeyState` 轮询 | evdev（未实现，见 P3） |
-//! | 悬浮字幕窗 | Win32 分层窗 | GTK + XWayland（未实现，见 P2） |
+//! | 全局热键 | `GetAsyncKeyState` 轮询 | evdev |
+//! | 悬浮字幕窗 | Win32 分层窗 | GTK + XWayland |
 //! | 虚拟麦克风 | VB-CABLE（要装） | PipeWire sink（原生，不需要装） |
+//! | 托盘宿主 | 通知区域永远在 → `true` | 问 D-Bus 有没有 StatusNotifier 宿主 |
 //!
 //! 两边都实现同一组函数，`lib.rs` 不写 `#[cfg]`。
+//!
+//! 托盘那一行是后加的：`TrayIconBuilder::build()` 在"没人显示托盘"的环境下照样返回
+//! Ok（GNOME 默认就是这样），所以"建成功"不足以决定关窗要不要 `hide()`。
 
 #[cfg(windows)]
 mod win;

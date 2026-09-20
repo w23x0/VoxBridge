@@ -118,7 +118,10 @@ pub fn run() {
     };
 
     app.run(|app, event| match event {
-        // 关设置窗只是收进托盘，进程继续跑——热键和悬浮窗还得用。
+        // 关设置窗默认只是收进托盘，进程继续跑——热键和悬浮窗还得用。
+        // 但**托盘没显示出来的时候不能收**：窗口没了、托盘也没有，用户除了任务管理器
+        // 就没有别的入口能叫回界面（`tray.rs` 头注释）。那种情况下改成最小化，
+        // 窗口留在任务栏/dock 里还能点回来。
         tauri::RunEvent::WindowEvent {
             label,
             event: tauri::WindowEvent::CloseRequested { api, .. },
@@ -126,7 +129,11 @@ pub fn run() {
         } if label == "main" => {
             api.prevent_close();
             if let Some(w) = app.get_webview_window("main") {
-                let _ = w.hide();
+                if tray::can_hide_to_tray() {
+                    let _ = w.hide();
+                } else {
+                    let _ = w.minimize();
+                }
             }
         }
         tauri::RunEvent::Exit => shutdown(app),
@@ -215,17 +222,19 @@ fn assemble(app: &tauri::AppHandle) -> Result<Arc<AppState>, Box<dyn std::error:
         ))),
     }
 
-    // 12. 平台前置条件的提醒（Linux：PipeWire 在不在）。放进 Notice 而不是启动失败，
-    //     因为设置窗、密钥、目录更新这些功能不依赖它。
-    for note in platform::startup_notes() {
-        runtime.notify(vox_core::event::Notice::warning(note));
-    }
-
-    // 11. 托盘。起不来不致命——设置窗和悬浮窗都还在。
+    // 11. 托盘。起不来不致命——设置窗和悬浮窗都还在；但托盘不可用时关窗逻辑会退化成
+    //     "最小化"而不是"收进托盘"，理由见 `tray.rs` 头注释。
     if let Err(e) = tray::install(app, &state) {
         runtime.notify(vox_core::event::Notice::warning(format!(
             "托盘图标没建起来：{e}"
         )));
+    }
+
+    // 12. 平台前置条件的提醒（Linux：PipeWire 在不在、托盘有没有宿主）。放进 Notice
+    //     而不是启动失败，因为设置窗、密钥、目录更新这些功能不依赖它们。
+    //     **必须排在托盘之后**：托盘那条要读 `install()` 刚写下的"看得见吗"。
+    for note in platform::startup_notes() {
+        runtime.notify(vox_core::event::Notice::warning(note));
     }
 
     Ok(state)

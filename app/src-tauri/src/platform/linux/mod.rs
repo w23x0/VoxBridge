@@ -136,5 +136,72 @@ pub fn startup_notes() -> Vec<String> {
             "没连上 PipeWire：Linux 音频后端以 PipeWire 为前提（主流发行版默认就有）。".to_string(),
         );
     }
+    if !tray_host_available() {
+        notes.push(format!(
+            "系统托盘不会显示图标：关窗会最小化，不会收进托盘。{}",
+            tray_missing_hint()
+        ));
+    }
     notes
+}
+
+/// 有没有东西在显示托盘图标。
+///
+/// 只问 D-Bus 上那两个标准名字在不在（GNOME 的 AppIndicator 扩展占 `org.kde.…`，
+/// KDE 自己那套平时不跑、注册图标时靠 D-Bus 激活拉起来，所以要连"可激活"一起算）。
+/// **不能**只看 `TrayIconBuilder::build()` 成没成功：没有宿主时它照样返回 Ok，
+/// 图标对象建出来了但没有任何东西会画它——用户关窗之后就再也叫不回界面。
+pub fn tray_host_available() -> bool {
+    /// StatusNotifier 规范里的宿主名字。KDE 与 Ayatana 两套实现各占一个。
+    const WATCHERS: [&str; 2] = [
+        "org.kde.StatusNotifierWatcher",
+        "org.ayatana.StatusNotifierWatcher",
+    ];
+
+    // 拿不到会话总线（比如从 ssh/无桌面环境里跑）就是没有宿主。
+    let Ok(connection) = zbus::blocking::Connection::session() else {
+        return false;
+    };
+    let Ok(bus) = zbus::blocking::fdo::DBusProxy::new(&connection) else {
+        return false;
+    };
+    if WATCHERS.iter().any(|name| has_owner(&bus, name)) {
+        return true;
+    }
+    bus.list_activatable_names()
+        .map(|names| {
+            names
+                .iter()
+                .any(|name| WATCHERS.iter().any(|watcher| name.as_str() == *watcher))
+        })
+        .unwrap_or(false)
+}
+
+/// 托盘看不见时给用户的解释。
+pub fn tray_missing_hint() -> &'static str {
+    "GNOME 默认不带系统托盘，装上 AppIndicator/KStatusNotifier 扩展后图标才会出现。"
+}
+
+fn has_owner(bus: &zbus::blocking::fdo::DBusProxy, name: &str) -> bool {
+    let Ok(name) = zbus::names::BusName::try_from(name) else {
+        return false;
+    };
+    bus.name_has_owner(name).unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tray_host_probe_never_panics() {
+        // 有宿主（本机 GNOME + AppIndicator 扩展）→ true；没有会话总线（CI 容器）
+        // → false。两种都算对，这里只钉住"不许 panic、不许卡住"。
+        let _ = tray_host_available();
+    }
+
+    #[test]
+    fn hint_is_not_empty() {
+        assert!(!tray_missing_hint().is_empty());
+    }
 }

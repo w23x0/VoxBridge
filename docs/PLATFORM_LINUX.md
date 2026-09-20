@@ -570,7 +570,22 @@ WebKit 的 `WEBKIT_INSPECTOR_SERVER` 虽然起来了但 WIR 协议没能从命�
 6. **NVIDIA + WebKitGTK**：本机是 NVIDIA 显卡，WebKitGTK 的 DMABUF 渲染器在 NVIDIA 上有
    已知黑屏/花屏问题，必要时 `WEBKIT_DISABLE_DMABUF_RENDERER=1`。主界面首次启动就要验。
 7. **托盘**：GNOME 默认不带托盘，靠 `ubuntu-appindicators` 扩展（本机已启用，别的机器不一定）
-   → 关窗收托盘的行为在裸 GNOME 上要有兜底（比如保留窗口）。
+   → 关窗收托盘的行为在裸 GNOME 上要有兜底。**已实现**（2026-09-20）：
+   `TrayIconBuilder::build()` 在"没人显示托盘"的环境下**照样返回 Ok**，所以光看建没建成功
+   不够——新增 `platform::tray_host_available()` 问 D-Bus 上有没有 StatusNotifier 宿主
+   （`org.kde.` / `org.ayatana.StatusNotifierWatcher`，占住了或"可激活"都算有：KDE 平时不跑
+   watcher，注册图标时才靠 D-Bus 激活拉起来）。没宿主时关窗**最小化**而不是 `hide()`，
+   并在启动时推一条 Notice 说明；有宿主时行为不变（收进托盘，托盘菜单/再启动一次都能叫回窗口）。
+
+   真机验证（都是本机、真窗口、真 X 事件）：
+
+   | 场景 | 探针 | 关窗后 | 进程 |
+   | --- | --- | --- | --- |
+   | 正常会话（GNOME + AppIndicator 扩展，`busctl` 里 `org.kde.StatusNotifierWatcher` 有主） | `= true` | `WM_STATE: Withdrawn`（收进托盘） | 活着 |
+   | `DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/voxbridge-no-such-bus`（模拟裸 GNOME） | `= false` | `WM_STATE: Iconic`（最小化） | 活着 |
+
+   外加一条：窗口被收进托盘后再启动一次 → 单实例插件把已运行的实例叫到前面
+   （实测窗口从 `Withdrawn` 回到 `IsViewable`）。
 8. ~~同一程序多条播放流只抓主目标~~ **已实现**（`link_keeper.rs`）。做这一版踩出来
    三个坑，都记在这儿，免得下次重踩：
    - **不能在采集线程的主循环上 roundtrip**：`probe::roundtrip()` 会 `main_loop.quit()`，

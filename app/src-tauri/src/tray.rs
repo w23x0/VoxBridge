@@ -1,8 +1,14 @@
 //! 系统托盘图标及其右键菜单。
 //!
-//! 主窗口被关掉时只 hide()，进程继续跑——热键和悬浮窗还得用。
-//! 托盘图标是用户重新打开窗口和退出进程的唯一入口（除了任务管理器），
-//! 不是装饰。
+//! 主窗口被关掉时收进托盘（`hide()`），进程继续跑——热键和悬浮窗还得用。
+//! 托盘图标是用户重新打开窗口和退出进程的主入口，不是装饰。
+//!
+//! **但"托盘没显示出来"是 Linux 上的常态**（GNOME 默认不带 StatusNotifier 宿主，
+//! 装 AppIndicator 扩展才有），而 `TrayIconBuilder::build()` 在那种环境下**照样返回
+//! Ok**——图标对象建出来了，只是没有任何东西会画它。所以这里除了建图标，还要问一次
+//! "真有人显示它吗"（`platform::tray_host_available`），并把答案喂给关窗逻辑：
+//! 没宿主就**最小化**而不是 `hide()`，否则窗口没了、托盘也没有，用户除了任务管理器
+//! 就没有别的入口叫回界面。
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -36,6 +42,12 @@ struct MenuItems {
 /// 模块级单例：install() 写一次，sync() 读。
 /// OnceLock 保证并发安全且无锁开销（只写一次后都是只读）。
 static ITEMS: OnceLock<MenuItems> = OnceLock::new();
+
+/// 托盘图标**用户真的看得见**吗。
+///
+/// Windows：通知区域永远在，`install()` 成功就等于看得见。
+/// Linux：`install()` 成功**不等于**看得见，理由见模块头注释。
+static AVAILABLE: AtomicBool = AtomicBool::new(false);
 
 /// 进程正在退出。竖起来之后 `sync()` 直接 return。
 ///
@@ -129,7 +141,20 @@ pub fn install(app: &tauri::AppHandle, state: &Arc<AppState>) -> tauri::Result<(
         })
         .build(app)?;
 
+    // 见 `AVAILABLE` 的注释：Linux 上"建成功"和"看得见"是两件事。
+    let visible = crate::platform::tray_host_available();
+    AVAILABLE.store(visible, Ordering::Relaxed);
+    tracing::debug!("托盘图标已建；有没有宿主在显示它 = {visible}");
+
     Ok(())
+}
+
+/// 关窗能不能收进托盘。
+///
+/// 比 `available()` 多问一次宿主：用户可能在我们启动之后才装上（或卸掉）
+/// AppIndicator 扩展。没宿主还 `hide()` 的话，窗口没了、托盘也没有——见模块头注释。
+pub fn can_hide_to_tray() -> bool {
+    AVAILABLE.load(Ordering::Relaxed) && crate::platform::tray_host_available()
 }
 
 /// 刷新托盘菜单的勾选状态，使其与实际流水线 / 设置保持一致。
