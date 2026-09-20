@@ -247,6 +247,16 @@ impl Default for SubtitleSettings {
     }
 }
 
+/// 默认字体族。
+///
+/// Windows 上点名雅黑；Linux 上留空——那边的光栅器（swash）会按
+/// Noto CJK → 无衬线 的顺序挑系统里真实存在的字体。写死一个 Windows 字体名
+/// 只会让 Linux 用户拿到"找不到字体"的回退路径。
+#[cfg(windows)]
+pub const DEFAULT_FONT_FAMILY: &str = "Microsoft YaHei UI";
+#[cfg(not(windows))]
+pub const DEFAULT_FONT_FAMILY: &str = "";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OverlayGeometry {
     pub x: i32,

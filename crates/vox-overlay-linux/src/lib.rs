@@ -9,5 +9,50 @@
 #![cfg(target_os = "linux")]
 
 pub mod font;
+mod mailbox;
+mod window;
+
+use std::sync::Arc;
+
+use vox_core::ports::{PortResult, SubtitleFrame, SubtitleView};
+use vox_core::settings::SubtitleSettings;
 
 pub use font::font_factory;
+pub use window::Overlay;
+
+impl SubtitleView for Overlay {
+    fn show(&self) {
+        if let Ok(mut mailbox) = self.mailbox().lock() {
+            mailbox.visible = true;
+        }
+        self.request_redraw();
+    }
+
+    fn hide(&self) {
+        if let Ok(mut mailbox) = self.mailbox().lock() {
+            mailbox.visible = false;
+        }
+        self.request_redraw();
+    }
+
+    /// 推一帧。**线程安全**：只写邮箱 + 叫醒主线程，不碰任何 GTK 对象。
+    fn render(&self, frame: SubtitleFrame) {
+        if let Ok(mut mailbox) = self.mailbox().lock() {
+            mailbox.set_frame(frame);
+        }
+        self.request_redraw();
+    }
+
+    /// 外观变了（字体、字号、底衬透明度）。真正换字体在主线程的重画里做。
+    fn restyle(&self, settings: &SubtitleSettings) {
+        if let Ok(mut mailbox) = self.mailbox().lock() {
+            mailbox.set_settings(settings);
+        }
+        self.request_redraw();
+    }
+}
+
+/// 起一个悬浮窗。**必须在 GTK 主线程上调**（装配层的 `assemble()` 就在主线程）。
+pub fn spawn(settings: &SubtitleSettings) -> PortResult<Arc<Overlay>> {
+    Overlay::spawn(settings, font_factory())
+}

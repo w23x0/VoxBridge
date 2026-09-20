@@ -341,9 +341,30 @@ Linux 用同一字段承载 PipeWire 的 binary/application 名，`include_tree`
 3. **穿透**：`gdk::Window::input_shape_combine_region` 传空区域（X11 层实测生效，§2.3）。
    按代码现状，这个开关跟"有没有字幕 / 用户要不要拖动"联动。
 
-**桌面环境分支**：GNOME → 整个应用以 `GDK_BACKEND=x11`（XWayland）跑，定位/置顶实测成立；
-KDE/wlroots → 以后可加 `gtk-layer-shell`；纯 Wayland 且没有 XWayland → 字幕降级到主窗口内嵌一条
-（`SubtitleView` 的实现换成"写进主窗口"的那一版，不静默什么都不显示）。
+**桌面环境分支（已落地）**：GNOME → 整个应用以 `GDK_BACKEND=x11`（XWayland）跑，
+定位/置顶实测成立，切换发生在 `platform/linux::pre_main()`（GTK 初始化之前设环境变量）；
+KDE/wlroots → 以后可加 `gtk-layer-shell`；纯 Wayland 且没有 XWayland → 保持原样（悬浮窗由
+合成器摆位，不能自定坐标）。**字幕降级到主窗口内嵌**这条还没做（要动前端）。
+
+**实测结论（真机，XWayland）**：
+
+| 检查 | 结果 |
+| --- | --- |
+| 窗口位置/尺寸 | `880x200+865+1190`，`IsViewable` |
+| 真透明 | `Depth: 32`（ARGB visual `0x254`） |
+| 置顶 | `_NET_WM_STATE = SKIP_PAGER, SKIP_TASKBAR, **ABOVE**` |
+| 类型 | `_NET_WM_WINDOW_TYPE_NOTIFICATION` |
+| 鼠标穿透 | `XShapeGetRectangles(ShapeInput) = 0` 个矩形（完全穿透） |
+| 绘制路径 | 探针确认 `connect_draw` 每帧都在跑（画布尺寸随内容变） |
+| 像素内容 | 离屏 `snapshot` 例子的 BMP 人工核对（中日文/混排/淡出/空帧/超长行滚动） |
+
+两个踩出来的坑：
+
+1. **不可缩放窗口上 `resize()` 会被 GTK 忽略**（实测窗口高度一直不动）。而且按设计
+   窗口高度本来就该由用户设置决定、不跟着内容变（Windows 侧也只有拖动才改 `rect.h`），
+   所以 Linux 这边**根本不改窗口尺寸**，视口 = 窗口当前尺寸（`area.allocated_width/height()`）。
+2. **GTK 只能在主线程碰**：建窗要求主线程（装配层 `assemble()` 就在主线程，不是就报错）；
+   帧线程只写邮箱 + `glib::MainContext::invoke` 叫醒主线程重画，自己不碰任何 GTK 对象。
 
 ### 5.4 其余端口与装配层
 
@@ -443,9 +464,9 @@ CI 的事）。有了这条，改跨平台代码不用再靠一台 Windows 机�
 
 ```
 Linux   : cargo check --workspace                       → 通过（含装配层）
-Linux   : cargo test --workspace                        → 311 passed / 0 failed
-          （vox-core 211、voxbridge 53、vox-dsp 26、vox-net 8、vox-input-win 6、
-            vox-osc 3、vox-audio-linux 5）
+Linux   : cargo test --workspace                        → 361 passed / 0 failed
+          （vox-core 211、voxbridge 53、vox-overlay-core 45、vox-dsp 26、vox-net 8、
+            vox-input-win 6、vox-audio-linux 5、vox-overlay-linux 5、vox-osc 3）
 Linux   : cargo clippy --workspace --all-targets        → 新增代码零警告（vox-core/vox-net
             的 3 条是既有的，不在本轮范围内）
 Linux   : ./target/debug/voxbridge（GDK_BACKEND=x11）    → 真机启动成功：窗口 960x640、
@@ -463,6 +484,12 @@ Linux   : smoke -- app pw-cat 4 → 协商 48k/2ch、192 000 个单声道样本�
 Linux   : smoke -- vmic 20 + pw-record 录 monitor（pw-link 显式连）
           → 录音峰值 0.3000（= 播放源幅度），有声起点正是建链那一刻 → 回环 PASS
 Linux   : smoke -- mic 2        → 流按 48 kHz 跑起来（本机没麦克风，音频要硬件验）
+Linux   : cargo run -p vox-overlay-linux --example live + xwininfo/xprop/xshape
+          → 悬浮窗 880x200 置顶（_NET_WM_STATE_ABOVE）、Depth 32（真透明）、
+            输入域 0 矩形（鼠标完全穿透）、connect_draw 每帧在跑
+Linux   : cargo run -p vox-overlay-linux --example snapshot
+          → 6 个场景离屏渲染成 BMP，中文/日文/中英混排/逐字淡出/空帧/超长行滚动
+            全部符合设计（人工核对过像素）
 Windows : cargo check -p voxbridge --target x86_64-pc-windows-gnu       → 通过（全量，含装配层）
 Windows : cargo check -p vox-audio-win -p vox-overlay-win -p vox-osc --target
           x86_64-pc-windows-msvc --all-targets                          → 通过

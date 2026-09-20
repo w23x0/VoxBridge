@@ -9,7 +9,7 @@ mod clock;
 mod secrets;
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use vox_core::pipeline::{CaptureFactory, PlaybackFactory};
 use vox_core::ports::{Clock, DeviceRegistry, HotkeyHost, PortError, PortResult, SecretStore};
@@ -19,8 +19,26 @@ use vox_core::settings::SubtitleSettings;
 use super::{GeometryCallback, VirtualDeviceStatus};
 use crate::state::OverlayHandle;
 
+/// 悬浮窗的具体句柄留一份：装配层 `AppState` 里存的是 trait object，
+/// 而关窗/查存活是 `Overlay` 的固有方法。
+static OVERLAY: OnceLock<Arc<vox_overlay_linux::Overlay>> = OnceLock::new();
+
 /// 启动前短路：只有 Windows 那条 VB-CABLE 默认设备写回走这条路。
+///
+/// Linux 这边顺手做一件必须**在 GTK 初始化之前**做的事：GNOME 的 Wayland 会话下
+/// GTK 客户端不能自定坐标、不能置顶（协议层就没有），而 XWayland 下两样都成立
+/// （实测见 `docs/PLATFORM_LINUX.md` §2.3）。所以 Wayland 会话里把整个应用切到
+/// X11 后端；已经有 `DISPLAY` 才切，没有就保持原样（那样悬浮窗会由合成器摆位）。
 pub fn pre_main() -> bool {
+    let wayland = std::env::var("XDG_SESSION_TYPE")
+        .map(|value| value.eq_ignore_ascii_case("wayland"))
+        .unwrap_or(false);
+    let has_x11 = std::env::var_os("DISPLAY").is_some();
+    if wayland && has_x11 && std::env::var_os("GDK_BACKEND").is_none() {
+        // SAFETY：单线程启动早期设置环境变量，GTK 还没初始化，也没有别的线程读它。
+        unsafe { std::env::set_var("GDK_BACKEND", "x11") };
+        tracing::info!("Wayland 会话：切到 X11 后端（XWayland），悬浮窗才能定位置顶");
+    }
     false
 }
 
@@ -64,22 +82,29 @@ pub fn start_hotkeys(_runtime: Runtime) -> PortResult<Arc<dyn HotkeyHost>> {
 
 pub fn stop_hotkeys() {}
 
-/// 悬浮字幕窗未实现（P2：GTK + XWayland）。
+/// 起悬浮字幕窗。GTK 只能在主线程建窗，而装配层的 `assemble()` 就在主线程，
+/// 所以这里直接建；不是主线程会拿到明确错误（见 `window.rs`）。
 pub fn spawn_overlay(
-    _settings: &SubtitleSettings,
+    settings: &SubtitleSettings,
     _on_geometry: GeometryCallback,
 ) -> PortResult<OverlayHandle> {
-    Err(PortError::new(
-        "Linux 悬浮字幕窗尚未实现（P2：GTK + XWayland）",
-    ))
+    // 几何回调先不接：Linux 侧是永久鼠标穿透（`DECISIONS.md` A5），窗口拖不动，
+    // 也就没有"用户改了几何"这回事。
+    let overlay = vox_overlay_linux::spawn(settings)?;
+    let _ = OVERLAY.set(Arc::clone(&overlay));
+    Ok(overlay)
 }
 
-/// 悬浮窗本来就没起起来，帧线程不会跑，所以这里恒为 false。
+/// 窗口还活着吗。帧线程靠它发现"窗被关了"。
 pub fn overlay_running() -> bool {
-    false
+    OVERLAY.get().is_some_and(|overlay| overlay.is_running())
 }
 
-pub fn shutdown_overlay() {}
+pub fn shutdown_overlay() {
+    if let Some(overlay) = OVERLAY.get() {
+        overlay.shutdown();
+    }
+}
 
 /// GTK 自己就认 `tauri.conf.json` 的 `minWidth` / `minHeight`，不需要 Windows 那套
 /// `WM_GETMINMAXINFO` 子类化。P2 真机验收时要确认这一点。

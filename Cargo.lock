@@ -5850,6 +5850,7 @@ dependencies = [
  "vox-input-win",
  "vox-net",
  "vox-osc",
+ "vox-overlay-linux",
  "vox-overlay-win",
  "windows 0.62.2",
 ]
