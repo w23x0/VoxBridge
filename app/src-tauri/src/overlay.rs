@@ -7,10 +7,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use vox_core::ports::{SubtitleFrame, SubtitleView};
-use vox_overlay_win::Overlay;
+use vox_core::ports::SubtitleFrame;
 
-use crate::state::AppState;
+use crate::state::{AppState, OverlayHandle};
 
 /// 有内容且淡出可能变化时的帧间隔（约 30fps）。
 const FRAME_INTERVAL_ACTIVE: Duration = Duration::from_millis(33);
@@ -39,13 +38,14 @@ pub fn start(state: &Arc<AppState>) {
     let settings = state.runtime.settings();
     let rt = state.runtime.clone();
     let geometry_rt = rt.clone();
-    let geometry_callback = std::sync::Arc::new(move |geometry| {
-        // 几何回调发生在 Win32 悬浮窗线程；这里只更新 Runtime，持久化和
-        // 其他监听器仍沿用设置事件的现有路径，不跨线程直接碰 Tauri 状态。
-        geometry_rt.update_settings(|s| s.subtitle.geometry = Some(geometry));
-    });
+    let geometry_callback: crate::platform::GeometryCallback =
+        std::sync::Arc::new(move |geometry| {
+            // 几何回调发生在悬浮窗自己的线程；这里只更新 Runtime，持久化和
+            // 其他监听器仍沿用设置事件的现有路径，不跨线程直接碰 Tauri 状态。
+            geometry_rt.update_settings(|s| s.subtitle.geometry = Some(geometry));
+        });
 
-    let overlay = match Overlay::spawn_with_geometry(&settings.subtitle, Some(geometry_callback)) {
+    let overlay = match crate::platform::spawn_overlay(&settings.subtitle, geometry_callback) {
         Ok(o) => o,
         Err(e) => {
             state
@@ -84,13 +84,14 @@ pub fn start(state: &Arc<AppState>) {
 
 /// 字幕帧循环。有内容时每帧提交，保证渲染器的平滑上移不会停在半路；
 /// 空帧仍按内容变化去重。
-fn subtitle_loop(rt: vox_core::Runtime, overlay: Arc<Overlay>) {
+fn subtitle_loop(rt: vox_core::Runtime, overlay: OverlayHandle) {
     let mut consecutive_empty: u32 = 0;
     let mut prev_visible: Option<bool> = None;
     let mut previous_frame: Option<SubtitleFrame> = None;
 
     loop {
-        if STOP.load(Ordering::Relaxed) || !overlay.is_running() {
+        // 窗口自己关了（Windows：用户拖没了窗口 / 窗口线程退出）就收摊。
+        if STOP.load(Ordering::Relaxed) || !crate::platform::overlay_running() {
             break;
         }
 

@@ -1,5 +1,8 @@
 //! 播放用的无锁环形缓冲：满了丢最旧的，写入永不阻塞。
 //!
+//! 放在 `vox-dsp` 而不是某个 `-win` crate 里：Windows（WASAPI 渲染回调）和 Linux
+//! （PipeWire 的 process 回调）两边都要它，逻辑一行不用改。
+//!
 //! 为什么必须无锁：渲染线程是 WASAPI 的回调节奏（几毫秒一次），一旦它在锁上
 //! 等生产者，声音立刻爆音。ARCHITECTURE §6 的规矩是音频回调线程“只准搬数据”，
 //! 所以这里的读端只做一次定长复制，没有分配、没有锁、没有日志。
@@ -15,7 +18,7 @@
 use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
 /// 单生产者单消费者环形缓冲。
-pub(crate) struct DropRing {
+pub struct DropRing {
     slots: Box<[AtomicU32]>,
     /// 累计写入位置，单调递增（64 位在 48 kHz 立体声下也要跑几百万年才会绕回）。
     write: AtomicUsize,
@@ -28,7 +31,7 @@ pub(crate) struct DropRing {
 }
 
 impl DropRing {
-    pub(crate) fn new(capacity: usize) -> Self {
+    pub fn new(capacity: usize) -> Self {
         let capacity = capacity.max(2);
         let mut slots = Vec::with_capacity(capacity);
         slots.resize_with(capacity, || AtomicU32::new(0));
@@ -41,19 +44,19 @@ impl DropRing {
         }
     }
 
-    pub(crate) fn capacity(&self) -> usize {
+    pub fn capacity(&self) -> usize {
         self.slots.len()
     }
 
     /// 当前可读样本数。播放统计也用它换算实时排队时长。
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         let w = self.write.load(Ordering::Acquire);
         let r = self.read.load(Ordering::Acquire);
         w.saturating_sub(r)
     }
 
     /// 写入。返回这次丢掉的样本数（0 表示没溢出）。绝不阻塞。
-    pub(crate) fn write(&self, data: &[f32]) -> usize {
+    pub fn write(&self, data: &[f32]) -> usize {
         if data.is_empty() {
             return 0;
         }
@@ -93,7 +96,7 @@ impl DropRing {
     /// 读出最多 `out.len()` 个样本，剩下的位置补静音。返回真正读到的个数。
     ///
     /// 这是渲染线程唯一做的事：一次定长复制，然后走。
-    pub(crate) fn read_into(&self, out: &mut [f32]) -> usize {
+    pub fn read_into(&self, out: &mut [f32]) -> usize {
         let cap = self.capacity();
         let r = self.read.load(Ordering::Relaxed);
         let w = self.write.load(Ordering::Acquire);
@@ -112,18 +115,18 @@ impl DropRing {
     }
 
     /// 丢掉所有待播内容。打断说话时用。
-    pub(crate) fn clear(&self) {
+    pub fn clear(&self) {
         let w = self.write.load(Ordering::Acquire);
         self.read.fetch_max(w, Ordering::AcqRel);
     }
 
     /// 累计丢样本数。
-    pub(crate) fn dropped_samples(&self) -> u64 {
+    pub fn dropped_samples(&self) -> u64 {
         self.dropped.load(Ordering::Relaxed)
     }
 
     /// 累计丢弃事件次数。
-    pub(crate) fn drop_events(&self) -> u64 {
+    pub fn drop_events(&self) -> u64 {
         self.drop_events.load(Ordering::Relaxed)
     }
 }
@@ -132,7 +135,7 @@ impl DropRing {
 ///
 /// 跟旧版 playback.py / session.py 一个节奏。既能第一时间发现问题，
 /// 又不会在持续溢出时把日志刷爆。
-pub(crate) fn should_warn(drop_events: u64) -> bool {
+pub fn should_warn(drop_events: u64) -> bool {
     drop_events == 1 || (drop_events > 0 && drop_events.is_multiple_of(25))
 }
 

@@ -13,31 +13,36 @@
 //! - tokio：复用 Tauri 自己那个 runtime，**不另起第二个**；
 //! - 每条流水线一个工作线程，由 `PipelineEngine` 自己管。
 
-#![cfg(windows)]
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// `windows_subsystem` 只在 Windows 上有效；别的平台上写了会被忽略，
+// 但显式门控一下更清楚（发布构建没有控制台这件事只有 Windows 有）。
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 use std::sync::Arc;
 
 use tauri::Manager;
-use vox_core::ports::Clock;
 use vox_core::{PipelineEngine, Runtime};
 
-mod audio;
+// ── 平台无关 ────────────────────────────────────────────────────────────────
 mod catalog_updater;
 mod commands;
 mod devices;
 mod dsp;
 mod dto;
 mod events;
-mod input;
 mod net;
 mod overlay;
 mod persist;
+mod platform;
 mod state;
 mod sys;
 mod tray;
-#[cfg(feature = "steamvr-overlay")]
+
+// ── 只有 Windows 有实现（Linux 的对应物在 `platform/linux/` 与 `-linux` crate） ──
+#[cfg(windows)]
+mod input;
+#[cfg(all(windows, feature = "steamvr-overlay"))]
 mod vr_overlay;
+#[cfg(windows)]
 mod winminmax;
 
 use state::AppState;
@@ -46,9 +51,9 @@ use state::AppState;
 pub fn run() {
     sys::log::init();
 
-    // 隐藏 CLI 模式：带 `--vox-restore-defaults` 时只做默认设备写回就退出，
-    // 不构建 Tauri（避免被单实例插件当成「重复启动」吞掉）。
-    if vox_audio_win::restore_via_args_if_requested() {
+    // 隐藏 CLI 模式（只有 Windows 有）：带 `--vox-restore-defaults` 时只做默认设备
+    // 写回就退出，不构建 Tauri（避免被单实例插件当成「重复启动」吞掉）。
+    if platform::pre_main() {
         return;
     }
 
@@ -104,7 +109,7 @@ pub fn run() {
         Ok(app) => app,
         Err(e) => {
             tracing::error!("Tauri 应用构建失败：{e}");
-            sys::fatal::alert(
+            platform::alert(
                 "VoxBridge 启动失败",
                 &format!("初始化时出错，应用无法启动。\n\n{e}"),
             );
@@ -140,26 +145,22 @@ fn assemble(app: &tauri::AppHandle) -> Result<Arc<AppState>, Box<dyn std::error:
 
     // 1. 设置 + 时钟 + Runtime。
     let settings = persist.load_settings();
-    let clock: Arc<dyn Clock> = Arc::new(sys::clock::SystemClock::new());
+    let clock = platform::clock();
     let runtime = Runtime::new(settings, Arc::clone(&clock));
 
-    // 2. 密钥库。set_secret_store 会顺手把存着的密钥读进来。
-    runtime.set_secret_store(Arc::new(sys::secrets::DpapiSecretStore::new(
-        persist.secret_path(),
-    )));
+    // 2. 密钥库（Windows：DPAPI 落盘；Linux：Secret Service）。
+    //    set_secret_store 会顺手把存着的密钥读进来。
+    runtime.set_secret_store(platform::secret_store(persist.secret_path()));
 
     // 3. 用量账本。要在挂落盘监听之前灌进去，免得刚读出来就又写一遍。
     runtime.load_usage(persist.load_usage());
 
     // 4. 窗口先亮出来。后面任何一步失败，用户至少看得见界面。
     if let Some(w) = app.get_webview_window("main") {
-        // 透明无边框窗口下，tauri.conf.json 的 minHeight 压不住（实测会被压到
-        // ~30px），tauri 的 set_min_size 走 tao 的 subclass 链同样压不到下限。
-        // 这里用原生子类，在 WM_GETMINMAXINFO 最底层强制最小高度 38（标题栏高）
-        // ——用户不能把窗口拖得比「只剩标签栏」更扁。宽度 640 与配置一致。
-        if let Ok(hwnd) = w.hwnd() {
-            winminmax::enforce_min_size(hwnd.0, 640, 38);
-        }
+        // Windows：透明无边框窗口下 `tauri.conf.json` 的 minHeight 压不住
+        // （实测会被压到 ~30px），set_min_size 也压不到，只能原生子类硬来。
+        // Linux：GTK 自己认配置里的最小尺寸，这里是空实现。
+        platform::enforce_min_size(&w);
         if runtime.settings().start_minimized {
             let _ = w.hide();
         } else {
@@ -174,15 +175,15 @@ fn assemble(app: &tauri::AppHandle) -> Result<Arc<AppState>, Box<dyn std::error:
         runtime.clone(),
         vox_core::pipeline::Deps {
             transport: net::transport_factory(tokio_handle),
-            capture: audio::capture_factory(),
-            playback: audio::playback_factory(),
+            capture: platform::capture_factory(),
+            playback: platform::playback_factory(),
             denoise: dsp::denoise_factory(),
             resample: dsp::resample_factory(),
         },
     );
     runtime.set_control(Arc::clone(&engine) as Arc<_>);
 
-    let registry = audio::registry();
+    let registry = platform::registry();
     let state = Arc::new(AppState::new(
         runtime.clone(),
         Arc::clone(&engine),
@@ -193,7 +194,7 @@ fn assemble(app: &tauri::AppHandle) -> Result<Arc<AppState>, Box<dyn std::error:
     // 6. 纯显示悬浮窗 + 字幕帧线程。悬浮窗永久穿透，不处理按钮或设置命令。
     overlay::start(&state);
     // 7. SteamVR 头显字幕。不可用时只在后台等待，不影响桌面字幕和 VRChat OSC。
-    #[cfg(feature = "steamvr-overlay")]
+    #[cfg(all(windows, feature = "steamvr-overlay"))]
     vr_overlay::start(runtime.clone());
 
     // 8. 设备枚举（首次同步一把，之后低频轮询）。
@@ -207,11 +208,17 @@ fn assemble(app: &tauri::AppHandle) -> Result<Arc<AppState>, Box<dyn std::error:
     // 放在 events::wire 之后：热键线程一起来就可能立刻回调 `on_hotkey` →
     // `update_settings`，要是那会儿 listener 还没挂上，这次改动就不会被标脏，
     // 也就永远不落盘。中间夹着建 Win32 窗口，窗口不止几微秒。
-    match input::start(runtime.clone()) {
+    match platform::start_hotkeys(runtime.clone()) {
         Ok(host) => runtime.set_hotkey_host(host),
         Err(e) => runtime.notify(vox_core::event::Notice::error(format!(
             "全局热键起不来，只能用界面上的开关：{e}"
         ))),
+    }
+
+    // 12. 平台前置条件的提醒（Linux：PipeWire 在不在）。放进 Notice 而不是启动失败，
+    //     因为设置窗、密钥、目录更新这些功能不依赖它。
+    for note in platform::startup_notes() {
+        runtime.notify(vox_core::event::Notice::warning(note));
     }
 
     // 11. 托盘。起不来不致命——设置窗和悬浮窗都还在。
@@ -243,15 +250,13 @@ fn shutdown(app: &tauri::AppHandle) {
     let state = state.inner();
 
     tray::begin_shutdown();
-    input::stop();
+    platform::stop_hotkeys();
     devices::stop();
     overlay::stop();
-    #[cfg(feature = "steamvr-overlay")]
+    #[cfg(all(windows, feature = "steamvr-overlay"))]
     vr_overlay::stop();
     state.engine.shutdown();
-    if let Some(overlay) = state.overlay.get() {
-        overlay.shutdown();
-    }
+    platform::shutdown_overlay();
     if let Some(client) = state.osc.lock().take() {
         drop(client);
     }

@@ -15,7 +15,10 @@ use vox_core::ports::DeviceRegistry;
 use vox_core::{PipelineEngine, Runtime};
 
 /// 悬浮窗把手。
-pub type OverlayHandle = Arc<vox_overlay_win::Overlay>;
+///
+/// 两个平台都按 `SubtitleView` trait object 存：装配层只调这个 trait 上的方法，
+/// 平台特有的关闭动作由 `platform::shutdown_overlay()` 负责。
+pub type OverlayHandle = Arc<dyn vox_core::ports::SubtitleView>;
 
 pub struct AppState {
     pub runtime: Runtime,
@@ -31,7 +34,7 @@ pub struct AppState {
     /// 悬浮窗，起完才有。
     pub overlay: OnceLock<OverlayHandle>,
     /// VRChat OSC 客户端（把译文写进聊天框/头像参数），起完才有。
-    pub osc: Mutex<Option<vox_osc_win::OscClient>>,
+    pub osc: Mutex<Option<vox_osc::OscClient>>,
 }
 
 impl AppState {

@@ -8,6 +8,11 @@
 //! - COM 错误一律翻成带 HRESULT 的中文 `PortError`，永不 panic；
 //! - 库代码里没有 `unwrap()` / `expect()`，测试里可以有。
 
+// 非 Windows 上编译成空 lib：音频后端是平台特有的，Linux 那边是 `vox-audio-linux`，
+// 装配层按 `cfg(target_os)` 只挑一个依赖。空 lib 也让 `cargo test --workspace` 在
+// Linux 上能整个跑通，而不是卡在一个用不了的 crate 上。
+#![cfg(windows)]
+
 pub mod cable;
 mod capture;
 mod client;
@@ -19,7 +24,6 @@ mod policy;
 mod proc;
 mod rates;
 mod registry;
-mod ring;
 mod sessions;
 mod wave;
 

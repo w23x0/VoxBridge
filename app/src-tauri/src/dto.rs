@@ -173,24 +173,16 @@ fn pipeline_dto(
 
 /// 内核 `DeviceSnapshot` → 前端形状（`audio_apps` 重命名为 `apps`）。
 fn devices_dto(core: vox_core::runtime::DeviceSnapshot) -> DeviceSnapshotDto {
-    let cable_status = match vox_audio_win::cable::detect() {
-        vox_audio_win::CableStatus::Installed => "installed",
-        vox_audio_win::CableStatus::InstalledPendingReboot => "install_pending_reboot",
-        vox_audio_win::CableStatus::UninstallIncomplete => "uninstall_incomplete",
-        vox_audio_win::CableStatus::NotInstalled => "not_installed",
-    };
-    let channel_status = match vox_audio_win::multichannel_endpoint_status() {
-        vox_audio_win::MultichannelEndpointStatus::Enabled => "visible",
-        vox_audio_win::MultichannelEndpointStatus::Disabled => "hidden",
-        vox_audio_win::MultichannelEndpointStatus::NotPresent => "absent",
-    };
+    // 虚拟麦克风的状态是**平台事实**：Windows 上是"VB-CABLE 装没装"，
+    // Linux 上是"PipeWire 在不在"（不需要安装任何东西）。
+    let virtual_device = crate::platform::virtual_device_status();
     DeviceSnapshotDto {
         inputs: core.inputs,
         outputs: core.outputs,
         apps: core.audio_apps,
         virtual_cable_installed: core.virtual_cable_installed,
-        virtual_cable_status: cable_status,
-        virtual_cable_16ch_status: channel_status,
+        virtual_cable_status: virtual_device.status,
+        virtual_cable_16ch_status: virtual_device.multichannel_status,
     }
 }
 

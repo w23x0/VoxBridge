@@ -12,7 +12,6 @@ use parking_lot::Mutex;
 use tauri::Emitter;
 use tauri_plugin_autostart::ManagerExt;
 use vox_core::event::Event;
-use vox_core::ports::SubtitleView;
 use vox_core::runtime::Listener;
 use vox_core::settings::SubtitleSettings;
 

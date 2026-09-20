@@ -1,12 +1,13 @@
 //! VRChat OpenSoundControl (OSC) 发送。
 //!
 //! 把一条 VRChat OSC 消息拼成线路帧，用 UDP 发到 `127.0.0.1:<port>`。VRChat 的
-//! OSC 收端口默认 **9000**。本模块只写库不读：发聊天框、写头像参数——是
-//! `vox-window-ocr-win`（读 VRChat）的姊妹：这边把译文写回 VRChat 聊天框。
+//! OSC 收端口默认 **9000**。本模块只写库不读：发聊天框、写头像参数——
+//! 把译文写回 VRChat 聊天框。
 //!
 //! 纯 `std` 实现，只依赖 `std::net::UdpSocket`，不引任何第三方依赖。
 
-#![cfg(windows)]
+// 这里原来挂着 `#![cfg(windows)]`，但整个 crate 一行 Win32 都没有：VRChat 的 OSC
+// 就是往 127.0.0.1:9000 发 UDP，Linux 上一样能用。
 
 use std::net::Ipv4Addr;
 use std::net::UdpSocket;
@@ -43,8 +44,8 @@ impl OscClient {
     /// 建一个 客户端，绑到同机随机本地口、设非阻塞。`port` 是 VRChat 监听的 OSC 端口，
     /// 默认用 [`DEFAULT_OSC_PORT`]。
     pub fn new(port: u16) -> Result<Self, String> {
-        let udp =
-            UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|e| format!("绑定本地 UDP 失败：{e}"))?;
+        let udp = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))
+            .map_err(|e| format!("绑定本地 UDP 失败：{e}"))?;
         udp.set_nonblocking(true)
             .map_err(|e| format!("设置 UDP 非阻塞失败：{e}"))?;
         Ok(Self {
@@ -104,7 +105,10 @@ impl OscClient {
     pub fn chatbox(&self, text: &str, immediate: bool) -> Result<(), String> {
         self.send(
             "/chatbox/input",
-            &[OscValue::String(text.to_string()), OscValue::Boolean(immediate)],
+            &[
+                OscValue::String(text.to_string()),
+                OscValue::Boolean(immediate),
+            ],
         )
     }
 

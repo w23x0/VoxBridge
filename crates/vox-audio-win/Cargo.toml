@@ -7,6 +7,8 @@ license.workspace = true
 
 [dependencies]
 vox-core.workspace = true
+# 播放侧的 DropRing 在 vox-dsp 里（两个平台共用同一份）。
+vox-dsp.workspace = true
 tracing.workspace = true
 
 [target.'cfg(windows)'.dependencies]

@@ -1,0 +1,19 @@
+[package]
+name = "vox-audio-linux"
+description = "Linux 音频 I/O：PipeWire 麦克风采集、按程序抓音、虚拟麦克风、播放"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+vox-core.workspace = true
+vox-dsp.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+parking_lot.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# pipewire-rs：绑 libpipewire-0.3。编译期要 libpipewire-0.3-dev（.pc + 头文件）
+# 和 clang（libspa-sys 的 build.rs 用 bindgen 生成绑定），运行期只要
+# libpipewire-0.3.so.0。
+pipewire = "0.10"

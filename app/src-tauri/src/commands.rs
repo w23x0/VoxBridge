@@ -103,7 +103,7 @@ pub fn osc_start(
         client.set_avatar_enabled(avatar_enabled);
         return Ok(());
     }
-    let mut client = vox_osc_win::OscClient::new(port)?;
+    let mut client = vox_osc::OscClient::new(port)?;
     client.set_chat_enabled(chatbox_enabled);
     client.set_avatar_param(avatar_param);
     client.set_avatar_enabled(avatar_enabled);
@@ -211,15 +211,324 @@ pub struct CableActionDto {
     pub multichannel_hidden: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
-enum CableAction {
-    Install,
-    Uninstall,
+/// VB-CABLE 的安装 / 卸载 / 多声道端点管理**整块都是 Windows 专属**：
+/// 下载安装包、静默安装、UAC 提权、按进程关掉占用方，全是 Win32 的活。
+///
+/// 模块里的四个函数是**普通函数**（不是 `#[tauri::command]`）：tauri 宏会生成
+/// `__cmd__*` 支持项，那些东西没法通过 `pub use` 转发。对外的四个命令在模块
+/// 外面，各自 `#[cfg]` 一段——Windows 调这里，Linux 直接回"这个平台不需要装
+/// 虚拟声卡"。前端的调用点因此不用分平台。
+#[cfg(windows)]
+mod cable_admin {
+    use super::*;
+
+    #[derive(Debug, Clone, Copy)]
+    enum CableAction {
+        Install,
+        Uninstall,
+    }
+
+    pub async fn install(state: State<'_>) -> Result<CableActionDto, String> {
+        manage_virtual_cable(state, CableAction::Install, false).await
+    }
+
+    pub async fn uninstall(
+        state: State<'_>,
+        close_blockers: bool,
+    ) -> Result<CableActionDto, String> {
+        // 播放线程可能正占着 CABLE Input。先停「对外说话」，让设备句柄尽快释放。
+        state.runtime.stop(Pipeline::Speak);
+        manage_virtual_cable(state, CableAction::Uninstall, close_blockers).await
+    }
+
+    pub async fn blockers() -> Result<Vec<vox_core::ports::AudioApp>, String> {
+        tauri::async_runtime::spawn_blocking(vox_audio_win::virtual_cable_blocking_apps)
+            .await
+            .map_err(|e| format!("占用检测线程异常：{e}"))?
+            .map_err(|e| e.message)
+    }
+
+    async fn manage_virtual_cable(
+        state: State<'_>,
+        action: CableAction,
+        close_blockers: bool,
+    ) -> Result<CableActionDto, String> {
+        // State 不能跨 await：只留下可安全送进阻塞线程的克隆。
+        let runtime = state.runtime.clone();
+        let registry = Arc::clone(&state.registry);
+
+        let (outcome, restore_result, hide_outcome, devices) =
+            tauri::async_runtime::spawn_blocking(move || {
+                use vox_audio_win::{
+                    CableStatus, DownloadOutcome, InstallOutcome, ProductDisclosure,
+                };
+
+                if matches!(action, CableAction::Uninstall) {
+                    let blockers = vox_audio_win::virtual_cable_blocking_apps().unwrap_or_default();
+                    if !blockers.is_empty() && !close_blockers {
+                        let names = blockers
+                            .iter()
+                            .map(|app| app.display_name.as_str())
+                            .collect::<Vec<_>>()
+                            .join("、");
+                        return (
+                            InstallOutcome::Failed(format!("以下应用仍在占用虚拟麦克风：{names}")),
+                            None,
+                            None,
+                            crate::devices::scan(registry.as_ref()),
+                        );
+                    }
+                    if close_blockers {
+                        if let Err(message) = close_cable_blockers(&blockers) {
+                            return (
+                                InstallOutcome::Failed(message),
+                                None,
+                                None,
+                                crate::devices::scan(registry.as_ref()),
+                            );
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(800));
+                    }
+                }
+
+                let current = vox_audio_win::cable::detect();
+                let settled = match (action, current) {
+                    (CableAction::Install, CableStatus::Installed)
+                    | (CableAction::Uninstall, CableStatus::NotInstalled) => {
+                        Some(InstallOutcome::Succeeded)
+                    }
+                    (CableAction::Install, CableStatus::InstalledPendingReboot) => {
+                        Some(InstallOutcome::NeedsReboot)
+                    }
+                    (CableAction::Install, CableStatus::UninstallIncomplete) => {
+                        Some(InstallOutcome::Failed(
+                            "驱动刚卸载，必须先重启 Windows 才能重新安装。".into(),
+                        ))
+                    }
+                    (CableAction::Uninstall, CableStatus::InstalledPendingReboot) => Some(
+                        InstallOutcome::Failed("驱动刚安装，必须先重启 Windows 才能卸载。".into()),
+                    ),
+                    _ => None,
+                };
+
+                let outcome = if let Some(settled) = settled {
+                    (settled, None)
+                } else {
+                    // 真要执行安装。装上之后 Windows/官方安装器会把默认播放/录音设备切到
+                    // CABLE 端点，先把当前默认设备记下来，装完再写回去，用户听歌才不被打断。
+                    let preserved = if matches!(action, CableAction::Install) {
+                        vox_audio_win::capture_default_endpoints()
+                    } else {
+                        (None, None)
+                    };
+                    // UI 已展示 VB-CABLE 全名、官网和 Donationware/授权入口。
+                    let disclosure = ProductDisclosure::shown();
+                    let download = vox_audio_win::cable::download(
+                        disclosure,
+                        &vox_audio_win::cable::default_download_dir(),
+                        |_downloaded, _total| {},
+                    );
+                    let result = match download {
+                        DownloadOutcome::Saved { path, .. } => match action {
+                            CableAction::Install => {
+                                vox_audio_win::cable::install(disclosure, &path)
+                            }
+                            CableAction::Uninstall
+                                if matches!(current, CableStatus::UninstallIncomplete) =>
+                            {
+                                vox_audio_win::uninstall_with_audio_reset(disclosure, &path)
+                            }
+                            CableAction::Uninstall => {
+                                vox_audio_win::cable::uninstall(disclosure, &path)
+                            }
+                        },
+                        DownloadOutcome::SizeMismatch { hint, .. }
+                        | DownloadOutcome::Unavailable { hint, .. }
+                        | DownloadOutcome::Failed(hint) => InstallOutcome::Failed(hint),
+                    };
+                    // 安装成功才恢复；无人记下任何默认设备时更是空转。
+                    let restore = if matches!(action, CableAction::Install)
+                        && matches!(
+                            &result,
+                            InstallOutcome::Succeeded | InstallOutcome::NeedsReboot
+                        )
+                        && (preserved.0.is_some() || preserved.1.is_some())
+                    {
+                        Some(vox_audio_win::elevate_and_restore_defaults(
+                            preserved.0,
+                            preserved.1,
+                        ))
+                    } else {
+                        None
+                    };
+                    (result, restore)
+                };
+                let (outcome, restore_result) = outcome;
+                // 安装后的默认动作：把不需要的 16 声道端点从系统设备列表中隐藏。
+                // 这是独立 PnP 端点，操作不会影响普通播放端和 CABLE Output。
+                let hide_outcome = if matches!(action, CableAction::Install)
+                    && matches!(
+                        &outcome,
+                        InstallOutcome::Succeeded | InstallOutcome::NeedsReboot
+                    ) {
+                    Some(vox_audio_win::set_multichannel_endpoint_enabled(false))
+                } else {
+                    None
+                };
+                let devices = crate::devices::scan(registry.as_ref());
+                (outcome, restore_result, hide_outcome, devices)
+            })
+            .await
+            .map_err(|e| format!("驱动管理线程异常：{e}"))?;
+
+        // 不等四秒轮询，操作结束立刻把最新设备状态推给前端。
+        select_regular_cable_output(&runtime, &devices);
+        runtime.set_devices(devices);
+
+        let multichannel_hidden = matches!(
+            vox_audio_win::multichannel_endpoint_status(),
+            vox_audio_win::MultichannelEndpointStatus::Disabled
+                | vox_audio_win::MultichannelEndpointStatus::NotPresent
+        );
+        if let Some(vox_audio_win::EndpointToggleOutcome::Failed(message)) = hide_outcome {
+            runtime.notify(vox_core::event::Notice::warning(format!(
+                "虚拟麦克风已安装，但 16 声道端点未能自动隐藏：{message}"
+            )));
+        }
+        if let Some(Err(message)) = restore_result {
+            runtime.notify(vox_core::event::Notice::warning(format!(
+                "虚拟麦克风已安装，但系统默认声音设备没有恢复：{message}"
+            )));
+        }
+
+        match outcome {
+            vox_audio_win::InstallOutcome::Succeeded => Ok(CableActionDto {
+                needs_reboot: false,
+                multichannel_hidden,
+            }),
+            vox_audio_win::InstallOutcome::NeedsReboot => Ok(CableActionDto {
+                needs_reboot: true,
+                multichannel_hidden,
+            }),
+            vox_audio_win::InstallOutcome::UserDeclinedElevation => {
+                Err("已取消管理员授权，驱动没有发生变化。".into())
+            }
+            vox_audio_win::InstallOutcome::Failed(message) => {
+                Err(if matches!(action, CableAction::Uninstall) {
+                    format!(
+                        "{message} 请先关闭 Discord、VRChat 和其它正在使用虚拟麦克风的软件后重试。"
+                    )
+                } else {
+                    message
+                })
+            }
+        }
+    }
+
+    fn close_cable_blockers(blockers: &[vox_core::ports::AudioApp]) -> Result<(), String> {
+        use windows::Win32::Foundation::CloseHandle;
+        use windows::Win32::System::Threading::{
+            OpenProcess, TerminateProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
+            PROCESS_TERMINATE,
+        };
+
+        let me = std::process::id();
+        for app in blockers {
+            if app.pid == 0 || app.pid == me {
+                continue;
+            }
+            // SAFETY: 只申请终止和等待权限，PID 来自当前音频会话枚举。
+            let process =
+                unsafe { OpenProcess(PROCESS_TERMINATE | PROCESS_SYNCHRONIZE, false, app.pid) }
+                    .map_err(|e| format!("无法关闭 {}：{e}", app.display_name))?;
+            // SAFETY: process 是刚打开的有效进程句柄。
+            let terminated = unsafe { TerminateProcess(process, 0) };
+            if let Err(error) = terminated {
+                // SAFETY: 句柄由本函数持有，只关闭一次。
+                unsafe {
+                    let _ = CloseHandle(process);
+                }
+                return Err(format!("无法关闭 {}：{error}", app.display_name));
+            }
+            // 最多等两秒让音频会话释放；超时也继续，安装器会给最终结果。
+            unsafe {
+                let _ = WaitForSingleObject(process, 2_000);
+                let _ = CloseHandle(process);
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn set_multichannel(
+        state: State<'_>,
+        visible: bool,
+    ) -> Result<CableActionDto, String> {
+        let runtime = state.runtime.clone();
+        let registry = Arc::clone(&state.registry);
+        let (outcome, devices) = tauri::async_runtime::spawn_blocking(move || {
+            let outcome = vox_audio_win::set_multichannel_endpoint_enabled(visible);
+            let devices = crate::devices::scan(registry.as_ref());
+            (outcome, devices)
+        })
+        .await
+        .map_err(|e| format!("音频端点管理线程异常：{e}"))?;
+
+        select_regular_cable_output(&runtime, &devices);
+        runtime.set_devices(devices);
+        // 16 声道端点的启停不一定改 outputs 列表（禁用后 Core Audio 仍可能旧报
+        // ACTIVE），set_devices 的去重可能吞掉这次变化；这里强制补发一次，
+        // 让前端尽快拿到最新快照，徽标不会卡死在旧状态。
+        runtime.touch_devices();
+
+        let hidden = matches!(
+            vox_audio_win::multichannel_endpoint_status(),
+            vox_audio_win::MultichannelEndpointStatus::Disabled
+                | vox_audio_win::MultichannelEndpointStatus::NotPresent
+        );
+        match outcome {
+            vox_audio_win::EndpointToggleOutcome::Changed
+            | vox_audio_win::EndpointToggleOutcome::AlreadySet
+            | vox_audio_win::EndpointToggleOutcome::NotFound => Ok(CableActionDto {
+                needs_reboot: false,
+                multichannel_hidden: hidden,
+            }),
+            vox_audio_win::EndpointToggleOutcome::NeedsReboot => Ok(CableActionDto {
+                needs_reboot: true,
+                multichannel_hidden: hidden,
+            }),
+            vox_audio_win::EndpointToggleOutcome::UserDeclinedElevation => {
+                Err("已取消管理员授权，16 声道端点没有发生变化。".into())
+            }
+            vox_audio_win::EndpointToggleOutcome::Failed(message) => Err(message),
+        }
+    }
+
+    fn select_regular_cable_output(
+        runtime: &vox_core::Runtime,
+        devices: &vox_core::runtime::DeviceSnapshot,
+    ) {
+        let Some(device) = devices.outputs.iter().find(|device| {
+            vox_audio_win::cable::is_cable_render(&device.name)
+                && !vox_audio_win::cable::is_cable_multichannel_render(&device.name)
+        }) else {
+            return;
+        };
+        let name = device.name.clone();
+        runtime.update_settings(|settings| settings.speak.output_device = Some(name));
+    }
 }
 
 #[tauri::command]
 pub async fn install_virtual_cable(state: State<'_>) -> Result<CableActionDto, String> {
-    manage_virtual_cable(state, CableAction::Install, false).await
+    #[cfg(windows)]
+    {
+        cable_admin::install(state).await
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = state;
+        Err(virtual_device_not_needed())
+    }
 }
 
 #[tauri::command]
@@ -227,219 +536,27 @@ pub async fn uninstall_virtual_cable(
     state: State<'_>,
     close_blockers: bool,
 ) -> Result<CableActionDto, String> {
-    // 播放线程可能正占着 CABLE Input。先停「对外说话」，让设备句柄尽快释放。
-    state.runtime.stop(Pipeline::Speak);
-    manage_virtual_cable(state, CableAction::Uninstall, close_blockers).await
+    #[cfg(windows)]
+    {
+        cable_admin::uninstall(state, close_blockers).await
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (state, close_blockers);
+        Err(virtual_device_not_needed())
+    }
 }
 
 #[tauri::command]
 pub async fn virtual_cable_blockers() -> Result<Vec<vox_core::ports::AudioApp>, String> {
-    tauri::async_runtime::spawn_blocking(vox_audio_win::virtual_cable_blocking_apps)
-        .await
-        .map_err(|e| format!("占用检测线程异常：{e}"))?
-        .map_err(|e| e.message)
-}
-
-async fn manage_virtual_cable(
-    state: State<'_>,
-    action: CableAction,
-    close_blockers: bool,
-) -> Result<CableActionDto, String> {
-    // State 不能跨 await：只留下可安全送进阻塞线程的克隆。
-    let runtime = state.runtime.clone();
-    let registry = Arc::clone(&state.registry);
-
-    let (outcome, restore_result, hide_outcome, devices) =
-        tauri::async_runtime::spawn_blocking(move || {
-            use vox_audio_win::{CableStatus, DownloadOutcome, InstallOutcome, ProductDisclosure};
-
-            if matches!(action, CableAction::Uninstall) {
-                let blockers = vox_audio_win::virtual_cable_blocking_apps().unwrap_or_default();
-                if !blockers.is_empty() && !close_blockers {
-                    let names = blockers
-                        .iter()
-                        .map(|app| app.display_name.as_str())
-                        .collect::<Vec<_>>()
-                        .join("、");
-                    return (
-                        InstallOutcome::Failed(format!("以下应用仍在占用虚拟麦克风：{names}")),
-                        None,
-                        None,
-                        crate::devices::scan(registry.as_ref()),
-                    );
-                }
-                if close_blockers {
-                    if let Err(message) = close_cable_blockers(&blockers) {
-                        return (
-                            InstallOutcome::Failed(message),
-                            None,
-                            None,
-                            crate::devices::scan(registry.as_ref()),
-                        );
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(800));
-                }
-            }
-
-            let current = vox_audio_win::cable::detect();
-            let settled = match (action, current) {
-                (CableAction::Install, CableStatus::Installed)
-                | (CableAction::Uninstall, CableStatus::NotInstalled) => {
-                    Some(InstallOutcome::Succeeded)
-                }
-                (CableAction::Install, CableStatus::InstalledPendingReboot) => {
-                    Some(InstallOutcome::NeedsReboot)
-                }
-                (CableAction::Install, CableStatus::UninstallIncomplete) => Some(
-                    InstallOutcome::Failed("驱动刚卸载，必须先重启 Windows 才能重新安装。".into()),
-                ),
-                (CableAction::Uninstall, CableStatus::InstalledPendingReboot) => Some(
-                    InstallOutcome::Failed("驱动刚安装，必须先重启 Windows 才能卸载。".into()),
-                ),
-                _ => None,
-            };
-
-            let outcome = if let Some(settled) = settled {
-                (settled, None)
-            } else {
-                // 真要执行安装。装上之后 Windows/官方安装器会把默认播放/录音设备切到
-                // CABLE 端点，先把当前默认设备记下来，装完再写回去，用户听歌才不被打断。
-                let preserved = if matches!(action, CableAction::Install) {
-                    vox_audio_win::capture_default_endpoints()
-                } else {
-                    (None, None)
-                };
-                // UI 已展示 VB-CABLE 全名、官网和 Donationware/授权入口。
-                let disclosure = ProductDisclosure::shown();
-                let download = vox_audio_win::cable::download(
-                    disclosure,
-                    &vox_audio_win::cable::default_download_dir(),
-                    |_downloaded, _total| {},
-                );
-                let result = match download {
-                    DownloadOutcome::Saved { path, .. } => match action {
-                        CableAction::Install => vox_audio_win::cable::install(disclosure, &path),
-                        CableAction::Uninstall
-                            if matches!(current, CableStatus::UninstallIncomplete) =>
-                        {
-                            vox_audio_win::uninstall_with_audio_reset(disclosure, &path)
-                        }
-                        CableAction::Uninstall => {
-                            vox_audio_win::cable::uninstall(disclosure, &path)
-                        }
-                    },
-                    DownloadOutcome::SizeMismatch { hint, .. }
-                    | DownloadOutcome::Unavailable { hint, .. }
-                    | DownloadOutcome::Failed(hint) => InstallOutcome::Failed(hint),
-                };
-                // 安装成功才恢复；无人记下任何默认设备时更是空转。
-                let restore = if matches!(action, CableAction::Install)
-                    && matches!(
-                        &result,
-                        InstallOutcome::Succeeded | InstallOutcome::NeedsReboot
-                    )
-                    && (preserved.0.is_some() || preserved.1.is_some())
-                {
-                    Some(vox_audio_win::elevate_and_restore_defaults(
-                        preserved.0,
-                        preserved.1,
-                    ))
-                } else {
-                    None
-                };
-                (result, restore)
-            };
-            let (outcome, restore_result) = outcome;
-            // 安装后的默认动作：把不需要的 16 声道端点从系统设备列表中隐藏。
-            // 这是独立 PnP 端点，操作不会影响普通播放端和 CABLE Output。
-            let hide_outcome = if matches!(action, CableAction::Install)
-                && matches!(
-                    &outcome,
-                    InstallOutcome::Succeeded | InstallOutcome::NeedsReboot
-                ) {
-                Some(vox_audio_win::set_multichannel_endpoint_enabled(false))
-            } else {
-                None
-            };
-            let devices = crate::devices::scan(registry.as_ref());
-            (outcome, restore_result, hide_outcome, devices)
-        })
-        .await
-        .map_err(|e| format!("驱动管理线程异常：{e}"))?;
-
-    // 不等四秒轮询，操作结束立刻把最新设备状态推给前端。
-    select_regular_cable_output(&runtime, &devices);
-    runtime.set_devices(devices);
-
-    let multichannel_hidden = matches!(
-        vox_audio_win::multichannel_endpoint_status(),
-        vox_audio_win::MultichannelEndpointStatus::Disabled
-            | vox_audio_win::MultichannelEndpointStatus::NotPresent
-    );
-    if let Some(vox_audio_win::EndpointToggleOutcome::Failed(message)) = hide_outcome {
-        runtime.notify(vox_core::event::Notice::warning(format!(
-            "虚拟麦克风已安装，但 16 声道端点未能自动隐藏：{message}"
-        )));
+    #[cfg(windows)]
+    {
+        cable_admin::blockers().await
     }
-    if let Some(Err(message)) = restore_result {
-        runtime.notify(vox_core::event::Notice::warning(format!(
-            "虚拟麦克风已安装，但系统默认声音设备没有恢复：{message}"
-        )));
+    #[cfg(not(windows))]
+    {
+        Err(virtual_device_not_needed())
     }
-
-    match outcome {
-        vox_audio_win::InstallOutcome::Succeeded => Ok(CableActionDto {
-            needs_reboot: false,
-            multichannel_hidden,
-        }),
-        vox_audio_win::InstallOutcome::NeedsReboot => Ok(CableActionDto {
-            needs_reboot: true,
-            multichannel_hidden,
-        }),
-        vox_audio_win::InstallOutcome::UserDeclinedElevation => {
-            Err("已取消管理员授权，驱动没有发生变化。".into())
-        }
-        vox_audio_win::InstallOutcome::Failed(message) => {
-            Err(if matches!(action, CableAction::Uninstall) {
-                format!("{message} 请先关闭 Discord、VRChat 和其它正在使用虚拟麦克风的软件后重试。")
-            } else {
-                message
-            })
-        }
-    }
-}
-
-fn close_cable_blockers(blockers: &[vox_core::ports::AudioApp]) -> Result<(), String> {
-    use windows::Win32::Foundation::CloseHandle;
-    use windows::Win32::System::Threading::{
-        OpenProcess, TerminateProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
-    };
-
-    let me = std::process::id();
-    for app in blockers {
-        if app.pid == 0 || app.pid == me {
-            continue;
-        }
-        // SAFETY: 只申请终止和等待权限，PID 来自当前音频会话枚举。
-        let process =
-            unsafe { OpenProcess(PROCESS_TERMINATE | PROCESS_SYNCHRONIZE, false, app.pid) }
-                .map_err(|e| format!("无法关闭 {}：{e}", app.display_name))?;
-        // SAFETY: process 是刚打开的有效进程句柄。
-        let terminated = unsafe { TerminateProcess(process, 0) };
-        if let Err(error) = terminated {
-            // SAFETY: 句柄由本函数持有，只关闭一次。
-            unsafe {
-                let _ = CloseHandle(process);
-            }
-            return Err(format!("无法关闭 {}：{error}", app.display_name));
-        }
-        // 最多等两秒让音频会话释放；超时也继续，安装器会给最终结果。
-        unsafe {
-            let _ = WaitForSingleObject(process, 2_000);
-            let _ = CloseHandle(process);
-        }
-    }
-    Ok(())
 }
 
 #[tauri::command]
@@ -447,62 +564,25 @@ pub async fn set_virtual_cable_multichannel_visible(
     state: State<'_>,
     visible: bool,
 ) -> Result<CableActionDto, String> {
-    let runtime = state.runtime.clone();
-    let registry = Arc::clone(&state.registry);
-    let (outcome, devices) = tauri::async_runtime::spawn_blocking(move || {
-        let outcome = vox_audio_win::set_multichannel_endpoint_enabled(visible);
-        let devices = crate::devices::scan(registry.as_ref());
-        (outcome, devices)
-    })
-    .await
-    .map_err(|e| format!("音频端点管理线程异常：{e}"))?;
-
-    select_regular_cable_output(&runtime, &devices);
-    runtime.set_devices(devices);
-    // 16 声道端点的启停不一定改 outputs 列表（禁用后 Core Audio 仍可能旧报
-    // ACTIVE），set_devices 的去重可能吞掉这次变化；这里强制补发一次，
-    // 让前端尽快拿到最新快照，徽标不会卡死在旧状态。
-    runtime.touch_devices();
-
-    let hidden = matches!(
-        vox_audio_win::multichannel_endpoint_status(),
-        vox_audio_win::MultichannelEndpointStatus::Disabled
-            | vox_audio_win::MultichannelEndpointStatus::NotPresent
-    );
-    match outcome {
-        vox_audio_win::EndpointToggleOutcome::Changed
-        | vox_audio_win::EndpointToggleOutcome::AlreadySet
-        | vox_audio_win::EndpointToggleOutcome::NotFound => Ok(CableActionDto {
-            needs_reboot: false,
-            multichannel_hidden: hidden,
-        }),
-        vox_audio_win::EndpointToggleOutcome::NeedsReboot => Ok(CableActionDto {
-            needs_reboot: true,
-            multichannel_hidden: hidden,
-        }),
-        vox_audio_win::EndpointToggleOutcome::UserDeclinedElevation => {
-            Err("已取消管理员授权，16 声道端点没有发生变化。".into())
-        }
-        vox_audio_win::EndpointToggleOutcome::Failed(message) => Err(message),
+    #[cfg(windows)]
+    {
+        cable_admin::set_multichannel(state, visible).await
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (state, visible);
+        Err(virtual_device_not_needed())
     }
 }
 
-fn select_regular_cable_output(
-    runtime: &vox_core::Runtime,
-    devices: &vox_core::runtime::DeviceSnapshot,
-) {
-    let Some(device) = devices.outputs.iter().find(|device| {
-        vox_audio_win::cable::is_cable_render(&device.name)
-            && !vox_audio_win::cable::is_cable_multichannel_render(&device.name)
-    }) else {
-        return;
-    };
-    let name = device.name.clone();
-    runtime.update_settings(|settings| settings.speak.output_device = Some(name));
+/// Linux：虚拟麦克风由 PipeWire 原生提供，没有"装"这一步。
+#[cfg(not(windows))]
+fn virtual_device_not_needed() -> String {
+    "Linux 不需要安装虚拟声卡：虚拟麦克风由 PipeWire 原生提供，在目标程序的录音设置里选「VoxBridge 虚拟麦」即可。"
+        .to_string()
 }
 
 // ─── 模型目录在线更新 ───────────────────────────────────────────────────────────
-
 /// 读本地覆盖版目录（app_config_dir/catalog/{provider}.json）。没有就返回 null，
 /// 前端据此回落内置副本。返回的是原始 JSON 文本，由前端按内置同构解析。
 #[tauri::command]
@@ -595,14 +675,24 @@ pub fn open_provider_console(provider: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn open_virtual_cable_website() -> Result<(), String> {
-    tauri_plugin_opener::open_url(vox_audio_win::PRODUCT_URL, None::<&str>)
-        .map_err(|e| format!("打开 VB-CABLE 官网失败：{e}"))
+    #[cfg(windows)]
+    {
+        return tauri_plugin_opener::open_url(vox_audio_win::PRODUCT_URL, None::<&str>)
+            .map_err(|e| format!("打开 VB-CABLE 官网失败：{e}"));
+    }
+    #[cfg(not(windows))]
+    Err(virtual_device_not_needed())
 }
 
 #[tauri::command]
 pub fn open_virtual_cable_donation() -> Result<(), String> {
-    tauri_plugin_opener::open_url(vox_audio_win::DONATION_URL, None::<&str>)
-        .map_err(|e| format!("打开 VB-CABLE 授权页面失败：{e}"))
+    #[cfg(windows)]
+    {
+        return tauri_plugin_opener::open_url(vox_audio_win::DONATION_URL, None::<&str>)
+            .map_err(|e| format!("打开 VB-CABLE 授权页面失败：{e}"));
+    }
+    #[cfg(not(windows))]
+    Err(virtual_device_not_needed())
 }
 
 /// 完全退出应用（不是收进托盘）。红绿灯的关闭按钮走这里，而不是走 `window.close()`

@@ -42,12 +42,13 @@ tauri-plugin-updater = "2"
 # 进程级的 CryptoProvider 已由 vox-net::ws 里 install_default() 装好，reqwest 直接共享。
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
-# 装配层只在 Windows 上构建：音频、热键、悬浮窗、OSC 全是 Win32 实现，
-# 没有别的平台的等价物，硬造一层 cfg 假实现只会掩盖问题。
-vox-audio-win = { path = "../../crates/vox-audio-win" }
-vox-input-win = { path = "../../crates/vox-input-win" }
-vox-overlay-win = { path = "../../crates/vox-overlay-win" }
-vox-osc-win = { path = "../../crates/vox-osc-win" }
+# OSC 是纯 UDP 发包，没有一行 Win32，两个平台共用。
+vox-osc = { path = "../../crates/vox-osc" }
+
+[target.'cfg(windows)'.dependencies]
+# `windows` 必须按 target 门控：它的 `windows-future` 子 crate 在非 Windows 上
+# 编不过（`windows_threading::submit` 不存在），会直接把 Linux 的 workspace 检查
+# 卡死在依赖树里。
 windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Security_Cryptography",
@@ -60,6 +61,16 @@ windows = { workspace = true, features = [
     # 发布构建是 windows_subsystem="windows"，stderr 直接进黑洞。
     "Win32_UI_WindowsAndMessaging",
 ] }
-
-[target.'cfg(windows)'.dependencies]
 openvr = { version = "0.9", optional = true }
+
+# Windows 的三个外壳 crate：里面全是 Win32/WASAPI 调用，只在这里依赖。
+vox-audio-win = { path = "../../crates/vox-audio-win" }
+vox-input-win = { path = "../../crates/vox-input-win" }
+vox-overlay-win = { path = "../../crates/vox-overlay-win" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+vox-audio-linux = { path = "../../crates/vox-audio-linux" }
+# Secret Service（gnome-keyring / KWallet）。默认 feature 走 zbus，纯 Rust，不链 libsecret。
+keyring = "4"
+# 本地日期（用量按天/按月分桶）。只要 clock + std，不要默认那一堆。
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
