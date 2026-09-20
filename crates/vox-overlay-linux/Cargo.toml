@@ -1,0 +1,21 @@
+[package]
+name = "vox-overlay-linux"
+description = "Linux 悬浮字幕窗：GTK 透明窗 + XWayland 定位置顶 + swash 字形光栅"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+vox-core.workspace = true
+vox-overlay-core.workspace = true
+tracing.workspace = true
+parking_lot.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# GTK3：版本必须跟 Tauri 2 用的那套对齐（tauri 2.11 → gtk 0.18），
+# 否则同一个进程里会链两份 gtk-rs 绑定。
+gtk = "0.18"
+glib = "0.18"
+# 字体发现 + 字形光栅：纯 Rust，不碰 fontconfig/freetype（少一堆 -dev 依赖）。
+fontdb = "0.24"
+swash = "0.2"

@@ -8,6 +8,7 @@ members = [
     "crates/vox-audio-linux",
     "crates/vox-input-win",
     "crates/vox-overlay-core",
+    "crates/vox-overlay-linux",
     "crates/vox-overlay-win",
     "crates/vox-osc",
     # 装配层。放进 workspace 是为了让 `cargo test/clippy --workspace` 真的覆盖到它。
