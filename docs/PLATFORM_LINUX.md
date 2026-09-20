@@ -460,6 +460,18 @@ cargo check -p vox-audio-win -p vox-overlay-win \
 CI 的事）。有了这条，改跨平台代码不用再靠一台 Windows 机器兜底——P0 的装配层改动
 就是靠它做双向验证的。
 
+**验证工具（可选，只影响"能不能自己看结果"）**：
+
+```bash
+sudo apt install -y python3-gi-cairo gir1.2-webkit2-4.1 imagemagick
+```
+
+- `python3-gi-cairo`：缺了它 pygobject 拿不到 cairo 的外部类型转换器，
+  `get_snapshot_finish` / `input_shape_combine_region` 都会报
+  `Couldn't find foreign struct converter`；
+- `gir1.2-webkit2-4.1` + `imagemagick`：`tools/linux-verify/` 里那两个脚本要用
+  （截图验证见 §8 末尾）。
+
 ---
 
 ## 8. 分阶段与验收
@@ -526,14 +538,28 @@ Windows : cargo check -p vox-audio-win -p vox-overlay-win -p vox-osc --target
 UI      : cd app/ui && npm run verify → 全绿
 ```
 
-**一个没做到的验证**：Linux 窗口里的 WebView **像素级**确认没做成。本机是 GNOME Wayland，
-rootless XWayland 下 `ffmpeg -f x11grab` 抓根窗口只有黑屏（X root 上没有合成结果），
-GNOME Shell 的 `org.gnome.Shell.Screenshot` 报 `AccessDenied`，portal 截图要人工点同意，
-WebKit 的 `WEBKIT_INSPECTOR_SERVER` 虽然起来了但 WIR 协议没能从命令行驱动起来。
-目前能证明的是"窗口已映射、尺寸/位置与配置一致、WebKit 子进程在跑、assemble() 没报错"；
-**界面本身的样子**建议人工看一眼（同一份前端在 `npm run verify` 里已经过了 a11y/窄窗/虚拟麦检查）。
+**像素级确认（2026-09-20 补齐）**：原来这里写着"没做成"——rootless XWayland 下
+`ffmpeg -f x11grab` 抓根窗口只有黑屏（X root 上没有合成结果）、GNOME Shell 的
+`org.gnome.Shell.Screenshot` 报 `AccessDenied`、portal 截图要人工点同意。换两条路之后
+两个层次都验到了，脚本收在 `tools/linux-verify/`：
 
-剩下的：P1 的采集/播放/虚拟麦、P2 悬浮窗（含 UI 去 VB-CABLE 化）、P3 热键、P4 打包。
+```bash
+# ① WebKitGTK 自己吐渲染结果（同一份 2.52.6，不需要合成器配合）
+cd app/ui && npm run dev
+GDK_BACKEND=x11 python3 tools/linux-verify/webkit_shot.py \
+    "http://127.0.0.1:5183/?mock=1" /tmp/ui.png
+# ② 真 app 窗口的像素（ImageMagick 对 X 窗口做 XGetImage）
+./target/debug/voxbridge &
+import -window "$(xwininfo -root -tree | grep '"VoxBridge"' | awk '{print $1}')" /tmp/app.png
+```
+
+结果：① 前端在 WebKitGTK 里正常渲染（侧栏 7 项、两张流水线卡、Maple Mono CN 中文、
+主题色都对，见提交里贴的截图结论）；② **真窗口抓出来就是真界面**——同一份前端、真实后端
+数据（"请先配置 阿里云百炼 API 密钥"、"未发现麦克风"、"未发现音频程序"，都跟本机
+PipeWire 图的实际状态一致）。这同时证明了三件事：NVIDIA + WebKitGTK 的 DMABUF 渲染器
+在本机**没有**黑屏问题、前端与后端 IPC 是通的、设备枚举的结果真的到了界面上。
+
+剩下的：无（P0–P4 全部完成）。
 
 ---
 
@@ -568,7 +594,9 @@ WebKit 的 `WEBKIT_INSPECTOR_SERVER` 虽然起来了但 WIR 协议没能从命�
 5. **穿透没能端到端验证**（§2.3）：X 层已把输入域清空，但"点击真的落到下层"需要人工点一次。
    这是 P2 的验收项之一。
 6. **NVIDIA + WebKitGTK**：本机是 NVIDIA 显卡，WebKitGTK 的 DMABUF 渲染器在 NVIDIA 上有
-   已知黑屏/花屏问题，必要时 `WEBKIT_DISABLE_DMABUF_RENDERER=1`。主界面首次启动就要验。
+   已知黑屏/花屏问题。**已实测排除**（2026-09-20）：用 WebKitGTK 自己的 `get_snapshot`
+   渲染前端、再用 `import -window` 抓真 app 窗口，两次都正常出图（方法见 §8 末尾），
+   不需要 `WEBKIT_DISABLE_DMABUF_RENDERER=1`。别的 NVIDIA 机器上仍建议第一眼确认一次。
 7. **托盘**：GNOME 默认不带托盘，靠 `ubuntu-appindicators` 扩展（本机已启用，别的机器不一定）
    → 关窗收托盘的行为在裸 GNOME 上要有兜底。**已实现**（2026-09-20）：
    `TrayIconBuilder::build()` 在"没人显示托盘"的环境下**照样返回 Ok**，所以光看建没建成功
