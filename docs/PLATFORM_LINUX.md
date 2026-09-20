@@ -394,7 +394,8 @@ KDE/wlroots → 以后可加 `gtk-layer-shell`；纯 Wayland 且没有 XWayland 
 | 托盘 / 单实例 / 自启 | Tauri 插件 | 跨平台，配置微调；GNOME 需要 appindicator 扩展（**本机已启用**） |
 | updater | GitHub latest.json + minisign | Linux 上 tauri updater 只支持 AppImage → 待定（§9） |
 | `tauri.conf.json` | `bundle.targets = ["nsis"]` | **已落地**：新增 `app/src-tauri/tauri.linux.conf.json`（Tauri 的平台配置文件，构建时自动合并）：targets = `deb` / `rpm` / `appimage`，图标只用 png，deb/rpm 的依赖列表写死（`libwebkit2gtk-4.1-0` / `libgtk-3-0` / `libayatana-appindicator3-1` / `libpipewire-0.3-0`），AppImage 关掉 gstreamer（`bundleMediaFramework: false`，省 15–35 MB） |
-| `.github/workflows/release.yml` | `runs-on: windows-latest` | **已落地**：新增 `publish-tauri-linux` job（ubuntu-22.04，glibc 基线低一点）：装 §7 那套依赖（含 `libpipewire-0.3-dev`、`clang`、`patchelf`）→ `cargo test --workspace` → `npm run verify` → tauri-action 出 deb/rpm/AppImage，跟 Windows job 共用同一个 release |
+| `.github/workflows/release.yml` | `runs-on: windows-latest` | **已落地**：新增 `publish-tauri-linux` job（**ubuntu-24.04**）：装 §7 那套依赖（含 `libpipewire-0.3-dev`、`clang`、`patchelf`）+ Playwright 浏览器 + CJK 字体 → `cargo test --workspace` → `npm run verify` → tauri-action 出 deb/rpm/AppImage，跟 Windows job 共用同一个 release |
+| 构建镜像为什么是 24.04 | —— | **22.04 编不过**：它的 PipeWire 头文件是 0.3.48，而 `libspa` 0.10 的 Rust 代码要求更新的 SPA 结构（`spa_video_info_raw` 的 `flags`/`modifier`），bindgen 按旧头生成 → 7 个编译错误（v0.2.0 那次 CI 实测）。24.04 是 PipeWire 1.0.5，正好对上"PipeWire 1.0+"的锚定。**代价**：产物 glibc 基线 2.39（Ubuntu 24.04+ / Fedora 40+ / Debian 13+），22.04 用户跑不了 |
 
 ---
 
@@ -555,6 +556,11 @@ WebKit 的 `WEBKIT_INSPECTOR_SERVER` 虽然起来了但 WIR 协议没能从命�
    根本不存在。
 2. **更新器**：tauri updater 在 Linux **只支持 AppImage**。现状是三种包都发，
    release 说明里写清楚"deb/rpm 用户要手动下载新包"（AppImage 能应用内更新）。
+2b. **glibc 基线 2.39（Ubuntu 24.04+）**：为了让 CI 能用上 PipeWire 1.0 的头文件，
+   构建镜像从 22.04 提到了 24.04。想覆盖 Ubuntu 22.04（PipeWire 0.3.48）有两条路：
+   ①在 22.04 容器里装新一点的 PipeWire 头文件（只给 bindgen 用，链接仍走系统库）；
+   ②把 `pipewire` crate 降到能对上 0.3.48 的版本（要改我们这边的 API 调用）。
+   两条都没做——先按"主流现代发行版默认配置"这一档走。
 3. **多节点混合**：同一程序多条音频流（Chromium 每标签页一条）会全被混进来。Windows 侧
    是按 session 选；Linux 侧要先决定"全混"还是"选最响/最新的一条"。
 4. **采样率**：本方案让 PipeWire 做 48k 转换（省掉 `rates.rs` 那套探测）。若某些蓝牙设备

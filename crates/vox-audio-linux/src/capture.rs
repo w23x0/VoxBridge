@@ -523,6 +523,11 @@ mod tests {
             "definitely-not-a-device".to_string(),
         )))
         .expect_err("不存在的设备该报错");
-        assert!(err.message.contains("找不到输入设备"), "{}", err.message);
+        // 没有 PipeWire 的环境（CI runner）会在更早一步失败，那条错误信息同样说清了原因。
+        assert!(
+            err.message.contains("找不到输入设备") || err.message.contains("PipeWire"),
+            "错误要说清原因：{}",
+            err.message
+        );
     }
 }

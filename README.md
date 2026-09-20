@@ -48,6 +48,9 @@ On Linux the same command produces `deb` / `rpm` / `AppImage` under `target/rele
 (configured in `app/src-tauri/tauri.linux.conf.json`). Only the AppImage has in-app updates;
 deb/rpm users download the new package manually.
 
+Released Linux packages are built on Ubuntu 24.04, so they need **glibc ≥ 2.39**
+(Ubuntu 24.04+, Fedora 40+, Debian 13+) and **PipeWire 1.0+** at runtime.
+
 Don't use `cargo build --release` for shipping; if you build the binary by hand, pass the custom protocol feature:
 
 ```powershell

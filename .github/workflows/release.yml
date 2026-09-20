@@ -44,11 +44,16 @@ jobs:
   # Linux 端。跟 Windows 那个 job 共用同一个 release：tauri-action 找不到就建，
   # 找得到就往同一个 tag 上追加资产。
   #
-  # 用 ubuntu-22.04 而不是 latest：glibc 基线低一点，AppImage 能在更多发行版上跑。
+  # 构建镜像选 24.04 而不是 22.04：**22.04 编不过**——它的 PipeWire 头文件是 0.3.48，
+  # 而 `libspa` 0.10 的 Rust 代码要求更新的 SPA 结构（`spa_video_info_raw` 的
+  # `flags`/`modifier`），bindgen 按旧头生成 → 7 个编译错误（实测 v0.2.0 那次）。
+  # 24.04 的 PipeWire 是 1.0.5，正好对上项目锚定的"PipeWire 1.0+"。
+  # 代价：产物 glibc 基线是 2.39（Ubuntu 24.04+/Fedora 40+/Debian 13+）。想覆盖
+  # 22.04 的话，得在容器里装新头文件或降 pipewire-rs 版本，见 docs/PLATFORM_LINUX.md §9。
   publish-tauri-linux:
     permissions:
       contents: write
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -57,8 +62,8 @@ jobs:
       #   clang / libclang-dev —— libspa-sys 的 build.rs 用 bindgen 生成绑定，
       #                          缺了会以 "stdbool.h file not found" 直接 panic
       #   patchelf —— AppImage 打包要用
-      #   fonts-noto-cjk —— vox-overlay-linux 有一条"汉字必须有墨迹"的测试，
-      #                     跑在没装 CJK 字体的 runner 上会因为找不到字形而失败
+      #   fonts-noto-cjk / fonts-dejavu-core —— vox-overlay-linux 的光栅器测试要真字体：
+      #                     一条断言"汉字必须有墨迹"，另一条要能查到系统无衬线字体
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -66,7 +71,7 @@ jobs:
             build-essential pkg-config curl wget file libssl-dev \
             libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
             libjavascriptcoregtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
-            patchelf libpipewire-0.3-dev clang libclang-dev fonts-noto-cjk
+            patchelf libpipewire-0.3-dev clang libclang-dev fonts-noto-cjk fonts-dejavu-core
 
       - uses: actions/setup-node@v4
         with:
