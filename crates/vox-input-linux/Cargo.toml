@@ -1,0 +1,16 @@
+[package]
+name = "vox-input-linux"
+description = "Linux 全局热键：直接读 /dev/input（evdev），支持按住说话的松开事件"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+vox-core.workspace = true
+tracing.workspace = true
+parking_lot.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# evdev：纯 Rust 读内核输入事件，不需要 libudev（不启用 udev feature）。
+evdev = "0.13"
+libc = "0.2"

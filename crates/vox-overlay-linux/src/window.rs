@@ -80,7 +80,9 @@ impl Overlay {
         window.set_app_paintable(true);
         window.set_keep_above(true);
         window.set_type_hint(gtk::gdk::WindowTypeHint::Notification);
-        if let Some(visual) = gtk::prelude::GtkWindowExt::screen(&window).and_then(|screen| screen.rgba_visual()) {
+        if let Some(visual) =
+            gtk::prelude::GtkWindowExt::screen(&window).and_then(|screen| screen.rgba_visual())
+        {
             window.set_visual(Some(&visual));
         }
 

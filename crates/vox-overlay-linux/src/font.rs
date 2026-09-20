@@ -253,7 +253,11 @@ mod tests {
         let glyph = font.glyph('A').expect("字母 A 该有字形");
         assert!(glyph.advance > 0, "步进宽度不该是 0");
         assert!(glyph.w > 0 && glyph.h > 0, "掩码尺寸不该是 0");
-        assert_eq!(glyph.cov.len(), (glyph.w * glyph.h) as usize, "覆盖率长度要等于 w*h");
+        assert_eq!(
+            glyph.cov.len(),
+            (glyph.w * glyph.h) as usize,
+            "覆盖率长度要等于 w*h"
+        );
         assert!(glyph.cov.iter().any(|&v| v > 0), "字母 A 该有墨迹");
     }
 

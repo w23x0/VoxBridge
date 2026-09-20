@@ -170,24 +170,6 @@ pub fn default_voice_for_language(_language: &str) -> String {
 
 // --- 按键 ------------------------------------------------------------------
 
-/// 规范键名 → Windows 虚拟键码。A-Z、0-9、F1-F12、Space、鼠标侧键。
-/// 刻意不提供 Tab（跟很多游戏冲突）。
-pub fn key_vk(name: &str) -> Option<u16> {
-    let canonical = normalize_key(name)?;
-    let bytes = canonical.as_bytes();
-    match canonical.as_str() {
-        "Space" => Some(0x20),
-        "XButton1" => Some(0x05),
-        "XButton2" => Some(0x06),
-        _ if canonical.len() == 1 => Some(bytes[0] as u16),
-        _ => canonical
-            .strip_prefix('F')
-            .and_then(|n| n.parse::<u16>().ok())
-            .filter(|n| (1..=12).contains(n))
-            .map(|n| 0x70 + n - 1),
-    }
-}
-
 /// 合法键名返回规范写法（如 "v" → "V"），非法返回 `None`。
 pub fn normalize_key(name: &str) -> Option<String> {
     let upper = name.trim().to_ascii_uppercase();
@@ -317,18 +299,18 @@ mod tests {
     }
 
     #[test]
-    fn key_names_and_vk_codes_match_old_mapping() {
+    fn key_names_normalize_like_the_old_mapping() {
+        // 键名是内核唯一的键标识（键码映射在平台 crate 里），所以这里只验规范化。
         assert_eq!(normalize_key("v").as_deref(), Some("V"));
-        assert_eq!(key_vk("v"), Some(b'V' as u16));
-        assert_eq!(key_vk("7"), Some(b'7' as u16));
-        assert_eq!(key_vk("F1"), Some(0x70));
-        assert_eq!(key_vk("f12"), Some(0x7B));
-        assert_eq!(key_vk("space"), Some(0x20));
-        assert_eq!(key_vk("XButton1"), Some(0x05));
-        assert_eq!(key_vk("xbutton2"), Some(0x06));
-        assert_eq!(key_vk("Tab"), None, "故意不支持 Tab");
-        assert_eq!(key_vk("F13"), None);
-        assert_eq!(key_vk(""), None);
+        assert_eq!(normalize_key("7").as_deref(), Some("7"));
+        assert_eq!(normalize_key("F1").as_deref(), Some("F1"));
+        assert_eq!(normalize_key("f12").as_deref(), Some("F12"));
+        assert_eq!(normalize_key("space").as_deref(), Some("Space"));
+        assert_eq!(normalize_key("XButton1").as_deref(), Some("XButton1"));
+        assert_eq!(normalize_key("xbutton2").as_deref(), Some("XButton2"));
+        assert_eq!(normalize_key("Tab"), None, "故意不支持 Tab");
+        assert_eq!(normalize_key("F13"), None);
+        assert_eq!(normalize_key(""), None);
         assert_eq!(key_options().len(), 26 + 10 + 12 + 3);
     }
 }

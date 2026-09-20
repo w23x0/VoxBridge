@@ -5,7 +5,7 @@
 //! 自己跟踪边沿——不用 RegisterHotKey（拿不到 release），也不用低级钩子
 //! （需要消息泵且被反作弊标记）。
 
-mod edge;
 mod hotkey;
+mod vk;
 
 pub use hotkey::HotkeyListener;

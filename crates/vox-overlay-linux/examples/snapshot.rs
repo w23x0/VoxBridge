@@ -99,17 +99,13 @@ fn main() {
 }
 
 fn out_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/overlay-snapshots-linux")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/overlay-snapshots-linux")
 }
 
 fn line(track: Track, text: &str, color: &str, alpha: f32) -> SubtitleLine {
     SubtitleLine {
         track,
-        chars: text
-            .chars()
-            .map(|ch| RenderedChar { ch, alpha })
-            .collect(),
+        chars: text.chars().map(|ch| RenderedChar { ch, alpha }).collect(),
         color: color.into(),
     }
 }
@@ -155,12 +151,7 @@ fn scenes() -> Vec<Scene> {
             name: "fading",
             what: "逐字淡出中途：靠后的字更淡，且没有硬边",
             frame: SubtitleFrame {
-                lines: vec![line(
-                    Track::Listen,
-                    "淡出中的这一行文字",
-                    "#eef6ff",
-                    0.35,
-                )],
+                lines: vec![line(Track::Listen, "淡出中的这一行文字", "#eef6ff", 0.35)],
             },
         },
         Scene {
@@ -193,7 +184,11 @@ fn backdrop(w: i32, h: i32) -> Vec<u8> {
             let t = x as f32 / (w.max(1) - 1).max(1) as f32;
             let base = (t * 255.0) as u8;
             let checker = ((x / CHECKER) + (y / CHECKER)) % 2 == 0;
-            let v = if checker { base } else { base.saturating_sub(40) };
+            let v = if checker {
+                base
+            } else {
+                base.saturating_sub(40)
+            };
             let idx = ((y * w + x) * 4) as usize;
             out[idx] = v;
             out[idx + 1] = v;

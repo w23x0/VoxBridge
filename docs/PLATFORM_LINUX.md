@@ -109,8 +109,12 @@ XWayland**（`GDK_BACKEND=x11`，对 GTK 是进程级变量，所以整个应用
 - XWayland 下 `XGrabKey` 只在有 X11 窗口拿到焦点时有效 → 不是全局；
 - 唯一稳的是直接读 `/dev/input/event*`（evdev）。
 
-本机 `/dev/input/event*` 是 `root:input 660`，用户**不在 `input` 组** →
-必须先 `sudo usermod -aG input $USER` 再重新登录，否则热键功能整块不可用。
+权限这件事比想象的宽松：`/dev/input/event*` 名义上是 `root:input 660`，但**现代桌面
+会话里 systemd-logind 会给活跃用户挂一条 `uaccess` ACL**（本机实测
+`getfacl /dev/input/event8` → `user:w23x:rw-`），所以**通常不需要 `input` 组**；
+headless / SSH / 别的用户的会话才需要 `sudo usermod -aG input $USER`。
+应用起不来时会返回带着这条命令的错误，用户看到的是"怎么修"。
+
 evdev 顺带解决两件事：键盘侧键（`BTN_SIDE`/`BTN_EXTRA`，对应 Win 的 XButton1/2）
 和**按住说话需要"松开"事件**。
 
@@ -307,20 +311,23 @@ for note in platform::startup_notes() { runtime.notify(…); }     // linux: Pip
 Linux 用同一字段承载 PipeWire 的 binary/application 名，`include_tree` 语义正好对上
 "子进程也抓"。
 
-### 5.2 `vox-input-linux`
+### 5.2 `vox-input-linux`（已落地）
 
-- **枚举**：`/dev/input/event*` → `EVIOCGBIT(EV_KEY)` 找出有 `KEY_A..KEY_Z` 的设备（键盘），
-  外加鼠标（`BTN_SIDE`/`BTN_EXTRA` = Win 的 XButton1/2）。
-- **监听**：`evdev` crate 阻塞读事件线程；`KEY_*` 按下/松开直接映射 `HotkeyEvent::{SpeakPressed,SpeakReleased,ListenPressed}`。
-- **边沿判定**：复用 `vox-core::hotkey::EdgeTracker`（原 `vox-input-win/src/edge.rs`，含 6 个单测）。
-- **热插拔**：跟随装配层已有的设备轮询线程（2 s 一次重新枚举）即可，不引 libudev。
-- **事件回调**：`HotkeyListener::start(bindings, Box<dyn FnMut(HotkeyEvent)+Send>)` 是构造入参
-  （不是 trait 方法），`HotkeyHost` 只有 `rebind` —— Linux 侧照这个形状实现，装配层
-  `input.rs:22` 返回的 `Arc<vox_input_win::HotkeyListener>` 换成平台别名
-  （`#[cfg] type Hotkeys = …`）或加一层 `dyn` 包装。
-- **权限缺失**（本机现状）：不静默失败 —— 起不来时推一条 `Notice`（"全局热键需要 `input` 组权限：
-  `sudo usermod -aG input $USER` 后重新登录"），热键功能标灰。
-- **退化路径**（不在本轮做，记一笔）：X11 会话下可加 `XGrabKey` 分支；GNOME 下没有 portal 可用。
+- **枚举**：`/dev/input/event*` → 用 `supported_keys()` 挑出像键盘（有 `KEY_A`+`KEY_Z`）
+  或鼠标（有 `BTN_SIDE`/`BTN_EXTRA`）的设备；电源键、手柄之类不碰。
+- **监听**：`evdev` crate，**每个设备一个读线程**；先 `poll(fd, POLLIN, 100ms)` 再
+  `fetch_events()`——直接阻塞读会让 `stop()` join 不回来（这条是设计时就定下的）。
+- **边沿判定**：复用 `vox-core::hotkey::EdgeTracker`（原 `vox-input-win/src/edge.rs`，
+  现在在核心里，两个平台共用同一份状态机与 8 条测试）。
+- **键码表**：`src/codes.rs`。**不能靠算术推**：evdev 的字母不连续（`KEY_A=30` 但
+  `KEY_Z=44`），F 键也不连续（`KEY_F10=68`、`KEY_F11=87`）——当初图省事写过一版
+  `KEY_A + offset`，被"字母范围连续"那条测试当场抓出来，现在是写死的表 +
+  "UI 列出的键名全都能解析"这条断言。
+- **修饰键左右两个码**：`KEY_LEFTCTRL` / `KEY_RIGHTCTRL` 任一按下都算 Ctrl，
+  所以内核的 `BindingCode.modifier_groups` 是"组内或、组间与"。
+- **权限**：读不了设备时返回的错误里带 `sudo usermod -aG input $USER`；
+  桌面会话通常靠 logind 的 uaccess ACL 就够（实测见 §2.4）。
+- **退化路径**（没做，记一笔）：X11 会话下可加 `XGrabKey` 分支；GNOME 没有 GlobalShortcuts portal。
 
 ### 5.3 `vox-overlay-linux`
 
@@ -464,9 +471,10 @@ CI 的事）。有了这条，改跨平台代码不用再靠一台 Windows 机�
 
 ```
 Linux   : cargo check --workspace                       → 通过（含装配层）
-Linux   : cargo test --workspace                        → 361 passed / 0 failed
-          （vox-core 211、voxbridge 53、vox-overlay-core 45、vox-dsp 26、vox-net 8、
-            vox-input-win 6、vox-audio-linux 5、vox-overlay-linux 5、vox-osc 3）
+Linux   : cargo test --workspace                        → 374 passed / 0 failed
+          （vox-core 219、voxbridge 53、vox-overlay-core 45、vox-dsp 26、vox-net 8、
+            vox-input-linux 9、vox-input-win 8、vox-audio-linux 5、vox-overlay-linux 5、
+            vox-osc 3）
 Linux   : cargo clippy --workspace --all-targets        → 新增代码零警告（vox-core/vox-net
             的 3 条是既有的，不在本轮范围内）
 Linux   : ./target/debug/voxbridge（GDK_BACKEND=x11）    → 真机启动成功：窗口 960x640、
@@ -490,6 +498,10 @@ Linux   : cargo run -p vox-overlay-linux --example live + xwininfo/xprop/xshape
 Linux   : cargo run -p vox-overlay-linux --example snapshot
           → 6 个场景离屏渲染成 BMP，中文/日文/中英混排/逐字淡出/空帧/超长行滚动
             全部符合设计（人工核对过像素）
+Linux   : 真机 app 日志 → 热键监听打开并盯住 4 个输入设备（键盘 ×2、鼠标 ×2）
+Linux   : sudo <evdev_end_to_end 测试二进制> --ignored
+          → 造一个 uinput 虚拟键盘，真的打 KEY_F8 按下+松开，
+            监听器收到 SpeakPressed + SpeakReleased（按住说话就靠这个 release）
 Windows : cargo check -p voxbridge --target x86_64-pc-windows-gnu       → 通过（全量，含装配层）
 Windows : cargo check -p vox-audio-win -p vox-overlay-win -p vox-osc --target
           x86_64-pc-windows-msvc --all-targets                          → 通过

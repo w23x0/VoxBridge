@@ -1,7 +1,8 @@
 //! 全局热键轮询线程。
 //!
 //! 25 ms 一轮 GetAsyncKeyState，只用高位（0x8000）判断当前物理状态，
-//! 边沿检测交给 [`crate::edge::EdgeTracker`]。不用 RegisterHotKey 不用钩子。
+//! 边沿检测交给内核的 `vox_core::hotkey::EdgeTracker`（两个平台共用同一份状态机）。
+//! 不用 RegisterHotKey 不用钩子。
 
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
@@ -9,9 +10,15 @@ use std::thread::{self, JoinHandle};
 use parking_lot::Mutex;
 use tracing::debug;
 
+use vox_core::hotkey::{resolve_bindings, EdgeTracker};
 use vox_core::ports::{HotkeyBindings, HotkeyEvent, HotkeyHost, PortError, PortResult};
 
-use crate::edge::EdgeTracker;
+use crate::vk::{main_code, modifier_groups};
+
+/// 把绑定集解析成 VK 码。
+fn codes_for(bindings: &HotkeyBindings) -> Vec<vox_core::hotkey::BindingCode> {
+    resolve_bindings(bindings, main_code, modifier_groups)
+}
 
 /// 轮询间隔（毫秒）。25 ms 既足以捕捉快速点按，又不占明显 CPU。
 const POLL_INTERVAL_MS: u64 = 25;
@@ -94,7 +101,7 @@ fn poll_loop(
 ) {
     let mut tracker = {
         let guard = shared.lock();
-        EdgeTracker::from_bindings(&guard.bindings)
+        EdgeTracker::new(codes_for(&guard.bindings))
     };
     let mut known_version: u64 = 1;
 
@@ -103,7 +110,7 @@ fn poll_loop(
         {
             let guard = shared.lock();
             if guard.version != known_version {
-                tracker.rebind(&guard.bindings);
+                tracker.rebind(codes_for(&guard.bindings));
                 known_version = guard.version;
             }
         }

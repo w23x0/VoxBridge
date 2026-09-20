@@ -70,6 +70,7 @@ vox-overlay-win = { path = "../../crates/vox-overlay-win" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 vox-audio-linux = { path = "../../crates/vox-audio-linux" }
+vox-input-linux = { path = "../../crates/vox-input-linux" }
 vox-overlay-linux = { path = "../../crates/vox-overlay-linux" }
 # Secret Service（gnome-keyring / KWallet）。默认 feature 走 zbus，纯 Rust，不链 libsecret。
 keyring = "4"

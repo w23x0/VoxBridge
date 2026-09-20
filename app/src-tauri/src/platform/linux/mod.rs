@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 use vox_core::pipeline::{CaptureFactory, PlaybackFactory};
-use vox_core::ports::{Clock, DeviceRegistry, HotkeyHost, PortError, PortResult, SecretStore};
+use vox_core::ports::{Clock, DeviceRegistry, HotkeyHost, PortResult, SecretStore};
 use vox_core::runtime::Runtime;
 use vox_core::settings::SubtitleSettings;
 
@@ -22,6 +22,9 @@ use crate::state::OverlayHandle;
 /// 悬浮窗的具体句柄留一份：装配层 `AppState` 里存的是 trait object，
 /// 而关窗/查存活是 `Overlay` 的固有方法。
 static OVERLAY: OnceLock<Arc<vox_overlay_linux::Overlay>> = OnceLock::new();
+
+/// 热键监听句柄留一份，退出时显式停（理由同 Windows 侧：不能指望 Drop）。
+static HOTKEYS: OnceLock<Arc<vox_input_linux::HotkeyListener>> = OnceLock::new();
 
 /// 启动前短路：只有 Windows 那条 VB-CABLE 默认设备写回走这条路。
 ///
@@ -70,17 +73,24 @@ pub fn registry() -> Arc<dyn DeviceRegistry> {
     audio::registry()
 }
 
-/// 全局热键未实现（P3：evdev 监听 `/dev/input`）。
+/// 起热键监听（evdev 直读 `/dev/input`）。
 ///
-/// 这里**故意返回错误**：装配层会把它翻成界面上的 `Notice`，用户能看到
-/// "只能用界面上的开关"，而不是按了热键毫无反应还以为是 bug。
-pub fn start_hotkeys(_runtime: Runtime) -> PortResult<Arc<dyn HotkeyHost>> {
-    Err(PortError::new(
-        "Linux 全局热键尚未实现（P3：读 /dev/input 的 evdev 监听）",
-    ))
+/// 权限不足时返回的错误里带着**能照做的命令**（`usermod -aG input`），装配层会把它
+/// 翻成界面上的 `Notice`——用户看到的是"怎么修"，而不是按了热键没反应。
+pub fn start_hotkeys(runtime: Runtime) -> PortResult<Arc<dyn HotkeyHost>> {
+    let listener = vox_input_linux::HotkeyListener::start(
+        vox_core::ports::HotkeyBindings::default(),
+        Box::new(move |event| runtime.on_hotkey(event)),
+    )?;
+    let _ = HOTKEYS.set(Arc::clone(&listener));
+    Ok(listener)
 }
 
-pub fn stop_hotkeys() {}
+pub fn stop_hotkeys() {
+    if let Some(listener) = HOTKEYS.get() {
+        listener.stop();
+    }
+}
 
 /// 起悬浮字幕窗。GTK 只能在主线程建窗，而装配层的 `assemble()` 就在主线程，
 /// 所以这里直接建；不是主线程会拿到明确错误（见 `window.rs`）。

@@ -27,7 +27,11 @@ const SCRIPT: &[(u64, Track, &str)] = &[
     (2600, Track::Listen, "今天天气不错，要不要出去走走？"),
     (3800, Track::Speak, "好啊，等我把这段代码写完。"),
     (5000, Track::Listen, "字幕是给眼睛看的，不是给机器看的。"),
-    (6200, Track::Speak, "VoxBridge 0.1.4 · 实时语音翻译 (Tauri + Rust)"),
+    (
+        6200,
+        Track::Speak,
+        "VoxBridge 0.1.4 · 实时语音翻译 (Tauri + Rust)",
+    ),
 ];
 
 fn main() {
@@ -74,10 +78,8 @@ fn main() {
                 continue;
             }
             let existing = lines.iter_mut().find(|line| line.track == *track);
-            let chars: Vec<RenderedChar> = text
-                .chars()
-                .map(|ch| RenderedChar { ch, alpha })
-                .collect();
+            let chars: Vec<RenderedChar> =
+                text.chars().map(|ch| RenderedChar { ch, alpha }).collect();
             match existing {
                 Some(line) => line.chars = chars,
                 None => lines.push(SubtitleLine {
