@@ -203,7 +203,7 @@ fn backdrop(w: i32, h: i32) -> Vec<u8> {
 fn composite(canvas: &Canvas, backdrop: &[u8]) -> Vec<u8> {
     let mut out = backdrop.to_vec();
     let bytes = canvas.bytes();
-    for (pixel, source) in bytes.chunks_exact(4).enumerate() {
+    for (pixel, source) in bytes.as_chunks::<4>().0.iter().enumerate() {
         let alpha = source[3] as u32;
         let idx = pixel * 4;
         for channel in 0..3 {

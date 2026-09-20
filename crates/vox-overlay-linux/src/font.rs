@@ -23,7 +23,10 @@ const MAX_CACHED_GLYPHS: usize = 2048;
 
 /// 字体数据缓存：`fontdb` 取出来的字节要自己持有（`FontRef` 借它），
 /// 而 CJK 字体动辄十几 MB，同一族反复建光栅器时不该重复拷。
-static FONT_DATA: OnceLock<Mutex<HashMap<String, (Arc<Vec<u8>>, u32)>>> = OnceLock::new();
+/// 族名 → （字体字节，face index）。
+type FontCache = Mutex<HashMap<String, (Arc<Vec<u8>>, u32)>>;
+
+static FONT_DATA: OnceLock<FontCache> = OnceLock::new();
 
 /// swash 光栅器。
 ///

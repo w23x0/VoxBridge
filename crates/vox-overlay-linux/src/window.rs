@@ -253,7 +253,7 @@ impl Inner {
     /// 没内容/隐藏时画成全透明。
     fn clear(&mut self, cr: &gtk::cairo::Context) {
         cr.set_operator(gtk::cairo::Operator::Source);
-        let _ = cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
+        cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
         let _ = cr.paint();
     }
 }
