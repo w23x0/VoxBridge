@@ -591,8 +591,16 @@ PipeWire 图的实际状态一致）。这同时证明了三件事：NVIDIA + We
    是按 session 选；Linux 侧要先决定"全混"还是"选最响/最新的一条"。
 4. **采样率**：本方案让 PipeWire 做 48k 转换（省掉 `rates.rs` 那套探测）。若某些蓝牙设备
    在 48k 下抖动，要回退到"按设备原生率 + 我们自己重采样"。
-5. **穿透没能端到端验证**（§2.3）：X 层已把输入域清空，但"点击真的落到下层"需要人工点一次。
-   这是 P2 的验收项之一。
+5. **穿透只能人工点一次**（§2.3）。X 层已经验到输入域被清空（`XShapeGetRectangles(ShapeInput)`
+   = 0 个矩形），但"点击真的落到下层窗口"在本机**没法自动验**——这是环境限制，不是没试：
+   - `XTest` 的**按键**注入在 rootless XWayland 下到不了 X 客户端。实测方法：两个 GTK 窗口
+     叠在同一矩形（下层 catcher、上层 overlay **不设**穿透）做对照，`XWarpPointer` 进矩形后
+     `XTestFakeButtonEvent(1)`，**对照组也收不到 `button-press-event`** → 注入没落到 X 窗口上
+     （Wayland 侧指针没动，动的只是 XWayland 内部的 sprite 坐标：`XQueryPointer` 能读到新坐标，
+     合成器却不知道）；
+   - `XTestFakeMotionEvent` 同样是哑的（sprite 坐标不变），`XWarpPointer` 只改 XWayland 自己的坐标；
+   - 剩下能自动的只有 portal 截图/远程桌面，都要人工点同意——等于还是要人。
+   留作人工验收：开悬浮窗 → 鼠标移到字幕上点一下 → 点击该落到下面的窗口（比如终端）而不是被字幕吃掉。
 6. **NVIDIA + WebKitGTK**：本机是 NVIDIA 显卡，WebKitGTK 的 DMABUF 渲染器在 NVIDIA 上有
    已知黑屏/花屏问题。**已实测排除**（2026-09-20）：用 WebKitGTK 自己的 `get_snapshot`
    渲染前端、再用 `import -window` 抓真 app 窗口，两次都正常出图（方法见 §8 末尾），
