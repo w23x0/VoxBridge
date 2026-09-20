@@ -60,6 +60,21 @@ try {
   await channel.getByRole("button", { name: "隐藏", exact: true }).click();
   await channel.getByText("已隐藏", { exact: true }).waitFor();
   console.log("虚拟麦克风管理区：安装、卸载、多声道隐藏与恢复全部通过。");
+
+  // Linux（?platform=linux）：没有装/卸/多声道那一套，只给状态 + 去哪选设备。
+  await page.goto(`http://127.0.0.1:${PORT}/?mock=1&platform=linux`, { waitUntil: "networkidle" });
+  await page.click('.sidebar .nav-item[data-page="settings"]');
+  const linuxPanel = page.locator(".settings-item").filter({ hasText: "虚拟麦克风" });
+  await linuxPanel.getByText("由 PipeWire 提供", { exact: true }).waitFor();
+  await linuxPanel.getByText(/VoxBridge Virtual Mic/).waitFor();
+  for (const label of ["安装", "卸载"]) {
+    const count = await linuxPanel.getByRole("button", { name: label, exact: true }).count();
+    if (count > 0) throw new Error(`Linux 上不该出现「${label}」按钮`);
+  }
+  if ((await page.locator(".settings-item").filter({ hasText: "多声道设备" }).count()) > 0) {
+    throw new Error("Linux 上不该出现多声道设备那一项");
+  }
+  console.log("Linux 虚拟麦克风：不出现安装/卸载/多声道，只给设备名引导。");
 } finally {
   await browser?.close();
   server.kill();

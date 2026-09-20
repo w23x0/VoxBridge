@@ -153,6 +153,8 @@ const zh = {
   settings: {
     groupTitle: "设置",
     virtualCable: "虚拟麦克风",
+    virtualCableNativeHint:
+      "Linux 不需要安装驱动：虚拟麦克风由 PipeWire 原生提供。在目标程序（VRChat / Discord / OBS）的录音设备里选「VoxBridge Virtual Mic」即可。",
     driveSource: "驱动来源",
     driveSite: "官网",
     licenseDonate: "授权与捐赠",
@@ -175,6 +177,7 @@ const zh = {
       installPendingReboot: "安装待重启",
       uninstallIncomplete: "卸载未完成",
       notInstalled: "未安装",
+      notApplicable: "由 PipeWire 提供",
     },
     channelStatus: {
       hidden: "已隐藏",

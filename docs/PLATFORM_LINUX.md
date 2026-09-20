@@ -300,7 +300,7 @@ for note in platform::startup_notes() { runtime.notify(…); }     // linux: Pip
 | `DeviceRegistry::virtual_cable_installed` | Linux 上语义变为"PipeWire 可用"（虚拟设备随时能建）。UI 侧 VB-CABLE 那一页在 Linux 隐藏（见 §5.4） |
 | `PlaybackSink::open(device, 24 kHz 输入率)` | **已落地**：`pw_stream` 方向 output，请求 48k/2ch f32；`vox-dsp::ring::DropRing` 供渲染回调取数据；24k → 目标率用注入的 `ResampleFactory`。真机实测：3 秒音渲染 264 696 个样本（≈2.75 s × 48 k × 2ch）、丢弃 0、`device_latency_ms` 21 ms（真的从 `pw_stream_get_time` 读出来的） |
 | `PlaybackSink::stats()` | `pw_stream_get_time()` → `queued_samples` / `device_latency_ms`；`dropped_samples` 由环缓冲计数 |
-| 虚拟麦 | **已落地**（`vox-audio-linux/src/virtual_sink.rs`）：`create_object("adapter", …)` + `factory.name=support.null-audio-sink` + `media.class=Audio/Sink`，固定名 `voxbridge_virtual_mic`。真机验证：`wpctl status` 里出现「VoxBridge 虚拟麦」，端口是 `playback_FL/FR` + `monitor_FL/FR`（立体声），退出即删不留幽灵设备；`cargo run -p vox-audio-linux --example virtual_mic` 可手动复现 |
+| 虚拟麦 | **已落地**（`vox-audio-linux/src/virtual_sink.rs`）：`create_object("adapter", …)` + `factory.name=support.null-audio-sink` + `media.class=Audio/Sink`，固定名 `voxbridge_virtual_mic`。真机验证：`wpctl status` 里出现「VoxBridge Virtual Mic」，端口是 `playback_FL/FR` + `monitor_FL/FR`（立体声），退出即删不留幽灵设备；`cargo run -p vox-audio-linux --example virtual_mic` 可手动复现 |
 | 能力门（替代 `osver.rs`） | 连不上 PipeWire socket / 版本 < 1.0 → `PortError` 带明确文案（"需要 PipeWire；纯 PulseAudio/ALSA 环境不支持按进程抓音"）。**不偷偷降级成整机环回**（沿用 `audio.rs:1-8` 的既有方针） |
 
 `CaptureTarget` / `AudioApp` 这些内核类型**不需要改**：Windows 用 exe 名标识程序，
@@ -457,7 +457,7 @@ Linux   : cargo run -p vox-audio-linux --example devices → 与同刻 pw-dump �
 Linux   : cargo test -p vox-audio-linux -- --ignored virtual_sink_lifecycle
           → 虚拟麦"建 → 图里查得到 → 删 → 查不到"往返通过（真机 PipeWire）
 Linux   : cargo run -p vox-audio-linux --example virtual_mic + wpctl/pw-dump
-          → 系统 Sinks 里出现「VoxBridge 虚拟麦」，monitor_FL/FR 端口齐全，退出后消失
+          → 系统 Sinks 里出现「VoxBridge Virtual Mic」，monitor_FL/FR 端口齐全，退出后消失
 Linux   : smoke -- tone 3       → 渲染 264 696 样本、丢弃 0、设备延迟 21 ms
 Linux   : smoke -- app pw-cat 4 → 协商 48k/2ch、192 000 个单声道样本（精确）、峰值 0.0884
 Linux   : smoke -- vmic 20 + pw-record 录 monitor（pw-link 显式连）

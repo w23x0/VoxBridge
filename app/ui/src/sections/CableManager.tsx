@@ -27,12 +27,14 @@ interface UninstallDialogState {
   loading: boolean;
 }
 
-/** Cable 状态徽标：后端四态到 badge class 的静态映射。 */
+/** Cable 状态徽标：后端五态到 badge class 的静态映射。 */
 const CABLE_BADGE: Record<VirtualCableStatus, string> = {
   installed: "badge badge-running",
   install_pending_reboot: "badge badge-warn",
   uninstall_incomplete: "badge badge-warn",
   not_installed: "badge badge-idle",
+  // Linux：不是"没装"，是"不需要装"。
+  not_applicable: "badge badge-neutral",
 };
 
 /** 16 声道端点徽标：三态到 badge class 的静态映射。 */
@@ -63,6 +65,7 @@ export function CableManager() {
     install_pending_reboot: "settings.cableStatus.installPendingReboot",
     uninstall_incomplete: "settings.cableStatus.uninstallIncomplete",
     not_installed: "settings.cableStatus.notInstalled",
+    not_applicable: "settings.cableStatus.notApplicable",
   };
   const cableStatusLabel = loading
     ? t("settings.cableStatus.checking")
@@ -70,6 +73,28 @@ export function CableManager() {
 
   const channelStatus = snapshot?.devices.virtual_cable_16ch_status ?? "absent";
   const channelBadgeClass = CHANNEL_BADGE[channelStatus];
+
+  /**
+   * Linux（`not_applicable`）：虚拟麦克风是 PipeWire 原生能力，**没有装/卸/多声道
+   * 这一套**。这里只报状态 + 告诉用户去哪选设备——那一步跟 Windows 上选 VB-CABLE
+   * 是同一个动作，所以引导文案能对上。
+   */
+  if (cableStatus === "not_applicable") {
+    return (
+      <div className="settings-group">
+        <SettingsItem
+          title={t("settings.virtualCable")}
+          desc={t("settings.virtualCableNativeHint")}
+          control={
+            <span className={cableBadgeClass}>
+              <span className="status-dot running" />
+              {t("settings.cableStatus.notApplicable")}
+            </span>
+          }
+        />
+      </div>
+    );
+  }
 
   const manageCable = async (action: "install" | "uninstall", closeBlockers = false) => {
     setCableBusy(action);

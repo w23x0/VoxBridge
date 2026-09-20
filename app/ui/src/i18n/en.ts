@@ -150,6 +150,8 @@ const en = {
   settings: {
     groupTitle: "Settings",
     virtualCable: "Virtual microphone",
+    virtualCableNativeHint:
+      "Nothing to install on Linux: the virtual microphone is built into PipeWire. In your target app (VRChat / Discord / OBS), pick \"VoxBridge Virtual Mic\" as the recording device.",
     driveSource: "Driver source",
     driveSite: "Website",
     licenseDonate: "License & donation",
@@ -172,6 +174,7 @@ const en = {
       installPendingReboot: "Reboot pending",
       uninstallIncomplete: "Uninstall incomplete",
       notInstalled: "Not installed",
+      notApplicable: "Provided by PipeWire",
     },
     channelStatus: {
       hidden: "Hidden",

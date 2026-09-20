@@ -47,11 +47,16 @@ export interface DeviceSnapshot {
   apps: AudioApp[];
   /** VB-CABLE 两端都已出现，当前可以作为虚拟麦克风使用。 */
   virtual_cable_installed: boolean;
+  /**
+   * 虚拟麦克风状态。`not_applicable` 是 Linux：PipeWire 原生就能建虚拟 sink，
+   * 没有"装驱动"这一步，界面应当只给一句"去目标程序里选设备"。
+   */
   virtual_cable_status:
     | "installed"
     | "install_pending_reboot"
     | "uninstall_incomplete"
-    | "not_installed";
+    | "not_installed"
+    | "not_applicable";
   virtual_cable_16ch_status: "visible" | "hidden" | "absent";
 }
 

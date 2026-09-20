@@ -154,6 +154,8 @@ const ja = {
   settings: {
     groupTitle: "設定",
     virtualCable: "仮想マイク",
+    virtualCableNativeHint:
+      "Linux ではドライバーのインストールは不要です。仮想マイクは PipeWire が標準で提供します。対象アプリ（VRChat / Discord / OBS）の録音デバイスで「VoxBridge Virtual Mic」を選んでください。",
     driveSource: "ドライバー提供元",
     driveSite: "公式サイト",
     licenseDonate: "ライセンスと寄付",
@@ -176,6 +178,7 @@ const ja = {
       installPendingReboot: "再起動後有効",
       uninstallIncomplete: "アンインストール未完了",
       notInstalled: "未インストール",
+      notApplicable: "PipeWire 標準提供",
     },
     channelStatus: {
       hidden: "非表示",

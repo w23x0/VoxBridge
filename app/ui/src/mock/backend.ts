@@ -48,7 +48,8 @@ export function createMockApi(): VoxApi {
     | "installed"
     | "install_pending_reboot"
     | "uninstall_incomplete"
-    | "not_installed" = "installed";
+    | "not_installed"
+    | "not_applicable" = "installed";
   let virtualCable16ChStatus: "visible" | "hidden" | "absent" = "hidden";
   let cableBlockers = [MOCK_APPS[1]].filter((app): app is AudioApp => app !== undefined);
   let micActive = false;
@@ -295,10 +296,18 @@ export function createMockApi(): VoxApi {
   /**
    * 假后端默认起在「已经在用」的状态：有密钥、选好了监听程序、两条常驻管线在跑。
    * 不然一进来什么都不动，看不出电平条和字幕长什么样。
-   * 想看空状态（未填密钥、没选程序）加 ?cold=1。
+   * 想看空状态（未填密钥、没选程序）加 ?cold=1；想看 Linux 的虚拟麦克风形态
+   * （不装驱动、只给设备名引导）加 ?platform=linux。
    */
   function seed(): void {
-    if (new URLSearchParams(window.location.search).get("cold") === "1") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("platform") === "linux") {
+      // Linux：PipeWire 原生就有虚拟 sink，状态是 not_applicable。
+      virtualCableStatus = "not_applicable";
+      virtualCableInstalled = false;
+      virtualCable16ChStatus = "absent";
+    }
+    if (params.get("cold") === "1") return;
     for (const provider of catalog.providerIds()) {
       apiKeys[provider] = true;
     }
