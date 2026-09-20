@@ -5690,12 +5690,21 @@ name = "vox-osc"
 version = "0.1.4"
 
 [[package]]
+name = "vox-overlay-core"
+version = "0.1.4"
+dependencies = [
+ "tracing",
+ "vox-core",
+]
+
+[[package]]
 name = "vox-overlay-win"
 version = "0.1.4"
 dependencies = [
  "parking_lot",
  "tracing",
  "vox-core",
+ "vox-overlay-core",
  "windows 0.62.2",
 ]
 

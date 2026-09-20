@@ -15,6 +15,7 @@
 use std::collections::HashMap;
 
 use vox_core::ports::{PortError, PortResult};
+use vox_overlay_core::text::{FontMetrics, Glyph, GlyphSource};
 use windows::Win32::Foundation::{COLORREF, SIZE};
 use windows::Win32::Graphics::Gdi::{
     CreateCompatibleDC, CreateDIBSection, CreateFontIndirectW, DeleteDC, DeleteObject, ExtTextOutW,
@@ -24,35 +25,12 @@ use windows::Win32::Graphics::Gdi::{
     HDC, HFONT, HGDIOBJ, LOGFONTW, OPAQUE, OUT_TT_PRECIS, TEXTMETRICW,
 };
 
-/// 一个字栅格化出来的结果。
-#[derive(Debug, Clone)]
-pub struct Glyph {
-    /// 掩码宽。
-    pub w: i32,
-    /// 掩码高。
-    pub h: i32,
-    /// 掩码左上角相对"起笔点 + 基线"的偏移。
-    pub off_x: i32,
-    pub off_y: i32,
-    /// 步进宽度（下一个字的起笔点要往右挪多少）。
-    pub advance: i32,
-    /// `w * h` 个覆盖率。
-    pub cov: Vec<u8>,
-}
-
 /// 字形掩码不是无限缓存：长时间跑多语种字幕时，不同字符可能持续增长。
 const MAX_CACHED_GLYPHS: usize = 2048;
 
 struct CachedGlyph {
     glyph: Glyph,
     last_used: u64,
-}
-
-/// 字体度量。
-#[derive(Debug, Clone, Copy, Default)]
-pub struct FontMetrics {
-    pub line_height: i32,
-    pub ascent: i32,
 }
 
 /// GDI 字体 + 一块用来画字的临时位图 + 字形缓存。
@@ -200,17 +178,12 @@ impl FontRaster {
         Ok(())
     }
 
-    pub fn metrics(&self) -> FontMetrics {
+    fn metrics(&self) -> FontMetrics {
         self.metrics
     }
 
-    /// 量一串字的宽度（含字距）。
-    pub fn measure(&mut self, text: &str) -> i32 {
-        text.chars().map(|c| self.advance(c)).sum()
-    }
-
     /// 量单个字的步进。
-    pub fn advance(&mut self, ch: char) -> i32 {
+    fn advance(&mut self, ch: char) -> i32 {
         match self.glyph(ch) {
             Some(g) => g.advance,
             None => 0,
@@ -218,7 +191,7 @@ impl FontRaster {
     }
 
     /// 取一个字的覆盖率掩码，失败返回 `None`（这一个字不画，别拖垮整帧）。
-    pub fn glyph(&mut self, ch: char) -> Option<&Glyph> {
+    fn glyph(&mut self, ch: char) -> Option<&Glyph> {
         // 控制字符统一当空格，免得跑出诡异的字形或者负宽度。
         let ch = if ch.is_control() { ' ' } else { ch };
         self.cache_clock = self.cache_clock.wrapping_add(1);
@@ -418,6 +391,23 @@ fn write_face_name(dst: &mut [u16; 32], family: &str) {
         i += 1;
     }
     dst[i] = 0;
+}
+
+/// 光栅器接口：渲染器只认这个 trait，Windows 用 GDI，Linux 用 swash。
+///
+/// `measure` 用 trait 的默认实现（按 `advance` 累加）——GDI 那版原来也是这么算的。
+impl GlyphSource for FontRaster {
+    fn metrics(&self) -> FontMetrics {
+        FontRaster::metrics(self)
+    }
+
+    fn advance(&mut self, ch: char) -> i32 {
+        FontRaster::advance(self, ch)
+    }
+
+    fn glyph(&mut self, ch: char) -> Option<&Glyph> {
+        FontRaster::glyph(self, ch)
+    }
 }
 
 #[cfg(test)]

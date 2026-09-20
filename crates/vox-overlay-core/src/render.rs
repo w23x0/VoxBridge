@@ -10,7 +10,7 @@ use vox_core::subtitle::{RenderedChar, Track};
 use crate::canvas::{Canvas, Mask};
 use crate::color::{alpha_to_u8, parse_hex_rgb_or, Rgb};
 use crate::layout::{layout_rows, layout_rows_in_viewport, Metrics, RowMetrics};
-use crate::text::FontRaster;
+use crate::text::{FontFactory, GlyphSource};
 
 /// 字幕底衬的颜色（近黑）。alpha 由设置里的 `background_alpha` 给。
 const PLATE_COLOR: Rgb = Rgb::new(0, 0, 0);
@@ -158,7 +158,9 @@ fn layout_changed(previous: &[StableRow], target: &[StableRow]) -> bool {
 
 /// 一帧一帧往 `Canvas` 上画。持有字体，所以只能在窗口线程上用。
 pub struct Renderer {
-    font: FontRaster,
+    font: Box<dyn GlyphSource>,
+    /// 设置里的字体族/字号/DPI 变了要重建光栅器，所以工厂也存着。
+    font_factory: FontFactory,
     /// 记住建字体时的参数，`restyle` 只在真的变了的时候重建。
     font_family: String,
     font_size: u32,
@@ -171,9 +173,16 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(settings: &SubtitleSettings, dpi: u32) -> vox_core::ports::PortResult<Self> {
+    /// `font_factory` 由平台提供（Windows：GDI；Linux：swash）。
+    pub fn new(
+        settings: &SubtitleSettings,
+        dpi: u32,
+        font_factory: FontFactory,
+    ) -> vox_core::ports::PortResult<Self> {
+        let font = font_factory(&settings.font_family, settings.font_size, dpi)?;
         Ok(Self {
-            font: FontRaster::new(&settings.font_family, settings.font_size, dpi)?,
+            font,
+            font_factory,
             font_family: settings.font_family.clone(),
             font_size: settings.font_size,
             dpi,
@@ -197,7 +206,7 @@ impl Renderer {
         {
             return Ok(());
         }
-        self.font = FontRaster::new(&settings.font_family, settings.font_size, dpi)?;
+        self.font = (self.font_factory)(&settings.font_family, settings.font_size, dpi)?;
         self.font_family = settings.font_family.clone();
         self.font_size = settings.font_size;
         self.dpi = dpi;
@@ -519,14 +528,14 @@ impl Renderer {
             .skip(placed.first_visible)
             .take(placed.last_visible.saturating_sub(placed.first_visible))
         {
-            x += draw_char_with(&mut self.font, canvas, x, baseline_y, rc, style.color);
+            x += draw_char_with(self.font.as_mut(), canvas, x, baseline_y, rc, style.color);
         }
     }
 }
 
 /// 画一个字，返回下一个字的起笔步进。
 fn draw_char_with(
-    font: &mut FontRaster,
+    font: &mut dyn GlyphSource,
     canvas: &mut Canvas,
     pen_x: i32,
     baseline_y: i32,
@@ -694,64 +703,5 @@ mod tests {
         ];
         let changed = layout_changed(&old, &next);
         assert!(changed, "行数不变但行身份变化也必须触发过渡");
-    }
-
-    #[test]
-    #[ignore = "需要真实 GDI 环境"]
-    fn draws_two_rows_with_no_invalid_pixels() {
-        let settings = SubtitleSettings::default();
-        let mut renderer = Renderer::new(&settings, 96).unwrap();
-        let frame = SubtitleFrame {
-            lines: vec![
-                line(Track::Listen, "听人说话"),
-                line(Track::Speak, "对外说话"),
-            ],
-        };
-        let mut canvas = Canvas::new(0, 0);
-        let out = renderer.draw(
-            &mut canvas,
-            &FrameInput {
-                frame: &frame,
-                settings: &settings,
-                client_width: 880,
-                client_height: 170,
-                dpi: 96,
-            },
-        );
-        assert_eq!(canvas.height(), out.client_height);
-        assert!(out.client_height > 1);
-        assert!(canvas.find_invalid_pixel().is_none());
-    }
-
-    #[test]
-    #[ignore = "需要真实 GDI 环境"]
-    fn zero_alpha_chars_leave_no_text_pixels() {
-        let settings = SubtitleSettings {
-            background_alpha: 0,
-            ..SubtitleSettings::default()
-        };
-        let mut renderer = Renderer::new(&settings, 96).unwrap();
-        let frame = SubtitleFrame {
-            lines: vec![SubtitleLine {
-                track: Track::Listen,
-                chars: "完全透明"
-                    .chars()
-                    .map(|ch| RenderedChar { ch, alpha: 0.0 })
-                    .collect(),
-                color: "#ffffff".into(),
-            }],
-        };
-        let mut canvas = Canvas::new(0, 0);
-        renderer.draw(
-            &mut canvas,
-            &FrameInput {
-                frame: &frame,
-                settings: &settings,
-                client_width: 880,
-                client_height: 170,
-                dpi: 96,
-            },
-        );
-        assert!(canvas.bytes().iter().all(|&v| v == 0));
     }
 }

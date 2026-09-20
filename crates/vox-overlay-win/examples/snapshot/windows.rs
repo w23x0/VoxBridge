@@ -46,7 +46,7 @@ pub fn main() {
     }
 
     let settings = SubtitleSettings::default();
-    let mut renderer = match Renderer::new(&settings, DPI) {
+    let mut renderer = match Renderer::new(&settings, DPI, vox_overlay_win::font_factory()) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("建字体失败: {}", e.message);

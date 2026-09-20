@@ -119,7 +119,7 @@ fn run(runtime: Runtime) {
         if backend.is_none() && std::time::Instant::now() >= next_retry {
             match Backend::connect() {
                 Ok(active) => {
-                    renderer = Renderer::new(&settings, DPI).ok();
+                    renderer = Renderer::new(&settings, DPI, vox_overlay_win::font_factory()).ok();
                     backend = Some(active);
                     last_hash = None;
                 }

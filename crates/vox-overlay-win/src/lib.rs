@@ -13,29 +13,30 @@
 // 非 Windows 上编译成空 lib，理由同 `vox-audio-win`：Linux 那边是 `vox-overlay-linux`。
 #![cfg(windows)]
 
-// 这些模块对外公开只为了 examples/ 里的自检工具能画同一批像素。它们不是稳定 API。
-#[doc(hidden)]
-pub mod canvas;
-#[doc(hidden)]
-pub mod color;
-#[doc(hidden)]
-pub mod geom;
-#[doc(hidden)]
-pub mod layout;
-#[doc(hidden)]
-pub mod render;
+// 渲染那半边（几何、配色、画布、布局、帧合成）住在平台中立的 `vox-overlay-core` 里，
+// 这里转出去，调用方照旧写 `vox_overlay_win::render::Renderer` / `canvas::Canvas`。
+// `text` 也是 core 的（字形数据 + `GlyphSource` trait）；GDI 光栅器在本 crate 的 `font`。
+pub use vox_overlay_core::{canvas, color, geom, layout, render, text};
+
+mod font;
 mod surface;
-#[doc(hidden)]
-pub mod text;
 mod window;
+
+pub use font::FontRaster;
+pub use window::GeometryCallback;
+
+/// 平台光栅器工厂：渲染器只认 trait，这里给它 GDI 那版。
+pub fn font_factory() -> text::FontFactory {
+    vox_overlay_core::text::font_factory(|family, size, dpi| {
+        Ok(Box::new(FontRaster::new(family, size, dpi)?))
+    })
+}
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use vox_core::ports::{PortError, PortResult, SubtitleFrame, SubtitleView};
 use vox_core::settings::SubtitleSettings;
-
-pub use window::GeometryCallback;
 
 /// 窗口类名。带 crate 前缀，避免跟宿主进程里别的窗口类撞。
 const WINDOW_CLASS: &str = "VoxBridgeSubtitleOverlay";
@@ -234,5 +235,88 @@ mod tests {
         }
         assert!(overlay.is_running(), "高频跨线程 render 不该把窗口线程搞挂");
         overlay.shutdown();
+    }
+}
+
+#[cfg(test)]
+mod gdi_render_tests {
+    //! 需要真实 GDI 的渲染测试：核心渲染逻辑在 `vox-overlay-core` 里，那边没有
+    //! 真字体可用，所以这两个"画一帧、查像素"的测试留在有 GDI 的这一侧。
+
+    use super::*;
+    use vox_core::ports::{SubtitleFrame, SubtitleLine};
+    use vox_core::settings::SubtitleSettings;
+    use vox_core::subtitle::{RenderedChar, Track};
+    use vox_overlay_core::canvas::Canvas;
+    use vox_overlay_core::render::{FrameInput, Renderer};
+
+    fn line(track: Track, text: &str) -> SubtitleLine {
+        SubtitleLine {
+            track,
+            chars: text
+                .chars()
+                .map(|ch| RenderedChar { ch, alpha: 1.0 })
+                .collect(),
+            color: "#ffffff".into(),
+        }
+    }
+
+    #[test]
+    #[ignore = "需要真实 GDI 环境"]
+    fn draws_two_rows_with_no_invalid_pixels() {
+        let settings = SubtitleSettings::default();
+        let mut renderer = Renderer::new(&settings, 96, font_factory()).unwrap();
+        let frame = SubtitleFrame {
+            lines: vec![
+                line(Track::Listen, "听人说话"),
+                line(Track::Speak, "对外说话"),
+            ],
+        };
+        let mut canvas = Canvas::new(0, 0);
+        let out = renderer.draw(
+            &mut canvas,
+            &FrameInput {
+                frame: &frame,
+                settings: &settings,
+                client_width: 880,
+                client_height: 170,
+                dpi: 96,
+            },
+        );
+        assert_eq!(canvas.height(), out.client_height);
+        assert!(out.client_height > 1);
+        assert!(canvas.find_invalid_pixel().is_none());
+    }
+
+    #[test]
+    #[ignore = "需要真实 GDI 环境"]
+    fn zero_alpha_chars_leave_no_text_pixels() {
+        let settings = SubtitleSettings {
+            background_alpha: 0,
+            ..SubtitleSettings::default()
+        };
+        let mut renderer = Renderer::new(&settings, 96, font_factory()).unwrap();
+        let frame = SubtitleFrame {
+            lines: vec![SubtitleLine {
+                track: Track::Listen,
+                chars: "完全透明"
+                    .chars()
+                    .map(|ch| RenderedChar { ch, alpha: 0.0 })
+                    .collect(),
+                color: "#ffffff".into(),
+            }],
+        };
+        let mut canvas = Canvas::new(0, 0);
+        renderer.draw(
+            &mut canvas,
+            &FrameInput {
+                frame: &frame,
+                settings: &settings,
+                client_width: 880,
+                client_height: 170,
+                dpi: 96,
+            },
+        );
+        assert!(canvas.bytes().iter().all(|&v| v == 0));
     }
 }

@@ -216,7 +216,7 @@ fn create(
     let dpi = unsafe { GetDpiForWindow(hwnd) };
     let dpi = if dpi == 0 { 96 } else { dpi };
 
-    let renderer = Renderer::new(&settings, dpi)?;
+    let renderer = Renderer::new(&settings, dpi, crate::font_factory())?;
     let surface = LayeredSurface::new()?;
     let rect = resolve_geometry(settings.geometry, dpi);
 

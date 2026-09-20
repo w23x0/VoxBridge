@@ -7,6 +7,8 @@ license.workspace = true
 
 [dependencies]
 vox-core.workspace = true
+# 渲染那半边（几何/配色/画布/布局/帧合成）在平台中立的 core 里，两个平台共用。
+vox-overlay-core.workspace = true
 tracing.workspace = true
 parking_lot.workspace = true
 
