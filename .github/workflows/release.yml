@@ -40,3 +40,66 @@ jobs:
           releaseBody: "Download the installer from the assets below. Existing users can update in-app via About -> Check for updates."
           releaseDraft: false
           prerelease: false
+
+  # Linux 端。跟 Windows 那个 job 共用同一个 release：tauri-action 找不到就建，
+  # 找得到就往同一个 tag 上追加资产。
+  #
+  # 用 ubuntu-22.04 而不是 latest：glibc 基线低一点，AppImage 能在更多发行版上跑。
+  publish-tauri-linux:
+    permissions:
+      contents: write
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # 系统依赖：Tauri 官方 Linux 前置 + 本项目特有的两样
+      #   libpipewire-0.3-dev —— 音频后端要它（编译期要 .pc 与头文件）
+      #   clang / libclang-dev —— libspa-sys 的 build.rs 用 bindgen 生成绑定，
+      #                          缺了会以 "stdbool.h file not found" 直接 panic
+      #   patchelf —— AppImage 打包要用
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential pkg-config curl wget file libssl-dev \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            patchelf libpipewire-0.3-dev clang libclang-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/ui/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: .
+
+      - name: Install frontend dependencies
+        working-directory: app/ui
+        run: npm ci
+
+      # 先把 Rust 侧和前端都验一遍：Linux 端刚落地，别让坏构建混进 release。
+      - name: Test Rust workspace
+        run: cargo test --workspace
+
+      - name: Verify UI
+        working-directory: app/ui
+        run: npm run verify
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 更新签名：AppImage 的更新走同一套 minisign 公钥（tauri.conf.json 里的 pubkey）。
+          # deb/rpm 用户没有应用内更新，只能手动下载新包——这条写进 release 说明。
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v__VERSION__
+          releaseName: "VoxBridge v__VERSION__"
+          releaseBody: "Download the installer for your platform from the assets below. Windows and AppImage builds can update in-app via About -> Check for updates; deb/rpm users need to download the new package manually."
+          releaseDraft: false
+          prerelease: false

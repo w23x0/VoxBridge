@@ -386,8 +386,8 @@ KDE/wlroots → 以后可加 `gtk-layer-shell`；纯 Wayland 且没有 XWayland 
 | `state.rs` | `OverlayHandle = Arc<vox_overlay_win::Overlay>` | 改成 `cfg` 别名指向 Linux 实现 |
 | 托盘 / 单实例 / 自启 | Tauri 插件 | 跨平台，配置微调；GNOME 需要 appindicator 扩展（**本机已启用**） |
 | updater | GitHub latest.json + minisign | Linux 上 tauri updater 只支持 AppImage → 待定（§9） |
-| `tauri.conf.json` | `bundle.targets = ["nsis"]` | 拆出 `tauri.linux.conf.json`：`deb` / `rpm` / `appimage`；图标 png 已有 |
-| `.github/workflows/release.yml` | `runs-on: windows-latest` | 增加 Linux job（ubuntu-22.04 + §7 的依赖），出 deb/rpm/AppImage |
+| `tauri.conf.json` | `bundle.targets = ["nsis"]` | **已落地**：新增 `app/src-tauri/tauri.linux.conf.json`（Tauri 的平台配置文件，构建时自动合并）：targets = `deb` / `rpm` / `appimage`，图标只用 png，deb/rpm 的依赖列表写死（`libwebkit2gtk-4.1-0` / `libgtk-3-0` / `libayatana-appindicator3-1` / `libpipewire-0.3-0`），AppImage 关掉 gstreamer（`bundleMediaFramework: false`，省 15–35 MB） |
+| `.github/workflows/release.yml` | `runs-on: windows-latest` | **已落地**：新增 `publish-tauri-linux` job（ubuntu-22.04，glibc 基线低一点）：装 §7 那套依赖（含 `libpipewire-0.3-dev`、`clang`、`patchelf`）→ `cargo test --workspace` → `npm run verify` → tauri-action 出 deb/rpm/AppImage，跟 Windows job 共用同一个 release |
 
 ---
 
@@ -499,6 +499,13 @@ Linux   : cargo run -p vox-overlay-linux --example snapshot
           → 6 个场景离屏渲染成 BMP，中文/日文/中英混排/逐字淡出/空帧/超长行滚动
             全部符合设计（人工核对过像素）
 Linux   : 真机 app 日志 → 热键监听打开并盯住 4 个输入设备（键盘 ×2、鼠标 ×2）
+Linux   : npm run tauri:build -- --bundles deb
+          → 出 `target/release/bundle/deb/VoxBridge_0.1.4_amd64.deb`（12 MB）；
+            Depends 干净（libpipewire-0.3-0 + Tauri 自动识别的 webkit/gtk/appindicator，
+            我们自己写的那三个会跟自动识别重复，已删）；.desktop 有 Categories
+            （Tauri 默认模板给的是空分类）
+Linux   : sudo dpkg -i 那个 deb → /usr/bin/voxbridge 能起：主窗口 960x640 可见、
+            热键监听盯上真键盘、托盘初始化；验完 `dpkg -r vox-bridge` 卸掉
 Linux   : sudo <evdev_end_to_end 测试二进制> --ignored
           → 造一个 uinput 虚拟键盘，真的打 KEY_F8 按下+松开，
             监听器收到 SpeakPressed + SpeakReleased（按住说话就靠这个 release）
@@ -536,8 +543,8 @@ WebKit 的 `WEBKIT_INSPECTOR_SERVER` 虽然起来了但 WIR 协议没能从命�
    XWayland"才降级成窗口内字幕。`PLATFORM_SCOPE.md` §C1 记的原始目标"通用 Linux
    （含老发行版 / ALSA）"**正式下调**，理由：那是 N×M 组合，且 ALSA 下"按进程抓音"
    根本不存在。
-2. **更新器**：tauri updater 在 Linux 只支持 AppImage。deb/rpm 用户没有自动更新 →
-   要么只发 AppImage，要么 deb/rpm 走系统包管理 + 手动下载。
+2. **更新器**：tauri updater 在 Linux **只支持 AppImage**。现状是三种包都发，
+   release 说明里写清楚"deb/rpm 用户要手动下载新包"（AppImage 能应用内更新）。
 3. **多节点混合**：同一程序多条音频流（Chromium 每标签页一条）会全被混进来。Windows 侧
    是按 session 选；Linux 侧要先决定"全混"还是"选最响/最新的一条"。
 4. **采样率**：本方案让 PipeWire 做 48k 转换（省掉 `rates.rs` 那套探测）。若某些蓝牙设备
