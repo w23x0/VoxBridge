@@ -5776,7 +5776,6 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 name = "vox-audio-linux"
 version = "0.2.1"
 dependencies = [
- "parking_lot",
  "pipewire",
  "serde_json",
  "tracing",
@@ -5803,7 +5802,6 @@ dependencies = [
  "parking_lot",
  "serde",
  "serde_json",
- "thiserror 2.0.19",
  "tracing",
 ]
 
@@ -5813,7 +5811,6 @@ version = "0.2.1"
 dependencies = [
  "nnnoiseless",
  "rubato",
- "tracing",
  "vox-core",
 ]
 
@@ -5870,7 +5867,6 @@ dependencies = [
  "fontdb",
  "glib",
  "gtk",
- "parking_lot",
  "swash",
  "tracing",
  "vox-core",

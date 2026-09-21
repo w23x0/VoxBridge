@@ -10,7 +10,6 @@ vox-core.workspace = true
 vox-dsp.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
-parking_lot.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # pipewire-rs：绑 libpipewire-0.3。编译期要 libpipewire-0.3-dev（.pc + 头文件）

@@ -9,7 +9,6 @@ license.workspace = true
 vox-core.workspace = true
 vox-overlay-core.workspace = true
 tracing.workspace = true
-parking_lot.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # GTK3：版本必须跟 Tauri 2 用的那套对齐（tauri 2.11 → gtk 0.18），

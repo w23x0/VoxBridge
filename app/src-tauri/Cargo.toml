@@ -52,7 +52,6 @@ vox-osc = { path = "../../crates/vox-osc" }
 windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Security_Cryptography",
-    "Win32_System_Memory",
     "Win32_System_SystemInformation",
     # 窗口最小尺寸强制：WM_GETMINMAXINFO 需要 MINMAXINFO/SetWindowLongPtrW；
     # GetDpiForWindow 用来把逻辑最小尺寸按当前 DPI 换算成物理像素。
