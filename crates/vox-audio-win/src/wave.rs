@@ -166,20 +166,20 @@ pub(crate) fn bytes_to_f32(bytes: &[u8], kind: SampleKind, out: &mut Vec<f32>) {
     out.reserve(count);
     match kind {
         SampleKind::F32 => {
-            for chunk in bytes.chunks_exact(4) {
-                let v = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            for chunk in bytes.as_chunks::<4>().0 {
+                let v = f32::from_le_bytes(*chunk);
                 // 设备偶尔给出非法浮点（驱动 bug），直接抹成静音比让 NaN 传染下游好。
                 out.push(if v.is_finite() { v } else { 0.0 });
             }
         }
         SampleKind::I16 => {
-            for chunk in bytes.chunks_exact(2) {
-                let v = i16::from_le_bytes([chunk[0], chunk[1]]);
+            for chunk in bytes.as_chunks::<2>().0 {
+                let v = i16::from_le_bytes(*chunk);
                 out.push(v as f32 / 32768.0);
             }
         }
         SampleKind::I24 => {
-            for chunk in bytes.chunks_exact(3) {
+            for chunk in bytes.as_chunks::<3>().0 {
                 // 24 位补码：搬到 i32 的高 24 位再右移，符号位自动跟着走。
                 let v = ((chunk[0] as i32) << 8)
                     | ((chunk[1] as i32) << 16)
@@ -188,8 +188,8 @@ pub(crate) fn bytes_to_f32(bytes: &[u8], kind: SampleKind, out: &mut Vec<f32>) {
             }
         }
         SampleKind::I32 => {
-            for chunk in bytes.chunks_exact(4) {
-                let v = i32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            for chunk in bytes.as_chunks::<4>().0 {
+                let v = i32::from_le_bytes(*chunk);
                 out.push(v as f32 / 2_147_483_648.0);
             }
         }
@@ -346,5 +346,4 @@ mod tests {
         assert_eq!(&f32_bytes[..4], &(-1.0f32).to_le_bytes());
         assert_eq!(&f32_bytes[8..], &(1.0f32).to_le_bytes());
     }
-
 }

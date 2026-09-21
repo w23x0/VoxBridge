@@ -47,16 +47,12 @@ impl Running {
 /// 环回、失败直说，不静默降级到抓整机声音。
 pub struct WinCapture {
     running: Option<Running>,
-    endpoint_fallback: bool,
 }
 
 impl WinCapture {
     /// 进程环回不可用就报错。
     pub fn new() -> Self {
-        Self {
-            running: None,
-            endpoint_fallback: false,
-        }
+        Self { running: None }
     }
 }
 
@@ -89,7 +85,6 @@ impl CaptureSource for WinCapture {
                 Plan::Process {
                     executable: executable.clone(),
                     include_tree: *include_tree,
-                    endpoint_fallback: self.endpoint_fallback,
                 },
                 format!("{executable} 的进程环回采集"),
             ),
@@ -209,7 +204,6 @@ enum Plan {
     Process {
         executable: String,
         include_tree: bool,
-        endpoint_fallback: bool,
     },
     Endpoint(Option<String>),
 }
@@ -237,8 +231,7 @@ fn run_capture(
         Plan::Process {
             executable,
             include_tree,
-            endpoint_fallback,
-        } => open_process(&executable, include_tree, endpoint_fallback),
+        } => open_process(&executable, include_tree),
     };
 
     let open = match open {
@@ -261,21 +254,10 @@ fn run_capture(
     );
 }
 
-/// 解析目标进程并打开进程环回，必要时退到整机环回。
-fn open_process(
-    executable: &str,
-    include_tree: bool,
-    endpoint_fallback: bool,
-) -> PortResult<shared::OpenCapture> {
+/// 解析目标进程并打开进程环回。
+fn open_process(executable: &str, include_tree: bool) -> PortResult<shared::OpenCapture> {
     let pid = resolve_pid(executable, include_tree)?;
-    match loopback::open_process_loopback(pid, include_tree) {
-        Ok(open) => Ok(open),
-        Err(e) if endpoint_fallback => {
-            tracing::warn!("进程环回不可用（{}），退到整机环回", e.message);
-            endpoint::open_endpoint_loopback(None)
-        }
-        Err(e) => Err(e),
-    }
+    loopback::open_process_loopback(pid, include_tree)
 }
 
 /// exe 名 → 该抓的 PID。

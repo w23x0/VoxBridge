@@ -16,15 +16,12 @@
 
 use std::ffi::c_void;
 
-use windows::Win32::Foundation::{ERROR_CANCELLED, WAIT_OBJECT_0};
+use windows::Win32::Foundation::ERROR_CANCELLED;
 use windows::Win32::Media::Audio::{eCapture, eRender, ERole};
 use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL};
-use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
-use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
-use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
 use windows_core::PCWSTR;
 
-use crate::com::{hr_err, to_wide, ComGuard, OwnedHandle};
+use crate::com::{hr_err, run_elevated, to_wide, ComGuard, ElevateMessages, ElevatedRun};
 use crate::devices;
 
 /// 未公开的 PolicyConfig 类。IID/CLSID 长期稳定，被 SoundSwitch 等第三方长期使用。
@@ -207,46 +204,23 @@ fn set_default_endpoint(device_id: &str) -> Result<(), String> {
 
 /// 用 `runas` 以隐藏窗口拉起 `exe` 并等待退出，返回退出码。UAC 拒绝时返回提示。
 fn run_self_elevated(exe: &std::path::Path, args: &[String]) -> Result<u32, String> {
-    let exe_wide = to_wide(&exe.to_string_lossy());
-    let args_wide = to_wide(&args.join(" "));
-    let cwd_wide = to_wide(
-        &exe.parent()
-            .unwrap_or_else(|| std::path::Path::new("."))
-            .to_string_lossy(),
-    );
-    let verb = to_wide("runas");
-    let mut info = SHELLEXECUTEINFOW {
-        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
-        fMask: SEE_MASK_NOCLOSEPROCESS,
-        lpVerb: PCWSTR(verb.as_ptr()),
-        lpFile: PCWSTR(exe_wide.as_ptr()),
-        lpParameters: PCWSTR(args_wide.as_ptr()),
-        lpDirectory: PCWSTR(cwd_wide.as_ptr()),
-        nShow: SW_HIDE.0,
-        ..Default::default()
-    };
-    // SAFETY: 各宽字符串在本函数内有效；hProcess 由下方守卫关闭。
-    if let Err(error) = unsafe { ShellExecuteExW(&mut info) } {
-        if error.code() == windows_core::HRESULT::from_win32(ERROR_CANCELLED.0) {
-            return Err("已取消管理员授权".into());
-        }
-        return Err(hr_err("以管理员身份拉起恢复进程失败", error.code()).message);
+    let cwd = exe.parent().unwrap_or_else(|| std::path::Path::new("."));
+    match run_elevated(
+        exe,
+        &args.join(" "),
+        cwd,
+        60_000,
+        &ElevateMessages {
+            start: "以管理员身份拉起恢复进程失败",
+            no_handle: "恢复进程没有返回句柄",
+            timeout: "等待恢复进程超时",
+            exit_code: "读取恢复进程退出码失败",
+        },
+    ) {
+        Ok(ElevatedRun::Exited(code)) => Ok(code),
+        Ok(ElevatedRun::Declined) => Err("已取消管理员授权".into()),
+        Err(message) => Err(message),
     }
-    let process = info.hProcess;
-    if process.is_invalid() {
-        return Err("恢复进程没有返回句柄".into());
-    }
-    let _guard = OwnedHandle::new(process);
-    // SAFETY: process 有效。
-    if unsafe { WaitForSingleObject(process, 60_000) } != WAIT_OBJECT_0 {
-        return Err("等待恢复进程超时".into());
-    }
-    let mut code: u32 = 0;
-    // SAFETY: 进程已退出，句柄仍有效。
-    if let Err(e) = unsafe { GetExitCodeProcess(process, &mut code) } {
-        return Err(hr_err("读取恢复进程退出码失败", e.code()).message);
-    }
-    Ok(code)
 }
 
 /// 把可能为 `None` 的设备 ID 编码成命令行参数形式。

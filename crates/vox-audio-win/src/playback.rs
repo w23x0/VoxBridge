@@ -29,8 +29,8 @@ use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObj
 use crate::com::{ComGuard, OwnedHandle, WinContext};
 use crate::devices;
 use crate::rates::{choose_output_rate, RateChoice};
-use vox_dsp::ring::{should_warn, DropRing};
 use crate::wave::{duplicate_mono, f32_to_bytes, float_format, parse_format, SampleKind};
+use vox_dsp::ring::{should_warn, DropRing};
 
 /// 环形缓冲的长度（秒，按设备率和声道数算）。
 ///

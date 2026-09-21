@@ -8,10 +8,11 @@
 //! 所以数字必须原样带到日志里，不能只留一句“打开设备失败”。
 
 use std::marker::PhantomData;
+use std::path::Path;
 
 use vox_core::ports::{PortError, PortResult};
-use windows::core::HRESULT;
-use windows::Win32::Foundation::{HANDLE, RPC_E_CHANGED_MODE};
+use windows::core::{HRESULT, PCWSTR};
+use windows::Win32::Foundation::{HANDLE, RPC_E_CHANGED_MODE, WAIT_OBJECT_0};
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT, COINIT_MULTITHREADED};
 
 /// 线程级 COM 守卫。`Drop` 时按需 `CoUninitialize`。
@@ -151,4 +152,78 @@ pub(crate) unsafe fn wide_to_string(ptr: *const u16) -> String {
 /// Rust 字符串转 NUL 结尾的宽字符缓冲，交给 Win32 用。
 pub(crate) fn to_wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+/// 提权运行的结局。
+pub(crate) enum ElevatedRun {
+    /// 子进程已退出，附退出码。
+    Exited(u32),
+    /// 用户在上 UAC 时点了“否”。
+    Declined,
+}
+
+/// `run_elevated` 的中文文案。四个字段依次用在：启动失败、拿不到进程句柄、
+/// 等待超时、读取退出码失败。文案由调用方给，各条路的问题在日志里能一眼分清。
+pub(crate) struct ElevateMessages<'a> {
+    pub(crate) start: &'a str,
+    pub(crate) no_handle: &'a str,
+    pub(crate) timeout: &'a str,
+    pub(crate) exit_code: &'a str,
+}
+
+/// 以管理员权限（`runas`）静默拉起 `file`，等它退出并取回退出码。
+///
+/// `args` 是已经拼好的参数串，`cwd` 是工作目录，`timeout_ms` 是等待上限。
+/// 用户在 UAC 上点“否”返回 `Ok(ElevatedRun::Declined)`；其余失败包成中文说明。
+/// 进程句柄由 `OwnedHandle` 兜住所有返回路径，不会漏关。
+pub(crate) fn run_elevated(
+    file: &Path,
+    args: &str,
+    cwd: &Path,
+    timeout_ms: u32,
+    messages: &ElevateMessages<'_>,
+) -> Result<ElevatedRun, String> {
+    use windows::Win32::Foundation::ERROR_CANCELLED;
+    use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
+    use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
+    use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
+
+    let verb = to_wide("runas");
+    let file_wide = to_wide(&file.to_string_lossy());
+    let args_wide = to_wide(args);
+    let cwd_wide = to_wide(&cwd.to_string_lossy());
+    let mut info = SHELLEXECUTEINFOW {
+        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_NOCLOSEPROCESS,
+        lpVerb: PCWSTR(verb.as_ptr()),
+        lpFile: PCWSTR(file_wide.as_ptr()),
+        lpParameters: PCWSTR(args_wide.as_ptr()),
+        lpDirectory: PCWSTR(cwd_wide.as_ptr()),
+        nShow: SW_HIDE.0,
+        ..Default::default()
+    };
+    // SAFETY: 各宽字符串在调用期间有效；NOCLOSEPROCESS 表示 hProcess 归我们关，
+    // 下面的 OwnedHandle 兜住所有返回路径。
+    if let Err(error) = unsafe { ShellExecuteExW(&mut info) } {
+        // 用户在 UAC 上点“否”就是这个码，单独分出来好让上层提示“需要管理员权限”。
+        if error.code() == HRESULT::from_win32(ERROR_CANCELLED.0) {
+            return Ok(ElevatedRun::Declined);
+        }
+        return Err(hr_err(messages.start, error.code()).message);
+    }
+    let process = info.hProcess;
+    if process.is_invalid() {
+        return Err(messages.no_handle.into());
+    }
+    let _guard = OwnedHandle::new(process);
+    // SAFETY: 句柄有效，由上面的守卫持有。
+    if unsafe { WaitForSingleObject(process, timeout_ms) } != WAIT_OBJECT_0 {
+        return Err(messages.timeout.into());
+    }
+    let mut code: u32 = 0;
+    // SAFETY: 进程已退出，句柄仍由守卫持有。
+    if let Err(error) = unsafe { GetExitCodeProcess(process, &mut code) } {
+        return Err(hr_err(messages.exit_code, error.code()).message);
+    }
+    Ok(ElevatedRun::Exited(code))
 }

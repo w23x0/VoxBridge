@@ -3,11 +3,11 @@
 //! 麦克风、进程环回、整机环回三条路只有“怎么拿到 IAudioClient”不一样，
 //! 拿到之后的循环完全相同，所以循环写在这里。
 
-use vox_dsp::chunk::Blocker;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::Arc;
 use std::time::Duration;
+use vox_dsp::chunk::Blocker;
 
 use vox_core::ports::{AudioChunk, CaptureFormat, PortError, PortResult};
 use windows::Win32::Foundation::{WAIT_OBJECT_0, WAIT_TIMEOUT};
@@ -266,7 +266,6 @@ pub(crate) fn create_stream_event() -> PortResult<OwnedHandle> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     #[test]
     fn control_stop_is_visible_and_idempotent() {

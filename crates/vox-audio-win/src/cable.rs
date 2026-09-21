@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-use crate::com::{hr_err, to_wide, ComGuard, OwnedHandle};
+use crate::com::{hr_err, run_elevated, to_wide, ComGuard, ElevateMessages, ElevatedRun};
 use crate::devices;
 
 /// 产品名。界面上必须原样出现这个名字，别改成“虚拟声卡”之类的泛称。
@@ -180,51 +180,56 @@ pub fn detect() -> CableStatus {
     CableStatus::NotInstalled
 }
 
-/// 残留端点也算记录：除 present 设备外，还要看到被 SetupAPI 保留、但已不在
-/// 现役的幽灵节点。根设备已删、卸载却被 PnP veto 拦下时，Core Audio 不再
-/// 枚举这些端点，但记录还挂在 AudioEndpoint 类里，DIGCF_PRESENT 会漏掉它们。
-fn cable_endpoint_records_remain() -> bool {
-    use windows::core::{GUID, PCWSTR};
+/// 枚举一个设备安装类里的设备，逐个读 `property` 这个 UTF-16 属性并交给 `visit` 判断。
+///
+/// `all_classes` 为假只看现役设备（`DIGCF_PRESENT`），为真连被 SetupAPI 保留、
+/// 已不在现役的幽灵节点一起看（`DIGCF_ALLCLASSES`）。`visit` 返回 `Some(v)` 就
+/// 立刻结束枚举。`N` 是属性缓冲的字节数，调用方按属性长度给。
+///
+/// 类枚举失败、单项读属性失败都按“不是要找的”跳过，绝不 panic。
+fn device_property_any<T, const N: usize>(
+    class: &windows::core::GUID,
+    all_classes: bool,
+    property: windows::Win32::Devices::DeviceAndDriverInstallation::SETUP_DI_REGISTRY_PROPERTY,
+    mut visit: impl FnMut(&str) -> Option<T>,
+) -> Option<T> {
+    use windows::core::PCWSTR;
     use windows::Win32::Devices::DeviceAndDriverInstallation::{
         SetupDiEnumDeviceInfo, SetupDiGetClassDevsW, SetupDiGetDeviceRegistryPropertyW,
-        DIGCF_ALLCLASSES, SPDRP_FRIENDLYNAME, SP_DEVINFO_DATA,
+        DIGCF_ALLCLASSES, DIGCF_PRESENT, SP_DEVINFO_DATA,
     };
 
-    // AudioEndpoint 设备安装类：系统声音设置和 Get-PnpDevice -Class AudioEndpoint 用的同一类。
-    const AUDIO_ENDPOINT_CLASS: GUID = GUID::from_u128(0xc166523c_fe0c_4a94_a586_f1a80cfbbf3e);
-    // SAFETY: 类 GUID 有效；空 enumerator 表示枚举该类全部设备实例（含幽灵节点）。
-    // DIGCF_ALLCLASSES 会连非 present 的幽灵节点一起枚举，DIGCF_PRESENT 只挑
-    // present 的，这正是残留检测把"有残留"误判成"没装"的根因。
-    let Ok(set) = (unsafe {
-        SetupDiGetClassDevsW(
-            Some(&AUDIO_ENDPOINT_CLASS),
-            PCWSTR::null(),
-            None,
-            DIGCF_ALLCLASSES,
-        )
-    }) else {
-        return false;
+    let flags = if all_classes {
+        DIGCF_ALLCLASSES
+    } else {
+        DIGCF_PRESENT
+    };
+    // SAFETY: class 由调用方给，是合法类 GUID；空 enumerator 表示枚举该类全部实例。
+    let Ok(set) = (unsafe { SetupDiGetClassDevsW(Some(class), PCWSTR::null(), None, flags) })
+    else {
+        return None;
     };
     let _guard = DeviceSetGuard(set);
+
     let mut index = 0;
     loop {
         let mut info = SP_DEVINFO_DATA {
             cbSize: std::mem::size_of::<SP_DEVINFO_DATA>() as u32,
             ..Default::default()
         };
-        // SAFETY: set 有效；info 带正确 cbSize。
+        // SAFETY: set 有效；info 带正确 cbSize。失败即枚举结束。
         if unsafe { SetupDiEnumDeviceInfo(set, index, &mut info) }.is_err() {
-            break;
+            return None;
         }
         index += 1;
-        let mut bytes = [0u8; 1024];
+        let mut bytes = [0u8; N];
         let mut required = 0;
         // SAFETY: set/info 来自本次枚举；bytes 是有效可写缓冲。
         if unsafe {
             SetupDiGetDeviceRegistryPropertyW(
                 set,
                 &info,
-                SPDRP_FRIENDLYNAME,
+                property,
                 None,
                 Some(&mut bytes),
                 Some(&mut required),
@@ -235,17 +240,35 @@ fn cable_endpoint_records_remain() -> bool {
             continue;
         }
         let len = (required as usize).min(bytes.len()) / 2;
+        // 不截断结尾的 NUL：HARDWAREID 是 REG_MULTI_SZ，多个 ID 之间也用 NUL 隔开，
+        // 只看第一个字符串会漏掉后面的 ID。
         let words: Vec<u16> = bytes[..len * 2]
-            .chunks_exact(2)
-            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-            .take_while(|word| *word != 0)
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| u16::from_le_bytes(*pair))
             .collect();
-        let name = String::from_utf16_lossy(&words);
-        if is_cable_render(&name) || is_cable_capture(&name) {
-            return true;
+        if let Some(found) = visit(&String::from_utf16_lossy(&words)) {
+            return Some(found);
         }
     }
-    false
+}
+
+/// 残留端点也算记录：除 present 设备外，还要看到被 SetupAPI 保留、但已不在
+/// 现役的幽灵节点。根设备已删、卸载却被 PnP veto 拦下时，Core Audio 不再
+/// 枚举这些端点，但记录还挂在 AudioEndpoint 类里，DIGCF_PRESENT 会漏掉它们。
+fn cable_endpoint_records_remain() -> bool {
+    use windows::core::GUID;
+    use windows::Win32::Devices::DeviceAndDriverInstallation::SPDRP_FRIENDLYNAME;
+
+    // AudioEndpoint 设备安装类：系统声音设置和 Get-PnpDevice -Class AudioEndpoint 用的同一类。
+    const AUDIO_ENDPOINT_CLASS: GUID = GUID::from_u128(0xc166523c_fe0c_4a94_a586_f1a80cfbbf3e);
+    // DIGCF_ALLCLASSES 会连非 present 的幽灵节点一起枚举，DIGCF_PRESENT 只挑
+    // present 的，这正是残留检测把"有残留"误判成"没装"的根因。
+    device_property_any::<bool, 1024>(&AUDIO_ENDPOINT_CLASS, true, SPDRP_FRIENDLYNAME, |name| {
+        (is_cable_render(name) || is_cable_capture(name)).then_some(true)
+    })
+    .unwrap_or(false)
 }
 
 /// VB-CABLE 的 ROOT\MEDIA 根设备是否仍存在。
@@ -253,64 +276,22 @@ fn cable_endpoint_records_remain() -> bool {
 /// 只看服务键分不清“刚安装待重启”和“刚卸载待重启”：两种状态下服务键都可能还在。
 /// 根设备已经被卸载器移除时，SetupAPI 的 present 设备里不会再出现它。
 fn driver_root_device_present() -> bool {
-    use windows::core::PCWSTR;
     use windows::Win32::Devices::DeviceAndDriverInstallation::{
-        SetupDiEnumDeviceInfo, SetupDiGetClassDevsW, SetupDiGetDeviceRegistryPropertyW,
-        DIGCF_PRESENT, GUID_DEVCLASS_MEDIA, SPDRP_HARDWAREID, SP_DEVINFO_DATA,
+        GUID_DEVCLASS_MEDIA, SPDRP_HARDWAREID,
     };
 
-    // SAFETY: GUID 是系统常量；空 enumerator 表示枚举整个 MEDIA 类。
-    let Ok(set) = (unsafe {
-        SetupDiGetClassDevsW(
-            Some(&GUID_DEVCLASS_MEDIA),
-            PCWSTR::null(),
-            None,
-            DIGCF_PRESENT,
-        )
-    }) else {
-        return false;
-    };
-    let _guard = DeviceSetGuard(set);
-
-    let mut index = 0;
-    loop {
-        let mut info = SP_DEVINFO_DATA {
-            cbSize: std::mem::size_of::<SP_DEVINFO_DATA>() as u32,
-            ..Default::default()
-        };
-        // SAFETY: set 有效；info 带正确 cbSize。失败即枚举结束或单项异常。
-        if unsafe { SetupDiEnumDeviceInfo(set, index, &mut info) }.is_err() {
-            break;
-        }
-        index += 1;
-        let mut bytes = [0u8; 2048];
-        let mut required = 0;
-        // SAFETY: set/info 来自本次枚举；bytes 是有效可写缓冲。
-        if unsafe {
-            SetupDiGetDeviceRegistryPropertyW(
-                set,
-                &info,
-                SPDRP_HARDWAREID,
-                None,
-                Some(&mut bytes),
-                Some(&mut required),
-            )
-        }
-        .is_err()
-        {
-            continue;
-        }
-        let len = (required as usize).min(bytes.len()) / 2;
-        let words: Vec<u16> = bytes[..len * 2]
-            .chunks_exact(2)
-            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-            .collect();
-        let hardware_ids = String::from_utf16_lossy(&words).to_ascii_lowercase();
-        if hardware_ids.contains("vbaudiovacwdm") {
-            return true;
-        }
-    }
-    false
+    device_property_any::<bool, 2048>(
+        &GUID_DEVCLASS_MEDIA,
+        false,
+        SPDRP_HARDWAREID,
+        |hardware_ids| {
+            hardware_ids
+                .to_ascii_lowercase()
+                .contains("vbaudiovacwdm")
+                .then_some(true)
+        },
+    )
+    .unwrap_or(false)
 }
 
 /// 端点是否已经出现。COM 由本函数自己初始化，不依赖调用方。
@@ -363,7 +344,7 @@ pub fn is_cable_render(name: &str) -> bool {
 }
 
 /// 输入端点名匹配。老版新版都叫 `CABLE Output`，没变过。
-pub fn is_cable_capture(name: &str) -> bool {
+pub(crate) fn is_cable_capture(name: &str) -> bool {
     let n = name.to_ascii_lowercase();
     if is_other_vb_product(&n) {
         return false;
@@ -479,12 +460,6 @@ fn multichannel_pnp_instance_id() -> Option<String> {
 
 /// 在系统层隐藏或恢复 16 声道端点。PnPUtil 是 Windows 自带工具，禁用设备必须提权。
 pub fn set_multichannel_endpoint_enabled(enabled: bool) -> EndpointToggleOutcome {
-    use windows::core::PCWSTR;
-    use windows::Win32::Foundation::ERROR_CANCELLED;
-    use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
-    use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
-    use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
-
     let current = multichannel_endpoint_status();
     if matches!(
         (enabled, current),
@@ -496,57 +471,30 @@ pub fn set_multichannel_endpoint_enabled(enabled: bool) -> EndpointToggleOutcome
         return EndpointToggleOutcome::NotFound;
     };
 
-    let verb = to_wide("runas");
     let tool = system32_tool("pnputil.exe");
-    let file = to_wide(&tool.to_string_lossy());
     let operation = if enabled {
         "/enable-device"
     } else {
         "/disable-device"
     };
-    let args = to_wide(&format!("{operation} \"{instance_id}\""));
-    let cwd = to_wide(
-        &tool
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .to_string_lossy(),
-    );
-    let mut info = SHELLEXECUTEINFOW {
-        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
-        fMask: SEE_MASK_NOCLOSEPROCESS,
-        lpVerb: PCWSTR(verb.as_ptr()),
-        lpFile: PCWSTR(file.as_ptr()),
-        lpParameters: PCWSTR(args.as_ptr()),
-        lpDirectory: PCWSTR(cwd.as_ptr()),
-        nShow: SW_HIDE.0,
-        ..Default::default()
+    let args = format!("{operation} \"{instance_id}\"");
+    let cwd = tool.parent().unwrap_or_else(|| Path::new("."));
+    let code = match run_elevated(
+        &tool,
+        &args,
+        cwd,
+        60_000,
+        &ElevateMessages {
+            start: "启动系统设备管理工具失败",
+            no_handle: "系统设备管理工具没有返回进程句柄",
+            timeout: "等待系统隐藏音频端点超时",
+            exit_code: "读取设备管理工具结果失败",
+        },
+    ) {
+        Ok(ElevatedRun::Exited(code)) => code,
+        Ok(ElevatedRun::Declined) => return EndpointToggleOutcome::UserDeclinedElevation,
+        Err(message) => return EndpointToggleOutcome::Failed(message),
     };
-    // SAFETY: 所有宽字符串在调用期间有效；进程句柄由下方守卫关闭。
-    if let Err(error) = unsafe { ShellExecuteExW(&mut info) } {
-        if error.code() == windows::core::HRESULT::from_win32(ERROR_CANCELLED.0) {
-            return EndpointToggleOutcome::UserDeclinedElevation;
-        }
-        return EndpointToggleOutcome::Failed(
-            hr_err("启动系统设备管理工具失败", error.code()).message,
-        );
-    }
-    let process = info.hProcess;
-    if process.is_invalid() {
-        return EndpointToggleOutcome::Failed("系统设备管理工具没有返回进程句柄".into());
-    }
-    let _guard = OwnedHandle::new(process);
-    // SAFETY: process 有效。
-    if unsafe { WaitForSingleObject(process, 60_000) } != windows::Win32::Foundation::WAIT_OBJECT_0
-    {
-        return EndpointToggleOutcome::Failed("等待系统隐藏音频端点超时".into());
-    }
-    let mut code = 0;
-    // SAFETY: 进程已退出，句柄仍由守卫持有。
-    if let Err(error) = unsafe { GetExitCodeProcess(process, &mut code) } {
-        return EndpointToggleOutcome::Failed(
-            hr_err("读取设备管理工具结果失败", error.code()).message,
-        );
-    }
     if matches!(code, 3010 | 1641) {
         return EndpointToggleOutcome::NeedsReboot;
     }
@@ -963,12 +911,6 @@ pub fn uninstall_with_audio_reset(
     _disclosure: ProductDisclosure,
     archive: &Path,
 ) -> InstallOutcome {
-    use windows::core::PCWSTR;
-    use windows::Win32::Foundation::ERROR_CANCELLED;
-    use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
-    use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
-    use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
-
     if let Err(failed) = preflight(archive) {
         return failed;
     }
@@ -1001,45 +943,26 @@ pub fn uninstall_with_audio_reset(
     );
 
     let powershell = system32_tool("WindowsPowerShell\\v1.0\\powershell.exe");
-    let verb = to_wide("runas");
-    let file = to_wide(&powershell.to_string_lossy());
-    let args = to_wide(&format!(
+    let args = format!(
         "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"{}\"",
         script.replace('"', "\\\"")
-    ));
-    let cwd = to_wide(&work.to_string_lossy());
-    let mut info = SHELLEXECUTEINFOW {
-        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
-        fMask: SEE_MASK_NOCLOSEPROCESS,
-        lpVerb: PCWSTR(verb.as_ptr()),
-        lpFile: PCWSTR(file.as_ptr()),
-        lpParameters: PCWSTR(args.as_ptr()),
-        lpDirectory: PCWSTR(cwd.as_ptr()),
-        nShow: SW_HIDE.0,
-        ..Default::default()
+    );
+    let code = match run_elevated(
+        &powershell,
+        &args,
+        &work,
+        120_000,
+        &ElevateMessages {
+            start: "启动加强卸载流程失败",
+            no_handle: "加强卸载流程没有返回进程句柄",
+            timeout: "加强卸载等待超时",
+            exit_code: "读取加强卸载结果失败",
+        },
+    ) {
+        Ok(ElevatedRun::Exited(code)) => code,
+        Ok(ElevatedRun::Declined) => return InstallOutcome::UserDeclinedElevation,
+        Err(message) => return InstallOutcome::Failed(message),
     };
-    // SAFETY: 宽字符串在调用期间有效；进程句柄由下方守卫关闭。
-    if let Err(error) = unsafe { ShellExecuteExW(&mut info) } {
-        if error.code() == windows::core::HRESULT::from_win32(ERROR_CANCELLED.0) {
-            return InstallOutcome::UserDeclinedElevation;
-        }
-        return InstallOutcome::Failed(hr_err("启动加强卸载流程失败", error.code()).message);
-    }
-    let process = info.hProcess;
-    if process.is_invalid() {
-        return InstallOutcome::Failed("加强卸载流程没有返回进程句柄".into());
-    }
-    let _guard = OwnedHandle::new(process);
-    // SAFETY: process 有效。
-    if unsafe { WaitForSingleObject(process, 120_000) } != windows::Win32::Foundation::WAIT_OBJECT_0
-    {
-        return InstallOutcome::Failed("加强卸载等待超时".into());
-    }
-    let mut code = 0;
-    // SAFETY: 进程已退出，句柄仍有效。
-    if let Err(error) = unsafe { GetExitCodeProcess(process, &mut code) } {
-        return InstallOutcome::Failed(hr_err("读取加强卸载结果失败", error.code()).message);
-    }
     if code != 0 {
         return map_install_exit(code);
     }
@@ -1057,12 +980,6 @@ enum SetupAction {
 }
 
 fn run_setup(archive: &Path, action: SetupAction) -> InstallOutcome {
-    use windows::core::PCWSTR;
-    use windows::Win32::Foundation::ERROR_CANCELLED;
-    use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
-    use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
-    use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
-
     if let Err(failed) = preflight(archive) {
         return failed;
     }
@@ -1080,56 +997,26 @@ fn run_setup(archive: &Path, action: SetupAction) -> InstallOutcome {
         ));
     };
 
-    let verb = to_wide("runas");
-    let file = to_wide(&installer.to_string_lossy());
-    let args = to_wide(match action {
+    let args = match action {
         SetupAction::Install => INSTALL_ARGS,
         SetupAction::Uninstall => UNINSTALL_ARGS,
-    });
-    let cwd = to_wide(&work.to_string_lossy());
-
-    let mut info = SHELLEXECUTEINFOW {
-        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
-        fMask: SEE_MASK_NOCLOSEPROCESS,
-        lpVerb: PCWSTR(verb.as_ptr()),
-        lpFile: PCWSTR(file.as_ptr()),
-        lpParameters: PCWSTR(args.as_ptr()),
-        lpDirectory: PCWSTR(cwd.as_ptr()),
-        nShow: SW_HIDE.0,
-        ..Default::default()
     };
-
-    // SAFETY: info 的所有字符串缓冲都是本地变量，在调用期间有效；
-    // cbSize 已按结构体大小填好；NOCLOSEPROCESS 表示 hProcess 由我们负责关闭。
-    if let Err(e) = unsafe { ShellExecuteExW(&mut info) } {
-        // 用户在 UAC 上点“否”就是这个码，单独区分出来好让界面提示“需要管理员权限”。
-        if e.code() == windows::core::HRESULT::from_win32(ERROR_CANCELLED.0) {
-            return InstallOutcome::UserDeclinedElevation;
-        }
-        return InstallOutcome::Failed(hr_err("启动安装器失败", e.code()).message);
-    }
-
-    let process = info.hProcess;
-    if process.is_invalid() {
-        return InstallOutcome::Failed("安装器没有返回进程句柄，无法确认安装结果".into());
-    }
-    // 句柄一定要关，用守卫兜住所有返回路径。
-    let _guard = OwnedHandle::new(process);
-
-    // 静默安装通常十几秒。给 5 分钟上限，别把界面永远卡死。
-    // SAFETY: 句柄有效，由上面的守卫持有。
-    let wait = unsafe { WaitForSingleObject(process, 5 * 60 * 1000) };
-    if wait != windows::Win32::Foundation::WAIT_OBJECT_0 {
-        return InstallOutcome::Failed(
-            "等待安装器结束超时（5 分钟）。请检查是否有安装向导窗口在等你操作。".into(),
-        );
-    }
-
-    let mut code: u32 = 0;
-    // SAFETY: 进程已退出，句柄有效。
-    if let Err(e) = unsafe { GetExitCodeProcess(process, &mut code) } {
-        return InstallOutcome::Failed(hr_err("读取安装器退出码失败", e.code()).message);
-    }
+    let code = match run_elevated(
+        &installer,
+        args,
+        &work,
+        5 * 60 * 1000,
+        &ElevateMessages {
+            start: "启动安装器失败",
+            no_handle: "安装器没有返回进程句柄，无法确认安装结果",
+            timeout: "等待安装器结束超时（5 分钟）。请检查是否有安装向导窗口在等你操作。",
+            exit_code: "读取安装器退出码失败",
+        },
+    ) {
+        Ok(ElevatedRun::Exited(code)) => code,
+        Ok(ElevatedRun::Declined) => return InstallOutcome::UserDeclinedElevation,
+        Err(message) => return InstallOutcome::Failed(message),
+    };
 
     match map_install_exit(code) {
         // 退出码说成功，还要看设备实际状态；安装和卸载都可能要重启才完成。
