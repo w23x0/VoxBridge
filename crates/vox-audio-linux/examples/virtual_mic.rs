@@ -24,7 +24,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let sink = VirtualSink::create()?;
-    println!("虚拟麦已建立：{}（{}）", virtual_mic_description(), sink.node_name());
+    println!(
+        "虚拟麦已建立：{}（{}）",
+        virtual_mic_description(),
+        sink.node_name()
+    );
     println!("在别的程序（VRChat / Discord / OBS）的录音设备里选它即可。");
     println!("挂 {seconds} 秒…");
     std::thread::sleep(Duration::from_secs(seconds));

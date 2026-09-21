@@ -35,19 +35,19 @@ use std::time::Duration;
 use pipewire as pw;
 use pw::properties::properties;
 use pw::spa;
-use pw::spa::pod::Pod;
 use vox_core::ports::{
     AudioChunk, CaptureFormat, CaptureSource, CaptureTarget, PortError, PortResult,
 };
 use vox_dsp::chunk::Blocker;
 
-use crate::probe::{self, CLASS_OUTPUT_STREAM};
+use crate::link_keeper::LinkKeeper;
+use crate::probe::{
+    self, as_f32_slice, attach_quit, map_err, Cmd, CLASS_OUTPUT_STREAM, REQUEST_CHANNELS,
+    REQUEST_RATE,
+};
 
 /// 等流进入 Streaming 的上限（跟 Windows 侧同一个量级）。
 const START_TIMEOUT: Duration = Duration::from_secs(8);
-/// 我们向图请求的格式。48 kHz 是 RNNoise 的原生率，让图去转比我们转省事。
-const REQUEST_RATE: u32 = 48_000;
-const REQUEST_CHANNELS: u16 = 2;
 /// 采集流名字前缀。**每条流带唯一后缀**：`stream.node_id()` 在连上之前是
 /// `PW_ID_ANY`，所以链路守护只能按名字找自己（见 `link_keeper.rs`）。
 const NODE_NAME_PREFIX: &str = "voxbridge-capture";
@@ -59,11 +59,6 @@ enum Plan {
     Microphone(Option<String>),
     /// 按程序抓音：要抓的流节点（可能多条，全部由 `link_keeper` 显式连进来）。
     Process { targets: Vec<u32>, label: String },
-}
-
-/// 从流水线线程发给采集线程的命令。
-enum Cmd {
-    Quit,
 }
 
 struct Shared {
@@ -149,7 +144,10 @@ impl CaptureSource for LinuxCapture {
 
     fn stop(&mut self) {
         if let Some(running) = self.running.take() {
-            running.shared.stop.store(true, std::sync::atomic::Ordering::Release);
+            running
+                .shared
+                .stop
+                .store(true, std::sync::atomic::Ordering::Release);
             let _ = running.cmd.send(Cmd::Quit);
             // 线程退出即代表回调不会再触发——这是 trait 契约里唯一能给的保证。
             //
@@ -251,7 +249,8 @@ fn descendants(root: u32) -> Vec<u32> {
             Err(_) => continue,
         };
         for task in tasks.flatten() {
-            let children = std::fs::read_to_string(task.path().join("children")).unwrap_or_default();
+            let children =
+                std::fs::read_to_string(task.path().join("children")).unwrap_or_default();
             for child in children.split_whitespace() {
                 if let Ok(child) = child.parse::<u32>() {
                     if seen.insert(child) {
@@ -274,19 +273,9 @@ fn capture_thread(
     on_chunk: Box<dyn FnMut(AudioChunk) + Send>,
 ) {
     let result = (|| -> PortResult<()> {
-        pw::init();
-        let main_loop = pw::main_loop::MainLoopRc::new(None).map_err(map_err)?;
-        let context = pw::context::ContextRc::new(&main_loop, None).map_err(map_err)?;
-        let core = context.connect_rc(None).map_err(map_err)?;
-
-        let loop_weak = main_loop.downgrade();
-        let _attached = cmd_rx.attach(main_loop.loop_(), move |cmd| match cmd {
-            Cmd::Quit => {
-                if let Some(main_loop) = loop_weak.upgrade() {
-                    main_loop.quit();
-                }
-            }
-        });
+        probe::init();
+        let (main_loop, core) = probe::connect()?;
+        let _attached = attach_quit(&main_loop, cmd_rx);
 
         // 名字唯一：进程号 + 纳秒时间戳（同一个进程里连开两次也不会撞）。
         let node_name = format!(
@@ -351,7 +340,13 @@ fn capture_thread(
                     channels,
                 });
                 data.blocker = Some(Blocker::new(rate, channels, data.block_ms));
-                report_started(&data.shared, CaptureFormat { sample_rate: rate, channels });
+                report_started(
+                    &data.shared,
+                    CaptureFormat {
+                        sample_rate: rate,
+                        channels,
+                    },
+                );
             })
             .state_changed(|_stream, data, _old, new| {
                 if new == pw::stream::StreamState::Streaming && data.negotiated.is_none() {
@@ -360,7 +355,8 @@ fn capture_thread(
                         sample_rate: REQUEST_RATE,
                         channels: REQUEST_CHANNELS,
                     });
-                    data.blocker = Some(Blocker::new(REQUEST_RATE, REQUEST_CHANNELS, data.block_ms));
+                    data.blocker =
+                        Some(Blocker::new(REQUEST_RATE, REQUEST_CHANNELS, data.block_ms));
                     report_started(
                         &data.shared,
                         CaptureFormat {
@@ -370,10 +366,7 @@ fn capture_thread(
                     );
                 }
                 if let pw::stream::StreamState::Error(message) = new {
-                    report_failed(
-                        &data.shared,
-                        format!("采集流出错：{message}"),
-                    );
+                    report_failed(&data.shared, format!("采集流出错：{message}"));
                 }
             })
             .process(|stream, data| {
@@ -389,13 +382,12 @@ fn capture_thread(
                 };
                 // **必须只看 chunk.size() 指的那一段**：`data()` 给的是整个映射缓冲，
                 // 后面的字节是上一轮的残留。按整块算会把样本数放大十几倍（实测过）。
-                let channels = data.negotiated.map_or(1u16, |f| f.channels).max(1) as usize;
                 let (offset, size) = {
                     let chunk = data_buf.chunk();
                     (chunk.offset() as usize, chunk.size() as usize)
                 };
-                // 采样格式是 f32 交错，所以一帧 = channels 个 f32；stride 只是核对用。
-                debug_assert!(channels > 0);
+                // 采样格式是 f32 交错，所以按字节切就够：声道数这里用不上——
+                // 块由 `Blocker` 按协商到的声道数切（见上面的 `Blocker::new`）。
                 let Some(slice) = data_buf.data() else {
                     return;
                 };
@@ -415,30 +407,6 @@ fn capture_thread(
             .register()
             .map_err(map_err)?;
 
-        let mut audio_info = spa::param::audio::AudioInfoRaw::new();
-        audio_info.set_format(spa::param::audio::AudioFormat::F32LE);
-        audio_info.set_rate(REQUEST_RATE);
-        audio_info.set_channels(REQUEST_CHANNELS as u32);
-        let mut position = [0; spa::param::audio::MAX_CHANNELS];
-        position[0] = pw::spa::sys::SPA_AUDIO_CHANNEL_FL;
-        position[1] = pw::spa::sys::SPA_AUDIO_CHANNEL_FR;
-        audio_info.set_position(position);
-
-        let values = pw::spa::pod::serialize::PodSerializer::serialize(
-            std::io::Cursor::new(Vec::new()),
-            &pw::spa::pod::Value::Object(pw::spa::pod::Object {
-                type_: pw::spa::sys::SPA_TYPE_OBJECT_Format,
-                id: pw::spa::sys::SPA_PARAM_EnumFormat,
-                properties: audio_info.into(),
-            }),
-        )
-        .map_err(|e| PortError::new(format!("构造音频格式失败：{e}")))?
-        .0
-        .into_inner();
-        let pod =
-            Pod::from_bytes(&values).ok_or_else(|| PortError::new("音频格式序列化结果不合法"))?;
-        let mut params = [pod];
-
         // 麦克风走自动连接（wireplumber 认设备节点）；按程序抓音不自动连，
         // 链路由下面的守护显式建（见模块头）。
         let flags = match &plan {
@@ -447,9 +415,7 @@ fn capture_thread(
             }
             Plan::Process { .. } => pw::stream::StreamFlags::MAP_BUFFERS,
         };
-        stream
-            .connect(spa::utils::Direction::Input, None, flags, &mut params)
-            .map_err(map_err)?;
+        probe::connect_request_format(&stream, spa::utils::Direction::Input, flags)?;
 
         // 链路守护：自己开连接，把目标程序的输出端口连到我们的输入端口。
         // 它必须在本线程 `run()` **之前**起：不连上就没有格式协商，流到不了
@@ -458,7 +424,7 @@ fn capture_thread(
         let _keeper = match &plan {
             Plan::Process { targets, label } => {
                 tracing::debug!("「{label}」交给链路守护（{} 条流）", targets.len());
-                Some(crate::LinkKeeper::start(node_name.clone(), targets.clone())?)
+                Some(LinkKeeper::start(node_name.clone(), targets.clone())?)
             }
             Plan::Microphone(_) => None,
         };
@@ -491,17 +457,6 @@ fn report_failed(shared: &Shared, message: String) -> bool {
         }
         None => false,
     }
-}
-
-/// PipeWire 给的是字节切片，我们按 f32 读。长度一定 4 的整数倍（stride 算过）。
-fn as_f32_slice(slice: &[u8]) -> &[f32] {
-    // SAFETY：f32 对齐要求 4，PipeWire 的缓冲按 4 字节对齐；长度取整到 4 的倍数。
-    let len = slice.len() / std::mem::size_of::<f32>();
-    unsafe { std::slice::from_raw_parts(slice.as_ptr().cast::<f32>(), len) }
-}
-
-fn map_err(err: pw::Error) -> PortError {
-    PortError::new(format!("PipeWire 出错：{err}"))
 }
 
 #[cfg(test)]

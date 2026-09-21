@@ -22,16 +22,12 @@ use pipewire as pw;
 use pw::properties::properties;
 use vox_core::ports::{PortError, PortResult};
 
-use crate::probe;
+use crate::probe::{self, attach_quit, Cmd};
 
 /// 等端口出现的上限：采集流连上之后端口基本立刻就有，2 秒是兜底。
 const WAIT_TIMEOUT: Duration = Duration::from_secs(2);
 /// 轮询间隔。
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
-
-enum Cmd {
-    Quit,
-}
 
 /// 链路守护。`stop()` 之后链路消失（代理被 drop）。
 pub struct LinkKeeper {
@@ -78,7 +74,7 @@ impl Drop for LinkKeeper {
 
 /// 守护线程：自己的连接 + 主循环，建完链就一直挂着。
 fn keeper_thread(our_node_name: String, targets: Vec<u32>, cmd_rx: pw::channel::Receiver<Cmd>) {
-    pw::init();
+    probe::init();
     let (main_loop, core) = match probe::connect() {
         Ok(pair) => pair,
         Err(e) => {
@@ -87,14 +83,7 @@ fn keeper_thread(our_node_name: String, targets: Vec<u32>, cmd_rx: pw::channel::
         }
     };
 
-    let loop_weak = main_loop.downgrade();
-    let _attached = cmd_rx.attach(main_loop.loop_(), move |cmd| match cmd {
-        Cmd::Quit => {
-            if let Some(main_loop) = loop_weak.upgrade() {
-                main_loop.quit();
-            }
-        }
-    });
+    let _attached = attach_quit(&main_loop, cmd_rx);
 
     let links = match link_all(&core, &our_node_name, &targets) {
         Ok(links) => links,

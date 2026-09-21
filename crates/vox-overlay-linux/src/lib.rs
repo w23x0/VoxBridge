@@ -8,7 +8,7 @@
 
 #![cfg(target_os = "linux")]
 
-pub mod font;
+mod font;
 mod mailbox;
 mod window;
 

@@ -17,19 +17,19 @@ use std::time::Duration;
 use pipewire as pw;
 use pw::properties::properties;
 use pw::spa;
-use pw::spa::pod::Pod;
 use vox_core::pipeline::ResampleFactory;
 use vox_core::ports::{PlaybackSink, PlaybackStats, PortError, PortResult, Resample};
 use vox_dsp::channels::duplicate_mono;
 use vox_dsp::ring::{should_warn, DropRing};
 
+use crate::probe::{
+    self, as_f32_slice_mut, attach_quit, map_err, Cmd, REQUEST_CHANNELS, REQUEST_RATE,
+};
+
 /// 环缓冲容量：5 秒 48 kHz 立体声（跟 Windows 侧同一个量级）。
 const RING_SECONDS: usize = 5;
 /// 等流进入 Streaming 的上限。超时就报错，不留僵尸线程。
 const OPEN_TIMEOUT: Duration = Duration::from_secs(8);
-/// 我们向图请求的格式。PipeWire 负责转成设备要的。
-const REQUEST_RATE: u32 = 48_000;
-const REQUEST_CHANNELS: u16 = 2;
 /// 流在会话里的名字（`wpctl status` 里看得到）。
 const NODE_NAME: &str = "VoxBridge 播放";
 
@@ -39,11 +39,6 @@ struct Shared {
     stop: AtomicBool,
     rendered_samples: AtomicU64,
     device_latency_ms: AtomicU64,
-}
-
-/// 从流水线线程发给流线程的命令。
-enum Cmd {
-    Quit,
 }
 
 pub struct LinuxPlayback {
@@ -219,20 +214,9 @@ fn stream_thread(
     let mut report = Some(report);
 
     let result = (|| -> PortResult<()> {
-        pw::init();
-        let main_loop = pw::main_loop::MainLoopRc::new(None).map_err(map_err)?;
-        let context = pw::context::ContextRc::new(&main_loop, None).map_err(map_err)?;
-        let core = context.connect_rc(None).map_err(map_err)?;
-
-        // 命令通道挂在主循环上：Quit 一来就叫停主循环，线程随之收工。
-        let loop_weak = main_loop.downgrade();
-        let _attached = cmd_rx.attach(main_loop.loop_(), move |cmd| match cmd {
-            Cmd::Quit => {
-                if let Some(main_loop) = loop_weak.upgrade() {
-                    main_loop.quit();
-                }
-            }
-        });
+        probe::init();
+        let (main_loop, core) = probe::connect()?;
+        let _attached = attach_quit(&main_loop, cmd_rx);
 
         let mut props = properties! {
             *pw::keys::MEDIA_TYPE => "Audio",
@@ -293,9 +277,7 @@ fn stream_thread(
                 }
                 if let pw::stream::StreamState::Error(message) = new {
                     if let Some(report) = data.report.take() {
-                        let _ = report.send(Err(PortError::new(format!(
-                            "播放流出错：{message}"
-                        ))));
+                        let _ = report.send(Err(PortError::new(format!("播放流出错：{message}"))));
                     }
                 }
             })
@@ -313,12 +295,10 @@ fn stream_thread(
                 let filled = match data_buf.data() {
                     Some(slice) => {
                         let frames = slice.len() / stride;
-                        // 借出去当 f32 用：PipeWire 的缓冲是 4 字节对齐的（f32 也是）。
-                        let out = bytemuck_cast(slice);
+                        // 欠载时剩下的由 `read_into` 补静音（不报错：语音流断一下比崩掉强），
+                        // 这里只记数。
+                        let out = as_f32_slice_mut(slice);
                         let read = data.shared.ring.read_into(out);
-                        if read < out.len() {
-                            // 欠载：剩下的补静音（read_into 已经补了），只记数不报错。
-                        }
                         data.shared
                             .rendered_samples
                             .fetch_add(read as u64, Ordering::Release);
@@ -329,12 +309,14 @@ fn stream_thread(
 
                 // 流延迟（毫秒）直接问 PipeWire 要，给内核做延迟统计。
                 if let Ok(time) = stream.time() {
-                    let rate = data.negotiated.map(|(r, _)| r).unwrap_or(REQUEST_RATE).max(1);
+                    let rate = data
+                        .negotiated
+                        .map(|(r, _)| r)
+                        .unwrap_or(REQUEST_RATE)
+                        .max(1);
                     let delay = time.delay().max(0) as u64;
                     let ms = delay.saturating_mul(1000) / rate as u64;
-                    data.shared
-                        .device_latency_ms
-                        .store(ms, Ordering::Release);
+                    data.shared.device_latency_ms.store(ms, Ordering::Release);
                 }
 
                 let chunk = data_buf.chunk_mut();
@@ -346,41 +328,13 @@ fn stream_thread(
             .map_err(map_err)?;
 
         // 请求 48 kHz 立体声 f32；图里谁要别的格式由 PipeWire 转。
-        let mut audio_info = spa::param::audio::AudioInfoRaw::new();
-        audio_info.set_format(spa::param::audio::AudioFormat::F32LE);
-        audio_info.set_rate(REQUEST_RATE);
-        audio_info.set_channels(REQUEST_CHANNELS as u32);
-        let mut position = [0; spa::param::audio::MAX_CHANNELS];
-        position[0] = pw::spa::sys::SPA_AUDIO_CHANNEL_FL;
-        position[1] = pw::spa::sys::SPA_AUDIO_CHANNEL_FR;
-        audio_info.set_position(position);
-
-        let values = pw::spa::pod::serialize::PodSerializer::serialize(
-            std::io::Cursor::new(Vec::new()),
-            &pw::spa::pod::Value::Object(pw::spa::pod::Object {
-                type_: pw::spa::sys::SPA_TYPE_OBJECT_Format,
-                id: pw::spa::sys::SPA_PARAM_EnumFormat,
-                properties: audio_info.into(),
-            }),
-        )
-        .map_err(|e| PortError::new(format!("构造音频格式失败：{e}")))?
-        .0
-        .into_inner();
-
-        let pod = Pod::from_bytes(&values)
-            .ok_or_else(|| PortError::new("音频格式序列化结果不合法"))?;
-        let mut params = [pod];
-
-        stream
-            .connect(
-                spa::utils::Direction::Output,
-                None,
-                pw::stream::StreamFlags::AUTOCONNECT
-                    | pw::stream::StreamFlags::MAP_BUFFERS
-                    | pw::stream::StreamFlags::RT_PROCESS,
-                &mut params,
-            )
-            .map_err(map_err)?;
+        probe::connect_request_format(
+            &stream,
+            spa::utils::Direction::Output,
+            pw::stream::StreamFlags::AUTOCONNECT
+                | pw::stream::StreamFlags::MAP_BUFFERS
+                | pw::stream::StreamFlags::RT_PROCESS,
+        )?;
 
         reported = true;
         main_loop.run();
@@ -397,16 +351,4 @@ fn stream_thread(
             tracing::error!("播放流线程退出：{e}");
         }
     }
-}
-
-/// PipeWire 给的是字节切片，我们按 f32 读。长度一定 4 的整数倍（stride 算过）。
-fn bytemuck_cast(slice: &mut [u8]) -> &mut [f32] {
-    // SAFETY：f32 对齐要求 4，PipeWire 的缓冲按 4 字节对齐；长度取整到 4 的倍数。
-    // 这条转换在音频路径上很常见，用 unsafe 换掉每帧一次拷贝。
-    let len = slice.len() / std::mem::size_of::<f32>();
-    unsafe { std::slice::from_raw_parts_mut(slice.as_mut_ptr().cast::<f32>(), len) }
-}
-
-fn map_err(err: pw::Error) -> PortError {
-    PortError::new(format!("PipeWire 出错：{err}"))
 }

@@ -1,6 +1,7 @@
-//! 连一次 PipeWire、收一轮"图快照"、断开。
+//! 连一次 PipeWire、收一轮"图快照"、断开；外加全 crate 共用的那点 PipeWire 胶水
+//! （连接、错误翻译、请求格式、后台线程的命令通道）。
 //!
-//! 这里刻意做成**一次性**的：设备枚举是低频动作（装配层 2 秒轮询一次），
+//! 快照这里刻意做成**一次性**的：设备枚举是低频动作（装配层 2 秒轮询一次），
 //! 每次连一次、roundtrip 一轮、拿完就散，不维护常驻连接、不引后台线程。
 //! 跟 Windows 侧 `WinDeviceRegistry` 每次新建一个 COM guard 是同一个路子。
 //!
@@ -13,6 +14,8 @@ use std::rc::Rc;
 
 use pipewire as pw;
 use pw::proxy::{Listener, ProxyT};
+use pw::spa;
+use pw::spa::pod::Pod;
 use pw::spa::utils::dict::DictRef;
 use pw::types::ObjectType;
 use vox_core::ports::{PortError, PortResult};
@@ -340,6 +343,85 @@ pub(crate) fn roundtrip(
 /// PipeWire 的错误翻成中文，带上原始描述（用户看到的是这个字符串）。
 pub(crate) fn map_err(err: pw::Error) -> PortError {
     PortError::new(format!("PipeWire 出错：{err}"))
+}
+
+/// 我们向图请求的格式：48 kHz 立体声 f32。
+///
+/// 48 kHz 是 RNNoise 的原生率；采集与播放请求的是同一份，由 PipeWire 在图里转成
+/// 设备/程序真正要的（Linux 上不用像 Windows 那样自己探设备率）。
+pub(crate) const REQUEST_RATE: u32 = 48_000;
+pub(crate) const REQUEST_CHANNELS: u16 = 2;
+
+/// 把请求格式序列化成 `EnumFormat` 参数并连到流上。采集与播放唯一不同的是方向与 flag。
+pub(crate) fn connect_request_format(
+    stream: &pw::stream::StreamBox,
+    direction: spa::utils::Direction,
+    flags: pw::stream::StreamFlags,
+) -> PortResult<()> {
+    let mut audio_info = spa::param::audio::AudioInfoRaw::new();
+    audio_info.set_format(spa::param::audio::AudioFormat::F32LE);
+    audio_info.set_rate(REQUEST_RATE);
+    audio_info.set_channels(REQUEST_CHANNELS as u32);
+    let mut position = [0; spa::param::audio::MAX_CHANNELS];
+    position[0] = pw::spa::sys::SPA_AUDIO_CHANNEL_FL;
+    position[1] = pw::spa::sys::SPA_AUDIO_CHANNEL_FR;
+    audio_info.set_position(position);
+
+    let values = pw::spa::pod::serialize::PodSerializer::serialize(
+        std::io::Cursor::new(Vec::new()),
+        &pw::spa::pod::Value::Object(pw::spa::pod::Object {
+            type_: pw::spa::sys::SPA_TYPE_OBJECT_Format,
+            id: pw::spa::sys::SPA_PARAM_EnumFormat,
+            properties: audio_info.into(),
+        }),
+    )
+    .map_err(|e| PortError::new(format!("构造音频格式失败：{e}")))?
+    .0
+    .into_inner();
+    let pod = Pod::from_bytes(&values).ok_or_else(|| PortError::new("音频格式序列化结果不合法"))?;
+    let mut params = [pod];
+
+    stream
+        .connect(direction, None, flags, &mut params)
+        .map_err(map_err)?;
+    Ok(())
+}
+
+/// 后台线程（采集、播放、链路守护）的收工命令：三者都只有"停"这一件事。
+pub(crate) enum Cmd {
+    Quit,
+}
+
+/// 把命令通道挂到主循环上：收到 `Quit` 就叫停主循环，线程随之收工。
+///
+/// 返回值必须活到线程结束为止——drop 掉就等于把监听摘了。
+pub(crate) fn attach_quit(
+    main_loop: &pw::main_loop::MainLoopRc,
+    cmd_rx: pw::channel::Receiver<Cmd>,
+) -> pw::channel::AttachedReceiver<'_, Cmd> {
+    let loop_weak = main_loop.downgrade();
+    cmd_rx.attach(main_loop.loop_(), move |cmd| match cmd {
+        Cmd::Quit => {
+            if let Some(main_loop) = loop_weak.upgrade() {
+                main_loop.quit();
+            }
+        }
+    })
+}
+
+/// PipeWire 给的是字节切片，我们按 f32 读。长度一定 4 的整数倍（stride 算过）。
+pub(crate) fn as_f32_slice(slice: &[u8]) -> &[f32] {
+    // SAFETY：f32 对齐要求 4，PipeWire 的缓冲按 4 字节对齐；长度取整到 4 的倍数。
+    let len = slice.len() / std::mem::size_of::<f32>();
+    unsafe { std::slice::from_raw_parts(slice.as_ptr().cast::<f32>(), len) }
+}
+
+/// 同上，可变版：播放侧要往缓冲里写。
+pub(crate) fn as_f32_slice_mut(slice: &mut [u8]) -> &mut [f32] {
+    // SAFETY：同 `as_f32_slice`。这条转换在音频路径上很常见，
+    // 用 unsafe 换掉每帧一次拷贝。
+    let len = slice.len() / std::mem::size_of::<f32>();
+    unsafe { std::slice::from_raw_parts_mut(slice.as_mut_ptr().cast::<f32>(), len) }
 }
 
 fn node_record(info: &pw::node::NodeInfoRef) -> NodeRecord {

@@ -217,9 +217,6 @@ fn read_loop(mut device: Device, name: &str, state: Arc<Mutex<State>>, stop: Arc
     }
 }
 
-/// 给"权限缺失"这类情况用的固定等待：让调用方有个统一的说法。
-pub const INPUT_GROUP_HINT: &str = "sudo usermod -aG input $USER（然后重新登录）";
-
 #[cfg(test)]
 mod tests {
     use super::*;

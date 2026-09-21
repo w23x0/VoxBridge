@@ -99,12 +99,8 @@ impl Overlay {
         window.add(&area);
         area.show();
 
-        // 鼠标穿透：把输入域清空。X11 下这就是 `XShapeCombineRegion(ShapeInput)`，
-        // 实测窗口不再接任何指针事件（见 docs §2.3）。
-        if let Some(gdk_window) = window.window() {
-            let empty = gtk::cairo::Region::create();
-            gdk_window.input_shape_combine_region(&empty, 0, 0);
-        }
+        // 鼠标穿透：把输入域清空（见 `clear_input_shape`）。
+        clear_input_shape(&window);
 
         let renderer = Renderer::new(settings, dpi, font_factory)?;
 
@@ -133,10 +129,7 @@ impl Overlay {
 
         window.show();
         // 窗口可见之后再把输入域清一次：有些后端在 map 时会重置 shape。
-        if let Some(gdk_window) = window.window() {
-            let empty = gtk::cairo::Region::create();
-            gdk_window.input_shape_combine_region(&empty, 0, 0);
-        }
+        clear_input_shape(&window);
 
         Ok(Arc::new(Self { mailbox }))
     }
@@ -255,6 +248,17 @@ impl Inner {
         cr.set_operator(gtk::cairo::Operator::Source);
         cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
         let _ = cr.paint();
+    }
+}
+
+/// 鼠标穿透：把输入域清空。X11 下这就是 `XShapeCombineRegion(ShapeInput)`，
+/// 实测窗口不再接任何指针事件（见 docs §2.3）。
+///
+/// 建窗时要清一次、`show()` 之后还要再清一次（有些后端在 map 时会重置 shape）。
+fn clear_input_shape(window: &gtk::Window) {
+    if let Some(gdk_window) = window.window() {
+        let empty = gtk::cairo::Region::create();
+        gdk_window.input_shape_combine_region(&empty, 0, 0);
     }
 }
 

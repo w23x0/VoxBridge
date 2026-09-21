@@ -14,4 +14,4 @@
 mod codes;
 mod hotkey;
 
-pub use hotkey::{HotkeyListener, INPUT_GROUP_HINT};
+pub use hotkey::HotkeyListener;

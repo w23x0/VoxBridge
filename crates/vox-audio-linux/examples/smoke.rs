@@ -59,10 +59,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "app" => {
             let binary = args.get(1).ok_or("用法：smoke -- app <程序名> [秒数]")?;
             let seconds: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(5);
-            capture(CaptureTarget::ProcessLoopback {
-                executable: binary.clone(),
-                include_tree: true,
-            }, seconds)
+            capture(
+                CaptureTarget::ProcessLoopback {
+                    executable: binary.clone(),
+                    include_tree: true,
+                },
+                seconds,
+            )
         }
         "mic" => {
             let seconds: u64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(3);
@@ -87,11 +90,19 @@ fn devices() -> Result<(), Box<dyn std::error::Error>> {
     let registry = LinuxDeviceRegistry::new();
     println!("== 输入设备 ==");
     for device in registry.input_devices()? {
-        println!("  {}{}", if device.is_default { "* " } else { "  " }, device.name);
+        println!(
+            "  {}{}",
+            if device.is_default { "* " } else { "  " },
+            device.name
+        );
     }
     println!("== 输出设备 ==");
     for device in registry.output_devices()? {
-        println!("  {}{}", if device.is_default { "* " } else { "  " }, device.name);
+        println!(
+            "  {}{}",
+            if device.is_default { "* " } else { "  " },
+            device.name
+        );
     }
     println!("== 正在出声的程序 ==");
     for app in registry.audio_apps()? {
