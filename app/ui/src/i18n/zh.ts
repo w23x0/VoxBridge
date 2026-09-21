@@ -10,8 +10,6 @@
 import type { Dict } from "./types";
 
 const zh = {
-  app: { name: "VoxBridge" },
-
   nav: {
     home: "首页",
     providers: "模型服务商",
@@ -84,8 +82,6 @@ const zh = {
     micNotFound: "未发现麦克风",
     appNoAudioFound: "未发现音频程序",
     appSelectApp: "请选择程序",
-    recommendedSuffix: " · 默认",
-    listeningProgram: "监听程序",
   },
 
   latency: {
@@ -110,8 +106,6 @@ const zh = {
     dropped: "丢块 / 处理",
     droppedHint: "丢弃数 / 处理数",
     startup: "启动",
-    connect: "连接 {ms}",
-    ready: "就绪 {ms}",
     startupLine: "连接 {connect} · 就绪 {ready}",
     segmentsAria: "延迟分段",
     fromVadHint: "从说话确认到首个输出",
@@ -121,7 +115,6 @@ const zh = {
   vrchat: {
     steamVrOverlay: "SteamVR 字幕",
     steamVrOverlayDesc: "在 SteamVR 头显中显示听到的 VRChat 字幕，样式跟随悬浮字幕设置",
-    heading: "VRChat(OSC) 同步",
     sync: "OSC 同步",
     syncDesc: "开/关与 VRChat 的 OSC 通信总开关",
     start: "启动",
@@ -134,12 +127,10 @@ const zh = {
     testing: "发送中…",
     sent: "已发送测试消息",
     sendFailed: "发送失败：{error}",
-    avatar: "Avatar 状态",
     avatarDesc: "按 OSCTracker 输出到自定义表情参数",
     avatarEnable: "启用状态同步",
     param: "参数名",
     paramDesc: "输出到 VRChat 自适应参数的那个名字",
-    paramDefault: "VoxSpeaking",
     port: "OSC 端口",
     portDesc: "与 VRChat 的 OSC(输入) 端口一致",
     started: "OSC 同步已启动",
@@ -151,7 +142,6 @@ const zh = {
   },
 
   settings: {
-    groupTitle: "设置",
     virtualCable: "虚拟麦克风",
     virtualCableNativeHint:
       "Linux 不需要安装驱动：虚拟麦克风由 PipeWire 原生提供。在目标程序（VRChat / Discord / OBS）的录音设备里选「VoxBridge Virtual Mic」即可。",
@@ -222,7 +212,6 @@ const zh = {
     },
     primaryKey: "主键",
     primaryKeyFor: "{label} 的主键",
-    hotkeyUnset: "未设置",
   },
 
   home: {
@@ -264,18 +253,10 @@ const zh = {
   },
 
   about: {
-    heading: "关于",
     product: "产品",
     productValue: "实时语音翻译",
-    version: "版本",
-    update: "检查更新",
-    channelPlaceholder: "通道待配置",
-    license: "许可",
-    credits: "致谢",
-    homepage: "主页",
     checkUpdate: "检查更新",
     catalogSection: "模型目录",
-    catalogProvider: "目录 · {name}",
     catalogCurrent: "当前 v{at}",
     catalogChecking: "检查…",
     catalogNoOverride: "未使用本地覆盖（内置 v{at}）",
@@ -298,38 +279,29 @@ const zh = {
   },
 
   usage: {
-    heading: "用量",
     rangeToday: "今日",
     rangeMonth: "本月",
     rangeTotal: "总计",
     rangeAria: "统计范围",
-    tokenTotal: "Token 总量",
     inputTokens: "输入",
     outputTokens: "输出",
     turns: "轮次",
     turnsCount: "{n} 轮",
-    monthly: "本月用量",
-    daily: "本日用量",
-    model: "模型",
     modelList: "模型明细",
     modelChipRealtime: "实时翻译",
     modelChipLegacy: "历史记录",
-    reset: "重置用量",
     clear: "清空",
     confirmClear: "确认清空",
     cleared: "已清空 {name}",
     allCleared: "用量已清空",
     updatedAt: "最后更新",
-    updatedAgo: "更新于 {when}",
     empty: "暂无记录",
     loading: "读取中…",
     resetAll: "全部用量",
   },
 
   providersPage: {
-    heading: "模型服务商",
     selectProvider: "要配置的模型服务商",
-    provider: "服务商",
     apiKey: "API 密钥",
     apiKeySet: "已配置",
     apiKeyNotSet: "未配置",
@@ -337,9 +309,7 @@ const zh = {
     saveKey: "保存",
     savingKey: "保存中…",
     clearKey: "清除密钥",
-    clearingKey: "清除中…",
     confirmClear: "确认清除",
-    cancel: "取消",
     overwriteHint: "输入新密钥才能覆盖",
     pasteHint: "先粘贴密钥再保存",
     overwritePlaceholder: "输入新密钥以覆盖",
@@ -366,22 +336,11 @@ const zh = {
 
   common: {
     cancel: "取消",
-    close: "关闭",
-    save: "保存",
-    ok: "确定",
-    loading: "加载中…",
-    back: "返回",
-    confirm: "确认",
-    none: "无",
-    unknown: "未知",
     connectFailed: "连接后端失败：{error}",
   },
 
   controls: {
     dropdownPlaceholder: "请选择",
-    audioLevel: "音频电平",
-    level: "电平 {v}，{state}",
-    thresholdTitle: "门限",
   },
 
   format: {
@@ -394,14 +353,9 @@ const zh = {
 
   catalog: {
     autoDetect: "自动识别",
-    realtimeModel: "实时翻译",
-    legacyModelSuffix: "（历史模型）",
     customVoiceSuffix: "（自定义）",
     defaultVoiceSuffix: " · 默认",
     autoVoice: "自动音色",
-    keySpace: "空格",
-    keyXButton1: "鼠标侧键1",
-    keyXButton2: "鼠标侧键2",
   },
 } satisfies Dict;
 

@@ -7,8 +7,6 @@
 import type { DictShape } from "./zh";
 
 const en = {
-  app: { name: "VoxBridge" },
-
   nav: {
     home: "Home",
     providers: "Providers",
@@ -81,8 +79,6 @@ const en = {
     micNotFound: "No microphone found",
     appNoAudioFound: "No audio programs found",
     appSelectApp: "Select a program",
-    recommendedSuffix: " · Default",
-    listeningProgram: "Target program",
   },
 
   latency: {
@@ -107,8 +103,6 @@ const en = {
     dropped: "Dropped / processed",
     droppedHint: "Dropped / processed chunks",
     startup: "Startup",
-    connect: "Connect {ms}",
-    ready: "Ready {ms}",
     startupLine: "Connect {connect} · Ready {ready}",
     segmentsAria: "Latency segments",
     fromVadHint: "From speech confirmation to first output",
@@ -118,7 +112,6 @@ const en = {
   vrchat: {
     steamVrOverlay: "SteamVR subtitles",
     steamVrOverlayDesc: "Show heard VRChat subtitles in the SteamVR headset using the floating subtitle style",
-    heading: "VRChat (OSC) sync",
     sync: "OSC sync",
     syncDesc: "Master switch for OSC communication with VRChat",
     start: "Start",
@@ -131,12 +124,10 @@ const en = {
     testing: "Sending…",
     sent: "Test message sent",
     sendFailed: "Send failed: {error}",
-    avatar: "Avatar state",
     avatarDesc: "Output to an avatar parameter via OSCTracker",
     avatarEnable: "Enable state sync",
     param: "Parameter name",
     paramDesc: "Name of the VRChat avatar parameter to write to",
-    paramDefault: "VoxSpeaking",
     port: "OSC port",
     portDesc: "Must match VRChat's OSC input port",
     started: "OSC sync started",
@@ -148,7 +139,6 @@ const en = {
   },
 
   settings: {
-    groupTitle: "Settings",
     virtualCable: "Virtual microphone",
     virtualCableNativeHint:
       "Nothing to install on Linux: the virtual microphone is built into PipeWire. In your target app (VRChat / Discord / OBS), pick \"VoxBridge Virtual Mic\" as the recording device.",
@@ -219,7 +209,6 @@ const en = {
     },
     primaryKey: "Key",
     primaryKeyFor: "{label} key",
-    hotkeyUnset: "Not set",
   },
 
   home: {
@@ -261,18 +250,10 @@ const en = {
   },
 
   about: {
-    heading: "About",
     product: "Product",
     productValue: "Realtime speech translation",
-    version: "Version",
-    update: "Check for updates",
-    channelPlaceholder: "Channel not configured",
-    license: "License",
-    credits: "Credits",
-    homepage: "Homepage",
     checkUpdate: "Check for updates",
     catalogSection: "Model catalog",
-    catalogProvider: "Catalog · {name}",
     catalogCurrent: "Current v{at}",
     catalogChecking: "Checking…",
     catalogNoOverride: "No local override (built-in v{at})",
@@ -295,38 +276,29 @@ const en = {
   },
 
   usage: {
-    heading: "Usage",
     rangeToday: "Today",
     rangeMonth: "This month",
     rangeTotal: "All time",
     rangeAria: "Statistics range",
-    tokenTotal: "Total tokens",
     inputTokens: "Input",
     outputTokens: "Output",
     turns: "Turns",
     turnsCount: "{n} turns",
-    monthly: "This month",
-    daily: "Today",
-    model: "Model",
     modelList: "Model details",
     modelChipRealtime: "Realtime translation",
     modelChipLegacy: "Legacy",
-    reset: "Reset usage",
     clear: "Clear",
     confirmClear: "Confirm clear",
     cleared: "Cleared {name}",
     allCleared: "Usage cleared",
     updatedAt: "Last updated",
-    updatedAgo: "Updated {when}",
     empty: "No records",
     loading: "Loading…",
     resetAll: "All usage",
   },
 
   providersPage: {
-    heading: "Providers",
     selectProvider: "Provider to configure",
-    provider: "Provider",
     apiKey: "API key",
     apiKeySet: "Configured",
     apiKeyNotSet: "Not configured",
@@ -334,9 +306,7 @@ const en = {
     saveKey: "Save",
     savingKey: "Saving…",
     clearKey: "Clear key",
-    clearingKey: "Clearing…",
     confirmClear: "Confirm clear",
-    cancel: "Cancel",
     overwriteHint: "Enter a new key to overwrite",
     pasteHint: "Paste a key, then save",
     overwritePlaceholder: "Enter a new key to overwrite",
@@ -363,22 +333,11 @@ const en = {
 
   common: {
     cancel: "Cancel",
-    close: "Close",
-    save: "Save",
-    ok: "OK",
-    loading: "Loading…",
-    back: "Back",
-    confirm: "Confirm",
-    none: "None",
-    unknown: "Unknown",
     connectFailed: "Failed to connect to backend: {error}",
   },
 
   controls: {
     dropdownPlaceholder: "Select…",
-    audioLevel: "Audio level",
-    level: "Level {v}, {state}",
-    thresholdTitle: "Threshold",
   },
 
   format: {
@@ -391,14 +350,9 @@ const en = {
 
   catalog: {
     autoDetect: "Auto-detect",
-    realtimeModel: "Realtime translation",
-    legacyModelSuffix: " (legacy model)",
     customVoiceSuffix: " (custom)",
     defaultVoiceSuffix: " · Default",
     autoVoice: "Auto voice",
-    keySpace: "Space",
-    keyXButton1: "Mouse side button 1",
-    keyXButton2: "Mouse side button 2",
   },
 } satisfies DictShape;
 

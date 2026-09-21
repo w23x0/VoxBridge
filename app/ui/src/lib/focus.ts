@@ -296,7 +296,6 @@ export function stepSidebarBy(current: string, onSelect: (page: string) => void,
    ========================================================================== */
 
 const editingFields = new WeakSet<HTMLElement>();
-const EDITING_CLASS = 'nav-editorFocus';
 
 /** 是不是文本输入元素（INPUT / TEXTAREA）。SELECT 不算 —— 那是选择控件。 */
 export function isTextField(el: Element | null | undefined): boolean {
@@ -310,17 +309,11 @@ export function isEditingText(el: Element | null | undefined): boolean {
   return !!el && editingFields.has(el as HTMLElement);
 }
 
-/** 进入 / 退出编辑态。同时切 .nav-editor 视觉分辨。 */
+/** 进入 / 退出编辑态。 */
 export function setEditingText(el: Element | null | undefined, editing: boolean): void {
   if (!isTextField(el)) return;
-  const node = el as HTMLElement;
-  if (editing) {
-    editingFields.add(node);
-    node.classList.add(EDITING_CLASS);
-  } else {
-    editingFields.delete(node);
-    node.classList.remove(EDITING_CLASS);
-  }
+  if (editing) editingFields.add(el as HTMLElement);
+  else editingFields.delete(el as HTMLElement);
 }
 
 /* 红绿灯焦点环自动消失的定时器。Tab 过去后若一直没操作，环会自己撤掉。 */

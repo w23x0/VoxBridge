@@ -231,10 +231,6 @@ const PROVIDER_IDS: ModelProvider[] = ["aliyun", "gemini", "gpt"];
 
 // ─── 服务商 ────────────────────────────────────────────────────────────────────
 
-export function providerCatalog(provider: ModelProvider): ProviderCatalog | undefined {
-  return get(provider)?.provider;
-}
-
 export function providerIds(): ModelProvider[] {
   return [...PROVIDER_IDS];
 }
@@ -344,8 +340,6 @@ export function modelLabel(name: string, uiLang: UiLang): string {
 
 /** 阿里云默认目标语言。界面上听的固定翻成中文。 */
 export const DEFAULT_TARGET_LANGUAGE = aliyun.defaults.target_language;
-/** 听人说话固定翻成中文，界面上写死、不给选。 */
-export const LISTEN_TARGET_LANGUAGE = aliyun.defaults.listen_target_language;
 /** 首次兜底的模型名。 */
 export const DEFAULT_MODEL_NAME = aliyun.model.id;
 /** 首次兜底的音色 id。 */
@@ -367,7 +361,3 @@ export const KEY_OPTIONS: LabeledOption[] = [
   { value: "XButton1", label: "鼠标侧键1" },
   { value: "XButton2", label: "鼠标侧键2" },
 ];
-
-export function keyLabel(key: string): string {
-  return KEY_OPTIONS.find((option) => option.value === key)?.label ?? key;
-}

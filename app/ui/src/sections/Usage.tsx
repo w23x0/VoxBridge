@@ -12,7 +12,7 @@ import * as catalog from "../catalog";
 import { useLang } from "../i18n/context";
 import { useStore } from "../store";
 import type { ModelUsage, UsageLedger, UsageTotals } from "../types.snapshot";
-import { fmtAgo, fmtNum } from "../lib/format";
+import { dateKey, fmtAgo, fmtNum, monthKey } from "../lib/format";
 import { ConfirmButton } from "../ui/ConfirmButton";
 import { IconDownload, IconTokens, IconUpload } from "../ui/icons";
 import { useToast } from "../ui/toast";
@@ -20,13 +20,6 @@ import { useToast } from "../ui/toast";
 type Range = "today" | "month" | "total";
 
 const ZERO: UsageTotals = { input_tokens: 0, output_tokens: 0, total_tokens: 0, turns: 0 };
-
-const pad2 = (n: number): string => String(n).padStart(2, "0");
-
-/** 日期键，格式对齐后端 usage.rs 里 Stamp::date_key 的 `YYYY-MM-DD`。 */
-const dayKey = (now: Date): string =>
-  `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
-const monthKey = (now: Date): string => `${now.getFullYear()}-${pad2(now.getMonth() + 1)}`;
 
 /**
  * 取某个模型在选定范围下的桶。
@@ -84,7 +77,7 @@ export function UsagePage() {
   const [range, setRange] = useState<Range>("today");
 
   const now = new Date();
-  const day = dayKey(now);
+  const day = dateKey(now);
   const month = monthKey(now);
 
   const ledger: UsageLedger = snapshot?.usage ?? {};

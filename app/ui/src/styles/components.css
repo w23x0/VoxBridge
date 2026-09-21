@@ -87,14 +87,6 @@
   color: var(--text-secondary);
 }
 
-/* 键值行成对时用双列，行距 0、列距 16 —— 竖向不留空是刻意的，
-   六行挤成三行才有「仪表读数」的密度感 */
-.sub-rows-2col {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0 16px;
-}
-
 /* ---- 延迟面板：实时分段横条 ----------------------------------------- */
 /* 底色是轨道，缺席/未知的那截留在轨道上，不假装补满。分段颜色由
    组件用内联 style 吃设计令牌（success/warn/danger），这里不配死颜色。 */
@@ -163,9 +155,6 @@
 .stats-row.cols-2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: stretch;
-}
-.stats-row.cols-3 {
-  grid-template-columns: repeat(3, 1fr);
 }
 
 .stat-card {
@@ -320,16 +309,14 @@
 }
 
 @media (max-width: 1024px) {
-  .stats-row,
-  .stats-row.cols-3 {
+  .stats-row {
     grid-template-columns: repeat(2, 1fr);
     gap: 14px;
   }
 }
 @media (max-width: 640px) {
   .stats-row,
-  .stats-row.cols-2,
-  .stats-row.cols-3 {
+  .stats-row.cols-2 {
     grid-template-columns: 1fr;
   }
 }
@@ -432,38 +419,9 @@
   flex-shrink: 0;
 }
 
-.btn-row {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-@media (max-width: 768px) {
-  .btn-row {
-    flex-direction: column;
-  }
-  .btn-row .btn {
-    width: 100%;
-    justify-content: center;
-  }
-}
-
 /* ---- 表单 ------------------------------------------------------------- */
 
-.form-group {
-  margin-bottom: 14px;
-}
-
-.form-group label {
-  display: block;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-}
-
-.form-input,
-.form-select {
+.form-input {
   width: 100%;
   background: var(--bg-subtle);
   border: 1px solid var(--border);
@@ -476,8 +434,7 @@
   transition: all 0.15s;
 }
 
-.form-input:focus,
-.form-select:focus {
+.form-input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
   background: var(--bg-card);
@@ -518,25 +475,6 @@
   .input-grid-3 {
     grid-template-columns: 1fr;
   }
-}
-
-/* 表单分组盒 */
-.field-group {
-  padding: 16px;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  margin-bottom: 16px;
-}
-
-.field-group-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: 12px;
 }
 
 /* ---- 开关 ------------------------------------------------------------- */
@@ -667,10 +605,6 @@
   animation: pulse-dot 1.5s infinite;
 }
 
-.status-dot.bad {
-  background: var(--danger);
-}
-
 @keyframes pulse-dot {
   0%,
   100% {
@@ -681,32 +615,7 @@
   }
 }
 
-.dot-ring {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.dot-ring.success {
-  background: var(--success);
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
-}
-.dot-ring.error {
-  background: var(--danger);
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
-}
-.dot-ring.untested {
-  background: var(--text-muted);
-  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
-}
-
 /* 芯片：选中走 success 色 */
-.chips-wrap {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
 .chip {
   display: inline-flex;
   align-items: center;
@@ -895,44 +804,6 @@
 .dropdown-option.selected {
   font-weight: 600;
   background: var(--accent-soft);
-}
-
-/* ---- 日志台：亮暗两主题下都是深色终端，不跟随主题反转 ------------------ */
-
-.log-box {
-  background: #0f1115;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius);
-  padding: 18px 22px;
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  font-weight: 450;
-  color: rgba(226, 232, 240, 0.82);
-  line-height: 1.62;
-  letter-spacing: 0.01em;
-  font-variant-numeric: tabular-nums slashed-zero;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: geometricPrecision;
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow-y: auto;
-}
-
-[data-theme="dark"] .log-box {
-  background: #080a0f;
-}
-
-.log-ok {
-  color: #4ade80;
-}
-.log-err {
-  color: #f87171;
-}
-.log-warn {
-  color: #fbbf24;
-}
-.log-dim {
-  color: rgba(226, 232, 240, 0.42);
 }
 
 /* ---- Toast ------------------------------------------------------------ */
@@ -1285,10 +1156,6 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.spacer {
-  flex: 1;
 }
 
 .hint {

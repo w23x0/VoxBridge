@@ -11,8 +11,6 @@
 import type { DictShape } from "./zh";
 
 const ja = {
-  app: { name: "VoxBridge" },
-
   nav: {
     home: "ホーム",
     providers: "モデルプロバイダー",
@@ -85,8 +83,6 @@ const ja = {
     micNotFound: "マイクが見つかりません",
     appNoAudioFound: "オーディオプログラムが見つかりません",
     appSelectApp: "プログラムを選択してください",
-    recommendedSuffix: "・既定",
-    listeningProgram: "監視プログラム",
   },
 
   latency: {
@@ -111,8 +107,6 @@ const ja = {
     dropped: "破棄 / 処理",
     droppedHint: "破棄数 / 処理数",
     startup: "起動",
-    connect: "接続 {ms}",
-    ready: "準備 {ms}",
     startupLine: "接続 {connect}・準備 {ready}",
     segmentsAria: "遅延の区間",
     fromVadHint: "発話確定から初回出力まで",
@@ -122,7 +116,6 @@ const ja = {
   vrchat: {
     steamVrOverlay: "SteamVR 字幕",
     steamVrOverlayDesc: "フローティング字幕の設定で、聞こえた VRChat 字幕を SteamVR ヘッドセットに表示します",
-    heading: "VRChat(OSC) 同期",
     sync: "OSC 同期",
     syncDesc: "VRChat との OSC 通信のマスター スイッチ",
     start: "開始",
@@ -135,12 +128,10 @@ const ja = {
     testing: "送信中…",
     sent: "テスト メッセージを送信しました",
     sendFailed: "送信失敗：{error}",
-    avatar: "アバター状態",
     avatarDesc: "OSCTracker でアバター パラメーターへ出力",
     avatarEnable: "状態同期を有効化",
     param: "パラメーター名",
     paramDesc: "VRChat のキャスタム パラメーター名",
-    paramDefault: "VoxSpeaking",
     port: "OSC ポート",
     portDesc: "VRChat の OSC 入力ポートと一致させる",
     started: "OSC 同期を開始しました",
@@ -152,7 +143,6 @@ const ja = {
   },
 
   settings: {
-    groupTitle: "設定",
     virtualCable: "仮想マイク",
     virtualCableNativeHint:
       "Linux ではドライバーのインストールは不要です。仮想マイクは PipeWire が標準で提供します。対象アプリ（VRChat / Discord / OBS）の録音デバイスで「VoxBridge Virtual Mic」を選んでください。",
@@ -223,7 +213,6 @@ const ja = {
     },
     primaryKey: "主キー",
     primaryKeyFor: "{label} の主キー",
-    hotkeyUnset: "未設定",
   },
 
   home: {
@@ -265,18 +254,10 @@ const ja = {
   },
 
   about: {
-    heading: "バージョン情報",
     product: "製品",
     productValue: "リアルタイム音声翻訳",
-    version: "バージョン",
-    update: "アップデートを確認",
-    channelPlaceholder: "チャンネル未設定",
-    license: "ライセンス",
-    credits: "謝辞",
-    homepage: "ホームページ",
     checkUpdate: "アップデートを確認",
     catalogSection: "モデルカタログ",
-    catalogProvider: "カタログ · {name}",
     catalogCurrent: "現在 v{at}",
     catalogChecking: "確認中…",
     catalogNoOverride: "ローカル上書きなし（内蔵 v{at}）",
@@ -299,38 +280,29 @@ const ja = {
   },
 
   usage: {
-    heading: "使用量",
     rangeToday: "今日",
     rangeMonth: "今月",
     rangeTotal: "合計",
     rangeAria: "集計範囲",
-    tokenTotal: "Token 総量",
     inputTokens: "入力",
     outputTokens: "出力",
     turns: "ターン数",
     turnsCount: "{n} 回",
-    monthly: "今月の使用量",
-    daily: "今日の使用量",
-    model: "モデル",
     modelList: "モデル明細",
     modelChipRealtime: "リアルタイム翻訳",
     modelChipLegacy: "履歴モデル",
-    reset: "使用量をリセット",
     clear: "クリア",
     confirmClear: "クリアを確認",
     cleared: "{name} をクリアしました",
     allCleared: "使用量をクリアしました",
     updatedAt: "最終更新",
-    updatedAgo: "{when} に更新",
     empty: "記録はありません",
     loading: "読み取り中…",
     resetAll: "全使用量",
   },
 
   providersPage: {
-    heading: "モデルプロバイダー",
     selectProvider: "設定するモデルプロバイダー",
-    provider: "プロバイダー",
     apiKey: "API キー",
     apiKeySet: "設定済み",
     apiKeyNotSet: "未設定",
@@ -338,9 +310,7 @@ const ja = {
     saveKey: "保存",
     savingKey: "保存中…",
     clearKey: "キーを削除",
-    clearingKey: "削除中…",
     confirmClear: "削除を確認",
-    cancel: "キャンセル",
     overwriteHint: "入力してから保存してください",
     pasteHint: "キーを貼り付けてから保存してください",
     overwritePlaceholder: "新しいキーを入力して上書き",
@@ -367,22 +337,11 @@ const ja = {
 
   common: {
     cancel: "キャンセル",
-    close: "閉じる",
-    save: "保存",
-    ok: "OK",
-    loading: "読み込み中…",
-    back: "戻る",
-    confirm: "確認",
-    none: "なし",
-    unknown: "不明",
     connectFailed: "バックエンドへの接続に失敗: {error}",
   },
 
   controls: {
     dropdownPlaceholder: "選択してください",
-    audioLevel: "オーディオレベル",
-    level: "レベル {v}、{state}",
-    thresholdTitle: "スレッショルド",
   },
 
   format: {
@@ -395,14 +354,9 @@ const ja = {
 
   catalog: {
     autoDetect: "自動認定",
-    realtimeModel: "リアルタイム翻訳",
-    legacyModelSuffix: "（履歴モデル）",
     customVoiceSuffix: "（カスタム）",
     defaultVoiceSuffix: "・既定",
     autoVoice: "自動音声",
-    keySpace: "スペース",
-    keyXButton1: "マウスサイド1",
-    keyXButton2: "マウスサイド2",
   },
 } satisfies DictShape;
 

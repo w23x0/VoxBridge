@@ -73,7 +73,7 @@ export function createMockApi(): VoxApi {
       state: "idle",
       gate: null,
       voice: new FakeVoice(),
-      gateImpl: new FakeGate(track === "speak" ? "level" : "level"),
+      gateImpl: new FakeGate("level"),
       typer: new FakeTyper(track, script),
     };
   }

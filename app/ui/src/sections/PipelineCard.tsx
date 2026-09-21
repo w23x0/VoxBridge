@@ -13,9 +13,8 @@ import * as catalog from "../catalog";
 import { useLang } from "../i18n/context";
 import { recentFirst, useRecentValues } from "../lib/recent";
 import { useStore } from "../store";
-import type { ModelProvider, PipelineName } from "../types";
-import type { Option } from "../ui/controls";
-import { Dropdown, Toggle } from "../ui/controls";
+import type { ModelProvider } from "../types";
+import { Dropdown, Toggle, type Option } from "../ui/controls";
 import { IconHeadphones, IconMic, IconPlay, IconRefresh, IconStop } from "../ui/icons";
 import { defaultVoiceForLanguage, voiceOptions } from "../voices";
 import {
@@ -486,6 +485,3 @@ export function PipelineCard({ pipeline }: { pipeline: HomePipeline }) {
     </div>
   );
 }
-
-/** 触发类型导入，避免被当未使用（PipelineName 在分支类型里用到）。 */
-export type { PipelineName };

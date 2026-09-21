@@ -9,6 +9,18 @@ export function fmtNum(n: number): string {
   return NUM_CN.format(Math.round(n));
 }
 
+const pad2 = (n: number): string => String(n).padStart(2, "0");
+
+/** 日期键，格式对齐后端 usage.rs 里 Stamp::date_key 的 `YYYY-MM-DD`。 */
+export function dateKey(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/** 月份键 `YYYY-MM`（同上，usage.rs 的 month_key）。 */
+export function monthKey(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+}
+
 /**
  * 相对时间，用于「最后更新」。受语言影响，`t` 提供相对时间文案。
  * `format` 的 key 写在 dict 的 `format.*`，未启用纯返回原文。

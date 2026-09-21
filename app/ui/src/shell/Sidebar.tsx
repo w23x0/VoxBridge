@@ -7,8 +7,7 @@
 import { useCallback, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import { useT } from "../i18n/context";
-import { toUiLang, useLang } from "../i18n/context";
+import { toUiLang, useLang, useT } from "../i18n/context";
 import { UI_LANG_CYCLE, UI_LANG_SHORT, type UiLang } from "../i18n/types";
 import { ABOUT_NAV, NAV, PRIMARY_NAV } from "../nav";
 import { useStore } from "../store";

@@ -14,9 +14,9 @@ import { getApi } from "./api";
 import type { VoxApi } from "./api";
 import { DEFAULT_SETTINGS, cloneSettings } from "./defaults";
 import { mergePatch } from "./mock/merge";
-import type { PipelineName, Settings, Track } from "./types";
+import type { PipelineName, PipelineState, Settings, Track } from "./types";
 import type { GateStatus, Snapshot, SettingsPatch } from "./types.snapshot";
-import { STATE_LABEL } from "./pipeline";
+import { STATE_LABEL, isRunning } from "./pipeline";
 
 export interface Live {
   /** 两条轨的当前字幕文本（已按 done 断句累积）。 */
@@ -93,7 +93,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                     ...s[event.pipeline],
                     state: event.state,
                     state_label: STATE_LABEL[event.state],
-                    running: event.state !== "idle" && event.state !== "failed",
+                    running: isRunning(event.state),
                   },
                   headphones_advised: advised(s, event),
                 }
@@ -193,9 +193,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>;
 }
 
-function advised(s: Snapshot, event: { pipeline: PipelineName; state: string }): boolean {
+function advised(s: Snapshot, event: { pipeline: PipelineName; state: PipelineState }): boolean {
   const running = (p: PipelineName) =>
-    p === event.pipeline ? event.state !== "idle" && event.state !== "failed" : s[p].running;
+    p === event.pipeline ? isRunning(event.state) : s[p].running;
   return running("speak") && running("listen");
 }
 

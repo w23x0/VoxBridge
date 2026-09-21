@@ -44,6 +44,15 @@ const CHANNEL_BADGE: Record<ChannelStatus, string> = {
   absent: "badge badge-neutral",
 };
 
+/** Cable 状态文案的 i18n key 表；组件内用 t() 取翻译，loading 时短路成「检测中」。 */
+const CABLE_STATUS_LABEL: Record<VirtualCableStatus, string> = {
+  installed: "settings.cableStatus.installed",
+  install_pending_reboot: "settings.cableStatus.installPendingReboot",
+  uninstall_incomplete: "settings.cableStatus.uninstallIncomplete",
+  not_installed: "settings.cableStatus.notInstalled",
+  not_applicable: "settings.cableStatus.notApplicable",
+};
+
 export function CableManager() {
   const { api, snapshot, applyCableChannelStatus } = useStore();
   const toast = useToast();
@@ -59,14 +68,6 @@ export function CableManager() {
   const cableIncomplete = cableStatus === "uninstall_incomplete";
   const cableBadgeClass = CABLE_BADGE[cableStatus];
 
-  /** Cable 状态文案的 i18n key 表；组件内用 t() 取翻译，loading 时短路成「检测中」。 */
-  const CABLE_STATUS_LABEL: Record<VirtualCableStatus, string> = {
-    installed: "settings.cableStatus.installed",
-    install_pending_reboot: "settings.cableStatus.installPendingReboot",
-    uninstall_incomplete: "settings.cableStatus.uninstallIncomplete",
-    not_installed: "settings.cableStatus.notInstalled",
-    not_applicable: "settings.cableStatus.notApplicable",
-  };
   const cableStatusLabel = loading
     ? t("settings.cableStatus.checking")
     : t(CABLE_STATUS_LABEL[cableStatus]);

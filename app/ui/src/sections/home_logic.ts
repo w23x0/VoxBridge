@@ -8,7 +8,7 @@
 
 import { useT } from "../i18n/context";
 import type { ListenTarget, PipelineName } from "../types";
-import type { AudioApp, DeviceInfo, Snapshot } from "../types.snapshot";
+import type { AudioApp, DeviceInfo } from "../types.snapshot";
 import type { Option } from "../ui/controls";
 
 /** 设备下拉里「系统默认」对应的哨兵值；选它等价于把设备写回 null。 */
@@ -83,24 +83,4 @@ export function pickApp(
       },
     },
   });
-}
-
-/** 开不了的原因。null 表示能开。 */
-export function blockedBy(
-  pipeline: PipelineName,
-  snapshot: Snapshot | null,
-  speakProvider: string,
-  listenProvider: string,
-  hasKey: (provider: string) => boolean,
-  listenMissingTarget: boolean,
-  t: ReturnType<typeof useT>,
-  providerLabel: (provider: string) => string,
-): string | null {
-  if (!snapshot) return t("pipeline.openFailReason");
-  const provider = pipeline === "speak" ? speakProvider : listenProvider;
-  if (!hasKey(provider)) {
-    return t("pipeline.blockedNoApiKey", { provider: providerLabel(provider) });
-  }
-  if (pipeline === "listen" && listenMissingTarget) return t("pipeline.blockedSelectApp");
-  return null;
 }

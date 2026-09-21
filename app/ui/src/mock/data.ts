@@ -2,6 +2,7 @@
 
 import type { AudioApp, DeviceInfo, UsageLedger } from "../types.snapshot";
 import { DEFAULT_MODEL_NAME } from "../catalog";
+import { dateKey, monthKey } from "../lib/format";
 
 export const MOCK_INPUTS: DeviceInfo[] = [
   { name: "麦克风 (Realtek(R) Audio)", is_default: true },
@@ -44,9 +45,8 @@ export const LISTEN_SCRIPT: string[] = [
 ];
 
 const today = new Date();
-const pad = (n: number) => String(n).padStart(2, "0");
-export const MOCK_TODAY = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
-export const MOCK_MONTH = `${today.getFullYear()}-${pad(today.getMonth() + 1)}`;
+export const MOCK_TODAY = dateKey(today);
+export const MOCK_MONTH = monthKey(today);
 
 export function mockUsage(): UsageLedger {
   return {

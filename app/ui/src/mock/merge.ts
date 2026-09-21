@@ -13,7 +13,6 @@ import {
   GATE_THRESHOLD_RANGE,
 } from "../defaults";
 import * as catalog from "../catalog";
-import { DEFAULT_VOICE } from "../catalog";
 import type { Settings } from "../types";
 
 /** 整块替换而不是递归合并的键：语义上是「这一份就是全部」。 */
@@ -72,10 +71,10 @@ export function normalizeSettings(settings: Settings): Settings {
     s.speak.target_language = catalog.DEFAULT_TARGET_LANGUAGE;
   }
   if (!s.speak.voice || catalog.legacyRemovedVoiceIds().has(s.speak.voice)) {
-    s.speak.voice = DEFAULT_VOICE;
+    s.speak.voice = catalog.DEFAULT_VOICE;
   }
   if (!s.listen.voice || catalog.legacyRemovedVoiceIds().has(s.listen.voice)) {
-    s.listen.voice = DEFAULT_VOICE;
+    s.listen.voice = catalog.DEFAULT_VOICE;
   }
 
   s.speak.gate_threshold = clamp(

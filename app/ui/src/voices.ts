@@ -1,9 +1,14 @@
 /** 音色选项来自统一的维护表（{zh,en,ja}）。最近使用顺序由调用方在传入。
  *  目录里的音色可被在线更新替换，所以全部经 `catalog` 的函数现取，不缓存。 */
 
-import { l10n, type CatalogLabel } from "./catalog";
-import { legacyRemovedVoiceIds, voiceCatalog, defaultVoiceForProvider } from "./catalog";
-import type { LabeledOption } from "./catalog";
+import {
+  defaultVoiceForProvider,
+  legacyRemovedVoiceIds,
+  l10n,
+  voiceCatalog,
+  type CatalogLabel,
+  type LabeledOption,
+} from "./catalog";
 import type { UiLang } from "./i18n/types";
 
 /** 音色 id → 当前目录的多语展示名「name（description）」。随目录变化即时取。 */
