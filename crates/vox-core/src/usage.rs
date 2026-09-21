@@ -61,6 +61,14 @@ impl UsageTotals {
     }
 }
 
+/// 桶的滚动规则：键一变（跨天 / 跨月）就把这个桶清零重来，并记下新键。
+fn roll(totals: &mut UsageTotals, key: &mut String, current: String) {
+    if *key != current {
+        *totals = UsageTotals::default();
+        *key = current;
+    }
+}
+
 /// 单个模型的用量：累计 + 今日 + 本月。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelUsage {
@@ -126,16 +134,8 @@ impl UsageLedger {
         }
         let entry = self.models.entry(model.to_string()).or_default();
 
-        let date = at.date_key();
-        if entry.daily_date != date {
-            entry.daily = UsageTotals::default();
-            entry.daily_date = date;
-        }
-        let month = at.month_key();
-        if entry.monthly_month != month {
-            entry.monthly = UsageTotals::default();
-            entry.monthly_month = month;
-        }
+        roll(&mut entry.daily, &mut entry.daily_date, at.date_key());
+        roll(&mut entry.monthly, &mut entry.monthly_month, at.month_key());
 
         entry.total.add(usage);
         entry.daily.add(usage);

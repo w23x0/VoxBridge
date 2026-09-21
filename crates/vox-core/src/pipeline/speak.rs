@@ -101,14 +101,8 @@ mod tests {
         let mut config = speak_config();
         config.translate = false;
         let plan = plan(&config);
-        assert!(
-            plan.passthrough,
-            "关掉翻译就该是原声直通，不接云端"
-        );
-        assert!(
-            !plan.monitor_translation,
-            "直通没有译文，不该开回听"
-        );
+        assert!(plan.passthrough, "关掉翻译就该是原声直通，不接云端");
+        assert!(!plan.monitor_translation, "直通没有译文，不该开回听");
         assert!(
             plan.playback_device == Some(config.output_device.clone()),
             "直通要把原声送到设置的输出设备（VB-CABLE），而不是跟着音色走空"

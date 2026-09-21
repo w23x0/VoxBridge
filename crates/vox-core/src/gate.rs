@@ -167,30 +167,20 @@ impl ActivationGate {
 
     fn process_manual(&mut self, samples: &[f32], rms: f32) -> (Vec<Vec<f32>>, GateStatus) {
         if self.external_active {
-            let mut accepted = Vec::new();
-            if !self.active {
-                accepted.extend(self.flush_prebuffer());
-                self.active = true;
-            }
-            accepted.push(samples.to_vec());
+            let accepted = self.accept(samples);
             return (accepted, self.status(GateState::Manual, rms, true, false));
         }
         if self.active {
             // 刚从激活转为未激活：补一段零样本触发服务端断句。
             self.active = false;
-            let tail_samples =
-                (self.sample_rate as u64 * self.config.tail_ms as u64 / 1000).max(1) as usize;
-            let tail = vec![0.0f32; tail_samples];
+            // 空块上传没有意义，尾音至少给一个样本（旧版就是这么写的）。
+            let tail = vec![0.0f32; self.samples_for_ms(self.config.tail_ms).max(1)];
             return (
                 vec![tail],
                 self.status(GateState::Released, rms, false, true),
             );
         }
-        self.push_prebuffer(samples);
-        (
-            Vec::new(),
-            self.status(GateState::Waiting, rms, false, false),
-        )
+        self.hold(samples, rms, GateState::Waiting)
     }
 
     fn process_level(&mut self, samples: &[f32], rms: f32) -> (Vec<Vec<f32>>, GateStatus) {
@@ -202,20 +192,14 @@ impl ActivationGate {
         }
 
         if rms >= self.config.threshold {
-            let mut accepted = Vec::new();
-            if !self.active {
-                accepted.extend(self.flush_prebuffer());
-                self.active = true;
-            }
-            accepted.push(samples.to_vec());
+            let accepted = self.accept(samples);
             self.silent_samples = 0;
             return (accepted, self.status(GateState::Speech, rms, true, false));
         }
 
         if self.active {
             self.silent_samples += samples.len();
-            let tail_samples =
-                (self.sample_rate as u64 * self.config.tail_ms as u64 / 1000) as usize;
+            let tail_samples = self.samples_for_ms(self.config.tail_ms);
             let ended = self.silent_samples >= tail_samples;
             if ended {
                 self.active = false;
@@ -232,11 +216,7 @@ impl ActivationGate {
             );
         }
 
-        self.push_prebuffer(samples);
-        (
-            Vec::new(),
-            self.status(GateState::Silence, rms, false, false),
-        )
+        self.hold(samples, rms, GateState::Silence)
     }
 
     fn status(&self, state: GateState, rms: f32, active: bool, ended: bool) -> GateStatus {
@@ -249,8 +229,30 @@ impl ActivationGate {
         }
     }
 
+    /// 一段时长（ms）换算成当前采样率下的样本数。
+    fn samples_for_ms(&self, ms: u32) -> usize {
+        (self.sample_rate as u64 * ms as u64 / 1000) as usize
+    }
+
+    /// 放行一块：上升沿先把 preroll 冲出来，再跟上当前块。
+    fn accept(&mut self, samples: &[f32]) -> Vec<Vec<f32>> {
+        let mut accepted = Vec::new();
+        if !self.active {
+            accepted.extend(self.flush_prebuffer());
+            self.active = true;
+        }
+        accepted.push(samples.to_vec());
+        accepted
+    }
+
+    /// 不放行：块进 preroll 缓冲，这一拍什么都不上传。
+    fn hold(&mut self, samples: &[f32], rms: f32, state: GateState) -> (Vec<Vec<f32>>, GateStatus) {
+        self.push_prebuffer(samples);
+        (Vec::new(), self.status(state, rms, false, false))
+    }
+
     fn push_prebuffer(&mut self, samples: &[f32]) {
-        let max_samples = (self.sample_rate as u64 * self.config.preroll_ms as u64 / 1000) as usize;
+        let max_samples = self.samples_for_ms(self.config.preroll_ms);
         if max_samples == 0 {
             return;
         }

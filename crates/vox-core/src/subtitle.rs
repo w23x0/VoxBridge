@@ -108,8 +108,7 @@ impl SubtitleTrack {
             .filter(|&ch| ch != '\r' && ch != NOISE_DELIM)
             .count();
         if self.chars.len().saturating_add(incoming) > self.max_chars {
-            self.chars.clear();
-            self.noise_open = false;
+            self.clear();
         }
         let mut is_noise = self.noise_open;
         for ch in text.chars() {
@@ -133,12 +132,11 @@ impl SubtitleTrack {
     /// 逐字模型是追加的，直接 `push_text` 会把新句叠在旧句尾巴上——订正必须整体换。
     /// 新字符从 `now_ms` 重新计时，整行一起淡出，视觉上是"这一句话被换成了另一句"。
     pub fn replace_text(&mut self, text: &str, now_ms: u64) {
-        self.chars.clear();
-        self.noise_open = false;
+        self.clear();
         self.push_text(text, now_ms);
     }
 
-    /// 立刻清空（停流水线、切语言时用）。
+    /// 清空这一行：字全清掉，未闭合的 0 类段状态一起复位。
     pub fn clear(&mut self) {
         self.chars.clear();
         self.noise_open = false;
@@ -148,9 +146,10 @@ impl SubtitleTrack {
     /// 否则后面的字会自动向前补齐，造成阅读位置跳动。
     pub fn prune(&mut self, now_ms: u64) {
         let ttl = self.timing.char_ttl_ms as u64;
-        let has_live = self.chars.iter().any(|c| {
-            self.persists(c) || now_ms.saturating_sub(c.born_ms) < ttl
-        });
+        let has_live = self
+            .chars
+            .iter()
+            .any(|c| self.persists(c) || now_ms.saturating_sub(c.born_ms) < ttl);
         if !has_live {
             self.chars.clear();
         }
@@ -171,41 +170,48 @@ impl SubtitleTrack {
         let dim_alpha = self.timing.dim_alpha.clamp(0.0, 1.0);
         self.chars
             .iter()
-            .filter_map(|c| {
+            .map(|c| {
                 let age = now_ms.saturating_sub(c.born_ms);
                 if self.persists(c) {
                     // 0 类字：Lifetime 前后一段短淡出，之后恒定在 dim_alpha。
                     if age < dim_fade_start {
-                        return Some(RenderedChar {
+                        return RenderedChar {
                             ch: c.ch,
                             alpha: 1.0,
-                        });
+                        };
                     }
                     let t = ((age - dim_fade_start).min(dim_fade)) as f32 / dim_fade.max(1) as f32;
-                    return Some(RenderedChar {
+                    return RenderedChar {
                         ch: c.ch,
                         alpha: (1.0 - t).max(0.0) * (1.0 - dim_alpha) + dim_alpha,
-                    });
+                    };
                 }
                 if age >= ttl {
-                    return Some(RenderedChar { ch: c.ch, alpha: 0.0 });
+                    return RenderedChar {
+                        ch: c.ch,
+                        alpha: 0.0,
+                    };
                 }
                 let alpha = if age <= fade_start || fade == 0 {
                     1.0
                 } else {
                     1.0 - (age - fade_start) as f32 / fade as f32
                 };
-                Some(RenderedChar {
+                RenderedChar {
                     ch: c.ch,
                     alpha: alpha.clamp(0.0, 1.0),
-                })
+                }
             })
             .collect()
     }
 
     /// 当前该画的纯文本（不含透明度），给 UI 的历史面板用。
     pub fn text(&self, now_ms: u64) -> String {
-        self.render(now_ms).into_iter().filter(|c| c.alpha > 0.0).map(|c| c.ch).collect()
+        self.render(now_ms)
+            .into_iter()
+            .filter(|c| c.alpha > 0.0)
+            .map(|c| c.ch)
+            .collect()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -432,7 +438,11 @@ mod tests {
         let mut t = SubtitleTrack::new(timing);
         t.push_text("消⌀留⌀", 0);
         // ttl = 1000：普通字消失，0 类字稳定停在 dim_alpha。
-        let r: Vec<_> = t.render(10_000).into_iter().filter(|c| c.alpha > 0.0).collect();
+        let r: Vec<_> = t
+            .render(10_000)
+            .into_iter()
+            .filter(|c| c.alpha > 0.0)
+            .collect();
         assert_eq!(r.len(), 1);
         assert_eq!(r[0].ch, '留');
         let gap = r[0].alpha - 0.3;

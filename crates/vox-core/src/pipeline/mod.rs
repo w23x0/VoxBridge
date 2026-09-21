@@ -462,9 +462,7 @@ impl UploadTimeline {
             sample_rate,
         }
     }
-}
 
-impl UploadTimeline {
     fn reset(&mut self) {
         self.spans.clear();
         self.total_samples = 0;
@@ -516,15 +514,48 @@ impl UploadTimeline {
 #[derive(Debug)]
 struct TurnProbe {
     started_at_ms: u64,
-    item_id: Option<String>,
     first_text_seen: bool,
     first_audio_seen: bool,
+}
+
+impl TurnProbe {
+    /// 这一轮第一次见到文字：返回轮次起点（给端到端延迟用），之后一律 `None`。
+    fn take_first_text(&mut self) -> Option<u64> {
+        let first = !self.first_text_seen;
+        self.first_text_seen = true;
+        first.then_some(self.started_at_ms)
+    }
+
+    /// 同上，给译音用。
+    fn take_first_audio(&mut self) -> Option<u64> {
+        let first = !self.first_audio_seen;
+        self.first_audio_seen = true;
+        first.then_some(self.started_at_ms)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
 struct PlaybackProbe {
     turn_started_at_ms: u64,
     rendered_baseline: u64,
+}
+
+/// 关掉一个播放汇：先把积压的样本放掉再关，然后把槽位清空。
+fn close_sink(slot: &mut Option<Box<dyn PlaybackSink>>) {
+    if let Some(mut sink) = slot.take() {
+        sink.flush();
+        sink.close();
+    }
+}
+
+/// 节流判断：`force`（状态变了、或者是里程碑）一律放行；否则距上次上报满
+/// `window_ms` 才放行。放行时顺手把"上次上报时刻"推到 `now`。
+fn should_emit(last_emit: &mut u64, now: u64, force: bool, window_ms: u64) -> bool {
+    if !force && now.saturating_sub(*last_emit) < window_ms {
+        return false;
+    }
+    *last_emit = now;
+    true
 }
 
 /// 一条会话的全部状态。除了 `Inbox`，这里的东西只被这一个线程碰，所以不用锁。
@@ -764,10 +795,9 @@ impl Worker {
     /// 本来就不转发，这里的节流只是少做无谓的快照计算。
     fn emit_latency(&mut self, force: bool) {
         let now = self.now();
-        if !force && now.saturating_sub(self.last_latency_emit) < LATENCY_THROTTLE_MS {
+        if !should_emit(&mut self.last_latency_emit, now, force, LATENCY_THROTTLE_MS) {
             return;
         }
-        self.last_latency_emit = now;
         let stats = self.inbox.stats();
         let playback_queue_ms = self.playback_queue_ms();
         let snapshot = self.latency.snapshot(
@@ -813,6 +843,13 @@ impl Worker {
         }
     }
 
+    /// 把这一拍攒下的通知全部消化掉。
+    fn drain_notes(&mut self) {
+        for note in self.inbox.take_notes() {
+            self.handle_note(note);
+        }
+    }
+
     /// 主循环。一拍最多阻塞 `POLL_MS`，所以 Stop 最坏 5 ms 就能响应。
     fn pump(&mut self) {
         if self.plan.passthrough {
@@ -820,9 +857,7 @@ impl Worker {
             return;
         }
         while !self.stopping() {
-            for note in self.inbox.take_notes() {
-                self.handle_note(note);
-            }
+            self.drain_notes();
             if self.stopping() {
                 return;
             }
@@ -870,9 +905,7 @@ impl Worker {
     /// 命令（切闸/换门）照常吃，但没有任何云端消息、延迟统计或重连。
     fn pump_passthrough(&mut self) {
         while !self.stopping() {
-            for note in self.inbox.take_notes() {
-                self.handle_note(note);
-            }
+            self.drain_notes();
             for _ in 0..MAX_AUDIO_PER_TICK {
                 let Some(queued) = self.inbox.take_audio() else {
                     break;
@@ -924,8 +957,7 @@ impl Worker {
         if self.stopping() {
             return false;
         }
-        if let Some(transport) = self.transport.take() {
-            let mut transport = transport;
+        if let Some(mut transport) = self.transport.take() {
             transport.close();
         }
         self.session.on_disconnected();
@@ -983,23 +1015,9 @@ impl Worker {
     /// `capture_start_ms` / `capture_end_ms` 是这块音频被采集的墙钟窗口，
     /// 传到底下好让 `UploadTimeline` 能把服务端的 `audio_start_ms` 映回采集时刻。
     fn feed(&mut self, chunk: &AudioChunk, capture_start_ms: u64, capture_end_ms: u64) {
-        let mono = chunk.to_mono();
-        let cleaned = match self.denoiser.as_mut() {
-            Some(denoiser) => denoiser.process(&mono),
-            None => mono,
-        };
-        // 降噪按 480 样本一帧攒，攒不够就没输出，这一拍正常跳过。
-        if cleaned.is_empty() {
-            return;
-        }
-
-        let Some(gate) = self.gate.as_mut() else {
+        let Some((accepted, status)) = self.gated_blocks(chunk) else {
             return;
         };
-        let (accepted, status) = gate.process(&cleaned);
-        self.emit_gate_status(status);
-        self.track_local_gate(status);
-
         for block in &accepted {
             let resampled = match self.resampler.as_mut() {
                 Some(resampler) => resampler.process(block),
@@ -1020,25 +1038,36 @@ impl Worker {
     /// 直通（关翻译）：闸门放行的原声直接推给播放汇，不重采样、不上传。
     /// 降噪照旧（麦克风收的是空气声）；无译文，所以没有尾巴、没有云端。
     fn feed_passthrough(&mut self, chunk: &AudioChunk) {
-        let mono = chunk.to_mono();
-        let cleaned = match self.denoiser.as_mut() {
-            Some(denoiser) => denoiser.process(&mono),
-            None => mono,
-        };
-        if cleaned.is_empty() {
-            return;
-        }
-        let Some(gate) = self.gate.as_mut() else {
+        let Some((accepted, _)) = self.gated_blocks(chunk) else {
             return;
         };
-        let (accepted, status) = gate.process(&cleaned);
-        self.emit_gate_status(status);
-        self.track_local_gate(status);
         if let Some(sink) = self.sink.as_mut() {
             for block in &accepted {
                 sink.push(block);
             }
         }
+    }
+
+    /// 单声道 → 降噪 → 阀门，顺带把状态报出去、记下本地上升沿。
+    /// 返回 `None` = 这一拍没有可用的块（降噪还在攒帧、或者阀门还没建好）。
+    fn gated_blocks(
+        &mut self,
+        chunk: &AudioChunk,
+    ) -> Option<(Vec<Vec<f32>>, crate::gate::GateStatus)> {
+        let mono = chunk.to_mono();
+        let cleaned = match self.denoiser.as_mut() {
+            Some(denoiser) => denoiser.process(&mono),
+            None => mono,
+        };
+        // 降噪按 480 样本一帧攒，攒不够就没输出，这一拍正常跳过。
+        if cleaned.is_empty() {
+            return None;
+        }
+        let gate = self.gate.as_mut()?;
+        let (accepted, status) = gate.process(&cleaned);
+        self.emit_gate_status(status);
+        self.track_local_gate(status);
+        Some((accepted, status))
     }
 
     /// 记录本地阀门状态，并在上升沿打开流水线时兜底记一个"开始说话"起点。
@@ -1051,19 +1080,26 @@ impl Worker {
         let rose = status.active && !self.last_gate_active;
         self.last_gate_active = status.active;
         if self.plan.hot_update && rose && self.turn_probe.is_none() {
-            self.begin_turn(self.now(), None);
+            self.begin_turn(self.now());
             self.fallback_speech_start = Some(self.now());
         }
     }
 
     /// 打开一个新的轮次探针——首字/首声/一轮完成都以它的 `started_at_ms` 为基准。
-    fn begin_turn(&mut self, started_at_ms: u64, item_id: Option<String>) {
+    fn begin_turn(&mut self, started_at_ms: u64) {
         self.turn_probe = Some(TurnProbe {
             started_at_ms,
-            item_id,
             first_text_seen: false,
             first_audio_seen: false,
         });
+    }
+
+    /// 当前轮次的起点；探针还没开时用调用方给的兜底时刻。
+    fn turn_start(&self, fallback: u64) -> u64 {
+        self.turn_probe
+            .as_ref()
+            .map(|p| p.started_at_ms)
+            .unwrap_or(fallback)
     }
 
     /// 上传一段 16 kHz 单声道。
@@ -1097,11 +1133,10 @@ impl Worker {
     fn emit_gate_status(&mut self, status: crate::gate::GateStatus) {
         let now = self.now();
         let changed = self.last_gate_state != Some(status.state);
-        if !changed && now.saturating_sub(self.last_gate_emit) < GATE_THROTTLE_MS {
+        if !should_emit(&mut self.last_gate_emit, now, changed, GATE_THROTTLE_MS) {
             return;
         }
         self.last_gate_state = Some(status.state);
-        self.last_gate_emit = now;
         self.runtime
             .on_gate_status(self.pipeline(), self.session_id(), status);
         // 闸开着就是"正在说话"，让面板上的灯跟着亮。
@@ -1131,13 +1166,13 @@ impl Worker {
             ServerEvent::TextDelta { text, confirmed } => {
                 let now = self.now();
                 self.push_text(&text, false, confirmed.as_deref());
-                if let Some(probe) = self.turn_probe.as_mut() {
-                    if !probe.first_text_seen {
-                        probe.first_text_seen = true;
-                        self.latency
-                            .first_text(now.saturating_sub(probe.started_at_ms));
-                        self.emit_latency(true);
-                    }
+                if let Some(started) = self
+                    .turn_probe
+                    .as_mut()
+                    .and_then(TurnProbe::take_first_text)
+                {
+                    self.latency.first_text(now.saturating_sub(started));
+                    self.emit_latency(true);
                 }
             }
             ServerEvent::TextDone { text } => {
@@ -1145,12 +1180,12 @@ impl Worker {
                 self.push_text(&text, true, Some(text.as_str()));
                 self.sent_text.clear();
                 let now = self.now();
-                if let Some(probe) = self.turn_probe.as_mut() {
-                    if !probe.first_text_seen {
-                        probe.first_text_seen = true;
-                        self.latency
-                            .first_text(now.saturating_sub(probe.started_at_ms));
-                    }
+                if let Some(started) = self
+                    .turn_probe
+                    .as_mut()
+                    .and_then(TurnProbe::take_first_text)
+                {
+                    self.latency.first_text(now.saturating_sub(started));
                 }
             }
             ServerEvent::SourceDetected { language } => {
@@ -1168,32 +1203,25 @@ impl Worker {
                     sink.push(&samples);
                 }
                 let now = self.now();
-                if let Some(probe) = self.turn_probe.as_mut() {
-                    if !probe.first_audio_seen {
-                        probe.first_audio_seen = true;
-                        self.latency
-                            .first_audio(now.saturating_sub(probe.started_at_ms));
-                        self.emit_latency(true);
-                    }
+                if let Some(started) = self
+                    .turn_probe
+                    .as_mut()
+                    .and_then(TurnProbe::take_first_audio)
+                {
+                    self.latency.first_audio(now.saturating_sub(started));
+                    self.emit_latency(true);
                 }
                 // 首声到齐就开始盯着播放汇，等渲染线程真的取走这些译音样本。
                 if self.playback_probe.is_none() {
                     if let Some(sink) = self.sink.as_ref() {
                         self.playback_probe = Some(PlaybackProbe {
-                            turn_started_at_ms: self
-                                .turn_probe
-                                .as_ref()
-                                .map(|p| p.started_at_ms)
-                                .unwrap_or(now),
+                            turn_started_at_ms: self.turn_start(now),
                             rendered_baseline: sink.stats().rendered_samples,
                         });
                     }
                 }
             }
-            ServerEvent::SpeechStarted {
-                audio_start_ms,
-                item_id,
-            } => {
+            ServerEvent::SpeechStarted { audio_start_ms, .. } => {
                 let now = self.now();
                 // 服务端的 `audio_start_ms` 是上传时间线上的偏移，映回本机采集墙钟。
                 let start_ms = self
@@ -1202,16 +1230,9 @@ impl Worker {
                     .or_else(|| self.fallback_speech_start.take())
                     .unwrap_or(now);
                 if self.turn_probe.is_none() {
-                    self.begin_turn(start_ms, item_id);
-                } else if let Some(probe) = self.turn_probe.as_mut() {
-                    // 本地门控兜底已经开了探针，补上服务端的 item id。
-                    probe.item_id = item_id;
+                    self.begin_turn(start_ms);
                 }
-                let turn_start = self
-                    .turn_probe
-                    .as_ref()
-                    .map(|p| p.started_at_ms)
-                    .unwrap_or(start_ms);
+                let turn_start = self.turn_start(start_ms);
                 self.latency.server_vad(now.saturating_sub(turn_start));
                 self.emit_latency(true);
             }
@@ -1222,7 +1243,7 @@ impl Worker {
                         .fallback_speech_start
                         .take()
                         .unwrap_or_else(|| self.now());
-                    self.begin_turn(start_ms, None);
+                    self.begin_turn(start_ms);
                 }
             }
             ServerEvent::TurnDone { usage } => {
@@ -1348,11 +1369,7 @@ impl Worker {
         self.config.monitor_translation = enabled;
         self.plan.monitor_translation = enabled;
         if !enabled {
-            if let Some(sink) = self.monitor_sink.as_mut() {
-                sink.flush();
-                sink.close();
-            }
-            self.monitor_sink = None;
+            close_sink(&mut self.monitor_sink);
             return;
         }
         if self.monitor_sink.is_some()
@@ -1409,14 +1426,8 @@ impl Worker {
 
         if playback_changed {
             self.playback_probe = None;
-            if let Some(mut sink) = self.sink.take() {
-                sink.flush();
-                sink.close();
-            }
-            if let Some(mut sink) = self.monitor_sink.take() {
-                sink.flush();
-                sink.close();
-            }
+            close_sink(&mut self.sink);
+            close_sink(&mut self.monitor_sink);
             self.plan.playback_device = playback_device.clone();
 
             if let Some(device) = playback_device {
@@ -1479,16 +1490,8 @@ impl Worker {
             transport.close();
         }
         self.transport = None;
-        if let Some(sink) = self.sink.as_mut() {
-            sink.flush();
-            sink.close();
-        }
-        self.sink = None;
-        if let Some(sink) = self.monitor_sink.as_mut() {
-            sink.flush();
-            sink.close();
-        }
-        self.monitor_sink = None;
+        close_sink(&mut self.sink);
+        close_sink(&mut self.monitor_sink);
         self.gate = None;
         self.denoiser = None;
         self.resampler = None;
@@ -2236,11 +2239,7 @@ pub(crate) mod tests {
         rig.start_passthrough(config);
 
         // 直通不连云端：没有握手、没有传输。
-        assert_eq!(
-            rig.wire.connects.load(Ordering::SeqCst),
-            0,
-            "直通不该连 WS"
-        );
+        assert_eq!(rig.wire.connects.load(Ordering::SeqCst), 0, "直通不该连 WS");
 
         // 闸门开着，灌一块响音频 → 原声进播放汇，不上传。
         rig.feed(loud_block());
