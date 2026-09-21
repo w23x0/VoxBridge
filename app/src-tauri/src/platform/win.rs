@@ -120,8 +120,3 @@ pub fn startup_notes() -> Vec<String> {
 pub fn tray_host_available() -> bool {
     true
 }
-
-/// 托盘看不见时给用户的解释（Linux 上才有意义，Windows 走不到这里）。
-pub fn tray_missing_hint() -> &'static str {
-    ""
-}

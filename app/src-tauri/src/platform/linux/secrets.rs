@@ -113,12 +113,18 @@ mod tests {
         let loaded = store
             .load_api_key_for(ModelProvider::Gpt)
             .expect("读取密钥失败");
-        assert_eq!(loaded.as_deref(), Some(key.as_str()), "读回来的不是刚写进去的");
+        assert_eq!(
+            loaded.as_deref(),
+            Some(key.as_str()),
+            "读回来的不是刚写进去的"
+        );
         store
             .clear_api_key_for(ModelProvider::Gpt)
             .expect("删除密钥失败");
         assert_eq!(
-            store.load_api_key_for(ModelProvider::Gpt).expect("读取密钥失败"),
+            store
+                .load_api_key_for(ModelProvider::Gpt)
+                .expect("读取密钥失败"),
             None,
             "删掉之后不该还能读出来"
         );

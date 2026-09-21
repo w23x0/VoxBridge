@@ -117,7 +117,6 @@ pub fn install(app: &tauri::AppHandle, state: &Arc<AppState>) -> tauri::Result<(
     // ── 构建托盘图标 ────────────────────────────────────────────────────
 
     let state_for_menu = Arc::clone(state);
-    let state_for_click = Arc::clone(state);
 
     TrayIconBuilder::new()
         .icon(icon)
@@ -136,7 +135,7 @@ pub fn install(app: &tauri::AppHandle, state: &Arc<AppState>) -> tauri::Result<(
                 ..
             } = event
             {
-                focus_main_window(tray.app_handle(), &state_for_click);
+                focus_main(tray.app_handle());
             }
         })
         .build(app)?;
@@ -207,7 +206,7 @@ pub fn begin_shutdown() {
 /// 处理菜单项点击。
 fn handle_menu_event(app: &tauri::AppHandle, state: &Arc<AppState>, id: &tauri::menu::MenuId) {
     if id == ID_OPEN_SETTINGS {
-        focus_main_window(app, state);
+        focus_main(app);
     } else if id == ID_TOGGLE_SPEAK {
         state.runtime.toggle(Pipeline::Speak);
         // toggle 后立刻刷新勾选状态，不等事件回来——响应更快。
@@ -226,8 +225,9 @@ fn handle_menu_event(app: &tauri::AppHandle, state: &Arc<AppState>, id: &tauri::
     }
 }
 
-/// 显示 + 取消最小化 + 聚焦主窗口。
-fn focus_main_window(app: &tauri::AppHandle, _state: &AppState) {
+/// 显示 + 取消最小化 + 聚焦主窗口。托盘菜单「打开设置」、托盘左键和
+/// 第二个实例被拦下时（`lib.rs` 的单实例回调）共用同一条路径。
+pub fn focus_main(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.unminimize();

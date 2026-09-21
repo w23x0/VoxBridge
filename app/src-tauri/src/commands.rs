@@ -5,6 +5,7 @@
 //! - `tauri::State` 不是 `Send`，不能跨 `.await` 持有——先把 `Arc` 克隆出来。
 //! - 库代码里不许 `unwrap()` / `expect()`。
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde::Serialize;
@@ -385,11 +386,7 @@ mod cable_admin {
         select_regular_cable_output(&runtime, &devices);
         runtime.set_devices(devices);
 
-        let multichannel_hidden = matches!(
-            vox_audio_win::multichannel_endpoint_status(),
-            vox_audio_win::MultichannelEndpointStatus::Disabled
-                | vox_audio_win::MultichannelEndpointStatus::NotPresent
-        );
+        let multichannel_hidden = is_multichannel_hidden();
         if let Some(vox_audio_win::EndpointToggleOutcome::Failed(message)) = hide_outcome {
             runtime.notify(vox_core::event::Notice::warning(format!(
                 "虚拟麦克风已安装，但 16 声道端点未能自动隐藏：{message}"
@@ -480,11 +477,7 @@ mod cable_admin {
         // 让前端尽快拿到最新快照，徽标不会卡死在旧状态。
         runtime.touch_devices();
 
-        let hidden = matches!(
-            vox_audio_win::multichannel_endpoint_status(),
-            vox_audio_win::MultichannelEndpointStatus::Disabled
-                | vox_audio_win::MultichannelEndpointStatus::NotPresent
-        );
+        let hidden = is_multichannel_hidden();
         match outcome {
             vox_audio_win::EndpointToggleOutcome::Changed
             | vox_audio_win::EndpointToggleOutcome::AlreadySet
@@ -515,6 +508,16 @@ mod cable_admin {
         };
         let name = device.name.clone();
         runtime.update_settings(|settings| settings.speak.output_device = Some(name));
+    }
+
+    /// 16 声道端点当前该不该在界面上显示成"已隐藏"。
+    /// 禁用和"系统里根本没有这个端点"对用户是同一回事，安装和手动切换两处共用。
+    fn is_multichannel_hidden() -> bool {
+        matches!(
+            vox_audio_win::multichannel_endpoint_status(),
+            vox_audio_win::MultichannelEndpointStatus::Disabled
+                | vox_audio_win::MultichannelEndpointStatus::NotPresent
+        )
     }
 }
 
@@ -593,10 +596,7 @@ pub fn read_catalog_override(
     if crate::catalog_updater::catalog_file(&provider).is_none() {
         return Err(format!("未知模型服务商：{provider}"));
     }
-    let config_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| format!("取配置目录失败：{e}"))?;
+    let config_dir = app_config_dir(&app)?;
     Ok(crate::catalog_updater::read_override(
         &config_dir,
         &provider,
@@ -610,10 +610,7 @@ pub async fn check_catalog_update(
     provider: String,
 ) -> Result<CatalogUpdateCheckDto, String> {
     parse_provider(&provider)?;
-    let config_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| format!("取配置目录失败：{e}"))?;
+    let config_dir = app_config_dir(&app)?;
     let latest = crate::catalog_updater::check_update(&provider).await?;
     Ok(CatalogUpdateCheckDto {
         current: crate::catalog_updater::local_verified_at(&config_dir, &provider),
@@ -628,10 +625,7 @@ pub async fn apply_catalog_update(
     provider: String,
 ) -> Result<CatalogUpdateAppliedDto, String> {
     parse_provider(&provider)?;
-    let config_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| format!("取配置目录失败：{e}"))?;
+    let config_dir = app_config_dir(&app)?;
     let (file, verified) = crate::catalog_updater::apply_update(&config_dir, &provider).await?;
     Ok(CatalogUpdateAppliedDto { file, verified })
 }
@@ -677,8 +671,8 @@ pub fn open_provider_console(provider: String) -> Result<(), String> {
 pub fn open_virtual_cable_website() -> Result<(), String> {
     #[cfg(windows)]
     {
-        return tauri_plugin_opener::open_url(vox_audio_win::PRODUCT_URL, None::<&str>)
-            .map_err(|e| format!("打开 VB-CABLE 官网失败：{e}"));
+        tauri_plugin_opener::open_url(vox_audio_win::PRODUCT_URL, None::<&str>)
+            .map_err(|e| format!("打开 VB-CABLE 官网失败：{e}"))
     }
     #[cfg(not(windows))]
     Err(virtual_device_not_needed())
@@ -688,8 +682,8 @@ pub fn open_virtual_cable_website() -> Result<(), String> {
 pub fn open_virtual_cable_donation() -> Result<(), String> {
     #[cfg(windows)]
     {
-        return tauri_plugin_opener::open_url(vox_audio_win::DONATION_URL, None::<&str>)
-            .map_err(|e| format!("打开 VB-CABLE 授权页面失败：{e}"));
+        tauri_plugin_opener::open_url(vox_audio_win::DONATION_URL, None::<&str>)
+            .map_err(|e| format!("打开 VB-CABLE 授权页面失败：{e}"))
     }
     #[cfg(not(windows))]
     Err(virtual_device_not_needed())
@@ -716,6 +710,15 @@ fn parse_pipeline(name: &str) -> Result<Pipeline, String> {
 
 fn parse_provider(name: &str) -> Result<ModelProvider, String> {
     ModelProvider::from_id(name).ok_or_else(|| format!("未知模型服务商：{name}"))
+}
+
+/// 取 `app_config_dir`。设置、用量、密钥和覆盖版模型目录都落在这个根下；
+/// `read_catalog_override` / `check_catalog_update` / `apply_catalog_update`
+/// 三条命令共用这一段取值 + 报错包装（错误串跟前端显示的一致）。
+fn app_config_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_config_dir()
+        .map_err(|e| format!("取配置目录失败：{e}"))
 }
 
 /// 深合并 `patch` 到 `base` 上。
