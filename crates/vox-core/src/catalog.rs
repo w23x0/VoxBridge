@@ -43,11 +43,6 @@ pub fn normalize_model_for(provider: crate::settings::ModelProvider, name: &str)
     }
 }
 
-/// 当前启用的 provider 快照。从目录 JSON 生成，不要手写第二份。
-pub fn providers() -> &'static [ProviderInfo] {
-    PROVIDER_INFOS
-}
-
 pub fn provider_info(provider: crate::settings::ModelProvider) -> &'static ProviderInfo {
     PROVIDER_INFOS
         .iter()
@@ -104,7 +99,8 @@ pub fn supports_audio_output(language: &str) -> bool {
     AUDIO_OUTPUT_LANGUAGES.contains(&language)
 }
 
-pub fn find_model(name: &str) -> Option<&'static ModelInfo> {
+/// 按名字找模型。只有 [`normalize_model`] 用，不对外暴露。
+fn find_model(name: &str) -> Option<&'static ModelInfo> {
     MODELS.iter().find(|m| m.name == name)
 }
 
@@ -127,7 +123,8 @@ pub fn normalize_language(code: &str) -> &'static str {
         .map_or(DEFAULT_TARGET_LANGUAGE, |(c, _)| *c)
 }
 
-pub fn voice_label(id: &str) -> Option<&'static str> {
+/// 音色 id 的显示名。只有 [`ordered_voices`] 用，不对外暴露。
+fn voice_label(id: &str) -> Option<&'static str> {
     VOICE_LABELS.iter().find(|(v, _)| *v == id).map(|(_, l)| *l)
 }
 
@@ -201,6 +198,14 @@ pub struct KeyOption {
     pub label: String,
 }
 
+/// 非字母数字键的显示名。UI 的按键枚举（[`key_options`]）和显示当前绑定的
+/// [`crate::hotkey::Hotkey::label`] 必须说同一个词，所以这张小表只留这一份。
+pub(crate) const SPECIAL_KEY_LABELS: &[(&str, &str)] = &[
+    ("Space", "空格"),
+    ("XButton1", "鼠标侧键1"),
+    ("XButton2", "鼠标侧键2"),
+];
+
 /// 供 UI 枚举的按键选项。
 pub fn key_options() -> Vec<KeyOption> {
     let mut out = Vec::new();
@@ -219,9 +224,9 @@ pub fn key_options() -> Vec<KeyOption> {
     for n in 1..=12 {
         push(&format!("F{n}"), &format!("F{n}"));
     }
-    push("Space", "空格");
-    push("XButton1", "鼠标侧键1");
-    push("XButton2", "鼠标侧键2");
+    for (id, label) in SPECIAL_KEY_LABELS {
+        push(id, label);
+    }
     out
 }
 

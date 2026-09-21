@@ -110,6 +110,11 @@ fn lit(value: &str) -> String {
     format!("{value:?}")
 }
 
+/// 多语字段三语都要有内容——缺一种语言前端就会显示空白。
+fn l10n_filled(label: &L10n) -> bool {
+    !label.zh.is_empty() && !label.en.is_empty() && !label.ja.is_empty()
+}
+
 fn main() {
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let source = manifest.join("../../catalog/aliyun.json");
@@ -145,21 +150,15 @@ fn main() {
     );
     for lang in &catalog.languages {
         assert!(
-            !lang.label.zh.is_empty() && !lang.label.en.is_empty() && !lang.label.ja.is_empty(),
+            l10n_filled(&lang.label),
             "语言 {} 的多语 label 有空值",
             lang.code
         );
     }
     for voice in &catalog.voices {
+        assert!(l10n_filled(&voice.name), "音色 {} 的 name 有空值", voice.id);
         assert!(
-            !voice.name.zh.is_empty() && !voice.name.en.is_empty() && !voice.name.ja.is_empty(),
-            "音色 {} 的 name 有空值",
-            voice.id
-        );
-        assert!(
-            !voice.description.zh.is_empty()
-                && !voice.description.en.is_empty()
-                && !voice.description.ja.is_empty(),
+            l10n_filled(&voice.description),
             "音色 {} 的 description 有空值",
             voice.id
         );

@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::catalog::normalize_key;
+use crate::catalog::{normalize_key, SPECIAL_KEY_LABELS};
 use crate::ports::{HotkeyBindings, HotkeyEvent};
 
 /// 一个快捷键组合。
@@ -73,12 +73,11 @@ impl Hotkey {
         if self.shift {
             parts.push("Shift");
         }
-        let key_label = match self.key.as_str() {
-            "Space" => "空格",
-            "XButton1" => "鼠标侧键1",
-            "XButton2" => "鼠标侧键2",
-            other => other,
-        };
+        // 特殊键的显示名跟 UI 的按键枚举共用一张表，免得两边措辞悄悄漂移。
+        let key_label = SPECIAL_KEY_LABELS
+            .iter()
+            .find(|(id, _)| *id == self.key)
+            .map_or(self.key.as_str(), |(_, label)| *label);
         parts.push(key_label);
         parts.join(" + ")
     }

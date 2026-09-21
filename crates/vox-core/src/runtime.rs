@@ -491,14 +491,11 @@ impl Runtime {
             }
 
             // 切激活方式：一律回到"未开麦"，避免旧状态残留导致误上传。（坑 5）
-            if new.speak.activation_mode != old.speak.activation_mode && s.mic_active {
-                s.mic_active = false;
-                events.push(Event::MicActive { active: false });
+            if new.speak.activation_mode != old.speak.activation_mode {
+                Self::reset_mic_active_locked(&mut s, &mut events);
             }
 
-            let speak = s.pipeline(Pipeline::Speak);
-            let speak_live = speak.state.is_running();
-            let speak_session = speak.session_id;
+            let (speak_live, speak_session) = Self::live_session(&s, Pipeline::Speak);
 
             if speak_live {
                 // 换服务商/模型必须重连，语言/音色可以热更新。
@@ -561,9 +558,7 @@ impl Runtime {
                 }
             }
 
-            let listen = s.pipeline(Pipeline::Listen);
-            let listen_live = listen.state.is_running();
-            let listen_session = listen.session_id;
+            let (listen_live, listen_session) = Self::live_session(&s, Pipeline::Listen);
             if listen_live
                 && (new.listen.provider != old.listen.provider
                     || new.listen.model_name != old.listen.model_name)
@@ -613,6 +608,41 @@ impl Runtime {
         self.inner.gate_seq.fetch_add(1, Ordering::SeqCst) + 1
     }
 
+    /// 这条流水线在跑吗、会话号是多少。改设置时要据此决定"热更新还是提示重启"。
+    ///
+    /// **必须在持写锁时调用**。
+    fn live_session(state: &State, pipeline: Pipeline) -> (bool, u64) {
+        let status = state.pipeline(pipeline);
+        (status.state.is_running(), status.session_id)
+    }
+
+    /// 复位"麦克风活跃"标志，并攒一条 `MicActive` 事件；事件由调用方在放锁后统一发。
+    ///
+    /// **必须在持写锁时调用**。停会话、会话挂掉、换激活方式都要复位，
+    /// 否则旧状态残留会让下一次会话误上传。（坑 5）
+    fn reset_mic_active_locked(state: &mut State, events: &mut Vec<Event>) {
+        if state.mic_active {
+            state.mic_active = false;
+            events.push(Event::MicActive { active: false });
+        }
+    }
+
+    /// 取这条流水线当前的记录；会话号对不上（旧会话的迟到回调、或已作废的 0 号）
+    /// 返回 `None`，调用方直接丢弃。
+    ///
+    /// **必须在持写锁时调用**。所有外壳回调都过这一道。（坑 4）
+    fn live_pipeline_mut(
+        state: &mut State,
+        pipeline: Pipeline,
+        session_id: u64,
+    ) -> Option<&mut PipelineStatus> {
+        let slot = state.pipeline_mut(pipeline);
+        if slot.session_id != session_id || session_id == 0 {
+            return None;
+        }
+        Some(slot)
+    }
+
     // -- 流水线开关 ---------------------------------------------------------
 
     /// 开一条流水线。已经在跑就什么也不做。
@@ -629,8 +659,7 @@ impl Runtime {
                 Pipeline::Listen => s.settings.listen.provider,
             };
             // 对外说话关闭翻译（直通原声）不走云端，不需要 API 密钥。
-            let needs_key_or_translate =
-                pipeline != Pipeline::Speak || s.settings.speak.translate;
+            let needs_key_or_translate = pipeline != Pipeline::Speak || s.settings.speak.translate;
             let Some(api_key) = s
                 .api_keys
                 .get(&provider)
@@ -754,9 +783,8 @@ impl Runtime {
             });
 
             // 停对外说话要复位麦克风状态。（坑 5）
-            if pipeline == Pipeline::Speak && s.mic_active {
-                s.mic_active = false;
-                events.push(Event::MicActive { active: false });
+            if pipeline == Pipeline::Speak {
+                Self::reset_mic_active_locked(&mut s, &mut events);
             }
 
             let track = pipeline.track();
@@ -848,10 +876,9 @@ impl Runtime {
         let mut events = Vec::new();
         {
             let mut s = self.inner.state.write();
-            let status = s.pipeline_mut(pipeline);
-            if status.session_id != session_id || session_id == 0 {
+            let Some(status) = Self::live_pipeline_mut(&mut s, pipeline, session_id) else {
                 return;
-            }
+            };
             if status.state == state {
                 return;
             }
@@ -869,10 +896,9 @@ impl Runtime {
         let mut events = Vec::new();
         {
             let mut s = self.inner.state.write();
-            let status = s.pipeline_mut(pipeline);
-            if status.session_id != session_id || session_id == 0 {
+            let Some(status) = Self::live_pipeline_mut(&mut s, pipeline, session_id) else {
                 return;
-            }
+            };
             status.state = PipelineState::Failed;
             status.last_error = Some(error.clone());
             status.gate = None;
@@ -882,9 +908,8 @@ impl Runtime {
                 state: PipelineState::Failed,
             });
 
-            if pipeline == Pipeline::Speak && s.mic_active {
-                s.mic_active = false;
-                events.push(Event::MicActive { active: false });
+            if pipeline == Pipeline::Speak {
+                Self::reset_mic_active_locked(&mut s, &mut events);
             }
         }
         self.notify(Notice::error(error).on(pipeline));
@@ -895,10 +920,9 @@ impl Runtime {
     pub fn on_gate_status(&self, pipeline: Pipeline, session_id: u64, status: GateStatus) {
         {
             let mut s = self.inner.state.write();
-            let slot = s.pipeline_mut(pipeline);
-            if slot.session_id != session_id || session_id == 0 {
+            let Some(slot) = Self::live_pipeline_mut(&mut s, pipeline, session_id) else {
                 return;
-            }
+            };
             slot.gate = Some(status);
         }
         self.emit(vec![Event::GateStatus { pipeline, status }]);
@@ -908,10 +932,9 @@ impl Runtime {
     pub fn on_latency(&self, pipeline: Pipeline, session_id: u64, latency: LatencySnapshot) {
         {
             let mut s = self.inner.state.write();
-            let slot = s.pipeline_mut(pipeline);
-            if slot.session_id != session_id || session_id == 0 {
+            let Some(slot) = Self::live_pipeline_mut(&mut s, pipeline, session_id) else {
                 return;
-            }
+            };
             if slot.latency == latency {
                 return;
             }
@@ -956,8 +979,6 @@ impl Runtime {
                 } else {
                     slot.push_text(text, now);
                 }
-            }
-            if done {
             }
         }
         self.emit(vec![Event::SubtitleDelta {
@@ -1008,17 +1029,18 @@ impl Runtime {
     /// 从磁盘装入已有的用量账本（启动时调）。
     pub fn load_usage(&self, ledger: UsageLedger) {
         self.inner.state.write().usage = ledger;
-        let usage = self.usage();
-        self.emit(vec![Event::UsageChanged {
-            usage: Box::new(usage),
-        }]);
+        self.emit_usage();
     }
 
     pub fn reset_usage(&self) {
         self.inner.state.write().usage.reset();
-        let usage = self.usage();
+        self.emit_usage();
+    }
+
+    /// 广播当前用量账本。**必须在放开状态锁之后调用**。
+    fn emit_usage(&self) {
         self.emit(vec![Event::UsageChanged {
-            usage: Box::new(usage),
+            usage: Box::new(self.usage()),
         }]);
     }
 
@@ -1445,12 +1467,13 @@ mod tests {
         rt.start(Pipeline::Speak);
         // 直通不走云端，不需要密钥：启动命令该照发，不许弹「先配置 API 密钥」。
         assert!(
-            rec.drain().iter().any(|c| matches!(c, PipelineCommand::Start(_))),
+            rec.drain()
+                .iter()
+                .any(|c| matches!(c, PipelineCommand::Start(_))),
             "关掉翻译对外说话也该能启动"
         );
         assert!(
-            !rt
-                .snapshot()
+            !rt.snapshot()
                 .notices
                 .iter()
                 .any(|n| n.text.contains("密钥") || n.text.contains("API")),

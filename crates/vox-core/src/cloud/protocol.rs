@@ -288,18 +288,7 @@ impl Decoder {
                 str_field(&value, "text").unwrap_or_default(),
                 str_field(&value, "stash").unwrap_or_default(),
             ),
-            "response.audio.delta" => match str_field(&value, "delta") {
-                Some(b64) => match base64::engine::general_purpose::STANDARD.decode(b64) {
-                    Ok(pcm) if !pcm.is_empty() => ServerEvent::AudioDelta { pcm },
-                    // 空的或解不开的，当没接过的事件处理，不要伪造静音塞给播放器。
-                    _ => ServerEvent::Other {
-                        event_type: event_type.clone(),
-                    },
-                },
-                None => ServerEvent::Other {
-                    event_type: event_type.clone(),
-                },
-            },
+            "response.audio.delta" => audio_delta(&value, &event_type),
             "input_audio_buffer.speech_started" => ServerEvent::SpeechStarted {
                 audio_start_ms: value
                     .get("audio_start_ms")
@@ -349,15 +338,7 @@ impl Decoder {
                     },
                 }
             }
-            "error" | "response.error" => {
-                let err = value.get("error").unwrap_or(&value);
-                ServerEvent::Error {
-                    code: str_field(err, "code").map(str::to_string),
-                    message: str_field(err, "message")
-                        .unwrap_or("服务端返回了错误，但没说原因")
-                        .to_string(),
-                }
-            }
+            "error" | "response.error" => error_event(&value, "服务端返回了错误，但没说原因"),
             _ => ServerEvent::Other {
                 event_type: event_type.clone(),
             },
@@ -368,15 +349,12 @@ impl Decoder {
 
     /// 攒一片，吐出到目前为止的整句。（坑 3）
     fn accumulate(&mut self, piece: Option<&str>) -> ServerEvent {
-        match piece.filter(|p| !p.is_empty()) {
-            Some(piece) => {
-                self.parts.push_str(piece);
-                ServerEvent::TextDelta {
-                    text: self.parts.clone(),
-                    // delta 类型的累积是单调增长的整句，整句就是已确认部分。
-                    confirmed: Some(self.parts.clone()),
-                }
-            }
+        match assembled(&mut self.parts, piece) {
+            Some(text) => ServerEvent::TextDelta {
+                // delta 类型的累积是单调增长的整句，整句就是已确认部分。
+                confirmed: Some(text.clone()),
+                text,
+            },
             // 空增量当没发生过。
             None => ServerEvent::Other {
                 event_type: "response.text.delta".to_string(),
@@ -418,8 +396,47 @@ impl Decoder {
     }
 }
 
-fn str_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
+/// 取一个 JSON 字符串字段。OpenAI 那个解码器（`cloud/gpt.rs`）也用它。
+pub(super) fn str_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
     value.get(key).and_then(Value::as_str)
+}
+
+/// 把一片增量攒进 `parts`，返回**到目前为止拼好的整句**（不是这一小片）；
+/// 空增量返回 `None`，当没发生过。（坑 3）
+///
+/// Aliyun 的 text/audio transcript 和 OpenAI 的 output/input transcript
+/// 累积方式一模一样，共用这一份。
+pub(super) fn assembled(parts: &mut String, piece: Option<&str>) -> Option<String> {
+    parts.push_str(piece.filter(|p| !p.is_empty())?);
+    Some(parts.clone())
+}
+
+/// `*.audio.delta`：base64 → PCM16LE 字节。
+///
+/// 空的或解不开的当"没接过的事件"处理，**不要伪造静音塞给播放器**。
+/// Aliyun 和 OpenAI 两家的字段名、载荷都一样，只有事件名不同，所以共用一份。
+pub(super) fn audio_delta(value: &Value, event_type: &str) -> ServerEvent {
+    match str_field(value, "delta") {
+        Some(b64) => match base64::engine::general_purpose::STANDARD.decode(b64) {
+            Ok(pcm) if !pcm.is_empty() => ServerEvent::AudioDelta { pcm },
+            _ => ServerEvent::Other {
+                event_type: event_type.to_string(),
+            },
+        },
+        None => ServerEvent::Other {
+            event_type: event_type.to_string(),
+        },
+    }
+}
+
+/// 错误事件：错误对象有时在 `error` 字段里，有时就是顶层对象本身。
+/// 没带 message 时用 `fallback` 兜底——两家的措辞不同，由调用方给。
+pub(super) fn error_event(value: &Value, fallback: &str) -> ServerEvent {
+    let err = value.get("error").unwrap_or(value);
+    ServerEvent::Error {
+        code: str_field(err, "code").map(str::to_string),
+        message: str_field(err, "message").unwrap_or(fallback).to_string(),
+    }
 }
 
 /// 从 `response.done` 里掏 usage。字段名跟服务端一致，缺的当 0。
@@ -455,8 +472,10 @@ pub fn float_to_pcm16(samples: &[f32]) -> Vec<u8> {
 /// PCM16LE → f32，给播放侧用。半个样本的尾巴直接丢掉。
 pub fn pcm16_to_float(bytes: &[u8]) -> Vec<f32> {
     bytes
-        .chunks_exact(2)
-        .map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0)
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|b| i16::from_le_bytes(*b) as f32 / 32768.0)
         .collect()
 }
 

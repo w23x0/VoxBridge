@@ -117,16 +117,6 @@ pub struct PlaybackStats {
     pub device_latency_ms: u64,
 }
 
-impl PlaybackStats {
-    pub fn queued_ms(self) -> u64 {
-        let channels = self.channels.max(1) as u64;
-        if self.sample_rate == 0 {
-            return 0;
-        }
-        (self.queued_samples as u64 / channels) * 1000 / self.sample_rate as u64
-    }
-}
-
 // --- 信号处理 --------------------------------------------------------------
 
 /// 降噪器。内核只知道"送一块进去、拿一块出来"，具体算法在 `vox-dsp` 里。

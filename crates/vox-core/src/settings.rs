@@ -295,9 +295,14 @@ impl Settings {
         serde_json::to_string_pretty(self).unwrap_or_else(|_| "{}".to_string())
     }
 
-    /// 老版本配置往当前版本搬。
+    /// 老版本配置往当前版本搬：推版本号 + 把 v0/v1 的共享模型名分给两条流水线。
+    ///
+    /// v0/v1 两条流水线共用顶层 `model_name`，v2 起各存一份，所以这里必须显式分配。
+    /// 不靠 [`Self::normalize`] 兜底：normalize 会把未知模型名拉回默认值，只有
+    /// **当前目录里该服务商只有一个模型**时它和这里的分配才等价；`catalog/*.json`
+    /// 一旦给某家加上第二个模型，`normalize_model_for` 就会保留调用方给的合法名字，
+    /// 届时靠 normalize 兜底会把用户的旧模型选择悄悄换成默认模型。
     fn migrate(&mut self) {
-        // v0/v1：两条流水线共用顶层 model_name。v2 起各自保存一份。
         if self.version < 2 {
             let legacy =
                 catalog::normalize_model_for(self.speak.provider, &self.model_name).to_string();
@@ -305,8 +310,6 @@ impl Settings {
             self.listen.model_name = legacy;
         }
         self.version = SETTINGS_VERSION;
-        // 旧字段不再参与运行，也不再写盘；复位后 round-trip 的结构保持稳定。
-        self.model_name = DEFAULT_MODEL_NAME.to_string();
     }
 
     /// 把所有越界值拽回合法范围。

@@ -199,15 +199,18 @@ impl Session {
         protocol::event_id(now_ms, self.seq)
     }
 
+    /// Aliyun 的会话配置帧。连上就发一次（握手），之后热更新也发这个。
+    fn aliyun_session_update(&mut self, now_ms: u64) -> String {
+        let event = ClientEvent::SessionUpdate(Box::new(self.params.clone()));
+        let id = self.next_event_id(now_ms);
+        event.to_json(&id)
+    }
+
     /// 连上之后要发的第一帧。
     pub fn handshake(&mut self, now_ms: u64) -> String {
         self.handshaken = true;
         match self.provider {
-            ModelProvider::Aliyun => {
-                let event = ClientEvent::SessionUpdate(Box::new(self.params.clone()));
-                let id = self.next_event_id(now_ms);
-                event.to_json(&id)
-            }
+            ModelProvider::Aliyun => self.aliyun_session_update(now_ms),
             ModelProvider::Gemini => gemini::setup_frame(&self.params),
             ModelProvider::Gpt => gpt::session_update(&self.params),
         }
@@ -281,11 +284,7 @@ impl Session {
             return None;
         }
         match self.provider {
-            ModelProvider::Aliyun => {
-                let event = ClientEvent::SessionUpdate(Box::new(self.params.clone()));
-                let id = self.next_event_id(now_ms);
-                Some(event.to_json(&id))
-            }
+            ModelProvider::Aliyun => Some(self.aliyun_session_update(now_ms)),
             ModelProvider::Gpt => Some(gpt::session_update(&self.params)),
             // Gemini's setup message is only valid as the first frame; its catalog
             // capability is false, so this arm is only reached if catalog data changes.

@@ -11,7 +11,9 @@ use serde_json::{json, Map, Value};
 use crate::catalog;
 use crate::settings::ModelProvider;
 
-use super::protocol::{ParsedEvent, ServerEvent, SessionParams};
+use super::protocol::{
+    assembled, audio_delta, error_event, str_field, ParsedEvent, ServerEvent, SessionParams,
+};
 
 /// The OpenAI translation endpoint is opened with the model selected via query.
 pub fn endpoint_url() -> String {
@@ -124,13 +126,7 @@ impl Decoder {
                 event_type: event_type.clone(),
             },
             "error" | "response.error" => {
-                let err = value.get("error").unwrap_or(&value);
-                ServerEvent::Error {
-                    code: str_field(err, "code").map(str::to_string),
-                    message: str_field(err, "message")
-                        .unwrap_or("OpenAI Realtime 返回了错误，但没说原因")
-                        .to_string(),
-                }
+                error_event(&value, "OpenAI Realtime 返回了错误，但没说原因")
             }
             _ => ServerEvent::Other {
                 event_type: event_type.clone(),
@@ -140,15 +136,12 @@ impl Decoder {
     }
 
     fn output_transcript_delta(&mut self, piece: Option<&str>) -> ServerEvent {
-        match piece.filter(|p| !p.is_empty()) {
-            Some(piece) => {
-                self.output_parts.push_str(piece);
-                ServerEvent::TextDelta {
-                    text: self.output_parts.clone(),
-                    // delta 累积出来的整句就是已确认部分。
-                    confirmed: Some(self.output_parts.clone()),
-                }
-            }
+        match assembled(&mut self.output_parts, piece) {
+            Some(text) => ServerEvent::TextDelta {
+                // delta 累积出来的整句就是已确认部分。
+                confirmed: Some(text.clone()),
+                text,
+            },
             None => ServerEvent::Other {
                 event_type: "session.output_transcript.delta".into(),
             },
@@ -156,35 +149,12 @@ impl Decoder {
     }
 
     fn input_transcript_delta(&mut self, piece: Option<&str>) -> ServerEvent {
-        match piece.filter(|p| !p.is_empty()) {
-            Some(piece) => {
-                self.source_parts.push_str(piece);
-                ServerEvent::SourceTranscriptDelta {
-                    text: self.source_parts.clone(),
-                }
-            }
+        match assembled(&mut self.source_parts, piece) {
+            Some(text) => ServerEvent::SourceTranscriptDelta { text },
             None => ServerEvent::Other {
                 event_type: "session.input_transcript.delta".into(),
             },
         }
-    }
-}
-
-fn str_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
-    value.get(key).and_then(Value::as_str)
-}
-
-fn audio_delta(value: &Value, event_type: &str) -> ServerEvent {
-    match str_field(value, "delta") {
-        Some(b64) => match base64::engine::general_purpose::STANDARD.decode(b64) {
-            Ok(pcm) if !pcm.is_empty() => ServerEvent::AudioDelta { pcm },
-            _ => ServerEvent::Other {
-                event_type: event_type.to_string(),
-            },
-        },
-        None => ServerEvent::Other {
-            event_type: event_type.to_string(),
-        },
     }
 }
 
