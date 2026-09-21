@@ -5,7 +5,7 @@
 //! 写半边留在主线程侧通过 `block_on` 发送（写不需要超时，且 DashScope 不会
 //! 背压到阻塞写的地步）。`recv` 用 `recv_timeout` 等 channel，超时时连接不受影响。
 
-use std::sync::Arc;
+use std::future::Future;
 use std::time::Duration;
 
 use futures_util::stream::{SplitSink, SplitStream, StreamExt};
@@ -54,36 +54,35 @@ struct ActiveConn {
 pub struct WsTransport {
     handle: Handle,
     /// 自己起的 runtime（standalone 模式）。持有它只为保活，不直接用。
-    _owned_rt: Option<Arc<Runtime>>,
+    _owned_rt: Option<Runtime>,
     conn: Option<ActiveConn>,
 }
 
 impl WsTransport {
     /// 复用已有 runtime（Tauri 场景下 app 已经有一个在跑的 tokio runtime）。
     pub fn new(handle: Handle) -> Self {
-        ensure_crypto_provider();
-        Self {
-            handle,
-            _owned_rt: None,
-            conn: None,
-        }
+        Self::with_runtime(handle, None)
     }
 
     /// 自己起一个小 runtime，适合测试和 CLI 场景。
     pub fn standalone() -> PortResult<Self> {
-        ensure_crypto_provider();
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
             .build()
             .map_err(|e| PortError::new(format!("无法启动网络运行时：{e}")))?;
         let handle = rt.handle().clone();
-        let rt = Arc::new(rt);
-        Ok(Self {
+        Ok(Self::with_runtime(handle, Some(rt)))
+    }
+
+    /// 两条构造路径的唯一收束点：装 CryptoProvider（幂等）、记下 runtime 句柄。
+    fn with_runtime(handle: Handle, owned_rt: Option<Runtime>) -> Self {
+        ensure_crypto_provider();
+        Self {
             handle,
-            _owned_rt: Some(rt),
+            _owned_rt: owned_rt,
             conn: None,
-        })
+        }
     }
 
     /// 如果还有连接就关掉，为下一次 `connect` 腾地方。
@@ -128,19 +127,15 @@ impl Transport for WsTransport {
         debug!(url = %safe_url, "正在连接 WebSocket");
 
         // 在 runtime 上执行握手，阻塞当前线程等结果。
-        let stream: WsStream = self
-            .handle
-            .block_on(async {
-                // 30 秒连接超时——DNS 解析 + TCP 三次握手 + TLS 协商 + HTTP 升级。
-                tokio::time::timeout(
-                    Duration::from_secs(30),
-                    tokio_tungstenite::connect_async(req),
-                )
-                .await
-            })
-            .map_err(|_| PortError::new("连接超时（30 秒内未完成握手）"))?
-            .map_err(map_connect_error)?
-            .0;
+        // 30 秒连接超时——DNS 解析 + TCP 三次握手 + TLS 协商 + HTTP 升级。
+        let stream: WsStream = block_on_timeout(
+            &self.handle,
+            Duration::from_secs(30),
+            tokio_tungstenite::connect_async(req),
+        )
+        .ok_or_else(|| PortError::new("连接超时（30 秒内未完成握手）"))?
+        .map_err(map_connect_error)?
+        .0;
 
         // 实时音频是频繁的小帧；关闭 Nagle，避免小包在等待 ACK 时平白多挨一拍。
         if let Err(error) = stream.get_ref().get_ref().set_nodelay(true) {
@@ -173,9 +168,8 @@ impl Transport for WsTransport {
             .ok_or_else(|| PortError::new("发送失败：连接未建立"))?;
 
         let msg = Message::Text(text.to_owned().into());
-        self.handle
-            .block_on(async { tokio::time::timeout(WRITE_TIMEOUT, conn.write.send(msg)).await })
-            .map_err(|_| PortError::new("发送超时（5 秒内 socket 未能写出）"))?
+        block_on_timeout(&self.handle, WRITE_TIMEOUT, conn.write.send(msg))
+            .ok_or_else(|| PortError::new("发送超时（5 秒内 socket 未能写出）"))?
             .map_err(|e| PortError::new(format!("发送失败：{e}")))?;
         Ok(())
     }
@@ -198,24 +192,32 @@ impl Transport for WsTransport {
 
         // 用 tokio 的 timeout 等 channel——超时时 channel 和读循环都不受影响。
         let dur = Duration::from_millis(timeout_ms as u64);
-        let result = self
-            .handle
-            .block_on(async { tokio::time::timeout(dur, conn.rx.recv()).await });
-
-        match result {
+        match block_on_timeout(&self.handle, dur, conn.rx.recv()) {
             // 超时——安静路径，连接还活着。
-            Err(_elapsed) => Ok(None),
+            None => Ok(None),
             // channel 关了（读循环退出了但没来得及发 Error/Closed）。
-            Ok(None) => Ok(Some(Incoming::Closed(
+            Some(None) => Ok(Some(Incoming::Closed(
                 "连接意外断开（读循环已退出）".to_owned(),
             ))),
-            Ok(Some(msg)) => Ok(Some(reader_msg(msg))),
+            Some(Some(msg)) => Ok(Some(reader_msg(msg))),
         }
     }
 
     fn close(&mut self) {
         self.teardown();
     }
+}
+
+/// 在 runtime 上阻塞等一个 future，限时 `limit`：超时返回 `None`。
+///
+/// 握手、写、读三处都是同一个形状（`block_on` + `tokio::time::timeout`）；
+/// 超时不算连接出问题，错误分类由各调用点自己映射。
+fn block_on_timeout<T>(
+    handle: &Handle,
+    limit: Duration,
+    fut: impl Future<Output = T>,
+) -> Option<T> {
+    handle.block_on(async { tokio::time::timeout(limit, fut).await.ok() })
 }
 
 // --- 读循环 ------------------------------------------------------------------
@@ -380,21 +382,30 @@ mod tests {
     async fn start_header_checking_server(
         auth_tx: tokio::sync::oneshot::Sender<Option<String>>,
     ) -> SocketAddr {
+        use tokio_tungstenite::tungstenite::handshake::server::Callback;
+
+        /// 握手回调：抄下 Authorization 头，然后原样放行。
+        struct CaptureAuth<'a>(&'a mut Option<String>);
+
+        impl Callback for CaptureAuth<'_> {
+            fn on_request(self, req: &Request, resp: Response) -> Result<Response, ErrorResponse> {
+                *self.0 = req
+                    .headers()
+                    .get("Authorization")
+                    .map(|v| v.to_str().unwrap_or("").to_string());
+                Ok(resp)
+            }
+        }
+
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
             if let Ok((stream, _)) = listener.accept().await {
                 let mut captured_auth: Option<String> = None;
-                let callback = |req: &Request, resp: Response| -> Result<Response, ErrorResponse> {
-                    captured_auth = req
-                        .headers()
-                        .get("Authorization")
-                        .map(|v| v.to_str().unwrap_or("").to_string());
-                    Ok(resp)
-                };
-                let ws = tokio_tungstenite::accept_hdr_async(stream, callback)
-                    .await
-                    .unwrap();
+                let ws =
+                    tokio_tungstenite::accept_hdr_async(stream, CaptureAuth(&mut captured_auth))
+                        .await
+                        .unwrap();
                 let _ = auth_tx.send(captured_auth);
                 let (mut write, mut read) = ws.split();
                 while let Some(Ok(msg)) = read.next().await {

@@ -12,12 +12,9 @@
 use std::net::Ipv4Addr;
 use std::net::UdpSocket;
 
-/// VRChat 官方 OSC 收端口默认值。
-pub const DEFAULT_OSC_PORT: u16 = 9000;
-
 /// 一条 OSC 参数。布尔在 OSC 里用类型标签 `T`/`F` 表达，不占数据段。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum OscValue {
+enum OscValue {
     String(String),
     Boolean(bool),
 }
@@ -41,8 +38,8 @@ pub struct OscClient {
 }
 
 impl OscClient {
-    /// 建一个 客户端，绑到同机随机本地口、设非阻塞。`port` 是 VRChat 监听的 OSC 端口，
-    /// 默认用 [`DEFAULT_OSC_PORT`]。
+    /// 建一个 客户端，绑到同机随机本地口、设非阻塞。`port` 是 VRChat 监听的 OSC 端口
+    /// （VRChat 官方默认 9000）。
     pub fn new(port: u16) -> Result<Self, String> {
         let udp = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))
             .map_err(|e| format!("绑定本地 UDP 失败：{e}"))?;
@@ -88,7 +85,7 @@ impl OscClient {
     }
 
     /// 发一条任意 OSC 消息（address + 参数列表）到目标端口。
-    pub fn send(&self, address: &str, args: &[OscValue]) -> Result<(), String> {
+    fn send(&self, address: &str, args: &[OscValue]) -> Result<(), String> {
         let frame = build(address, args);
         self.udp
             .send_to(&frame, (Ipv4Addr::LOCALHOST, self.port))
@@ -130,10 +127,7 @@ fn build(address: &str, args: &[OscValue]) -> Vec<u8> {
     let mut frame = Vec::new();
 
     // ① 地址：NUL 结尾 + 4 对齐。
-    pad4(&mut frame);
-    frame.extend_from_slice(address.as_bytes());
-    frame.push(0);
-    pad4(&mut frame);
+    push_osc_string(&mut frame, address);
 
     // ② 类型标签：逗号开头，每个参数一个字符，NUL 结尾 + 4 对齐。
     frame.push(b',');
@@ -150,13 +144,18 @@ fn build(address: &str, args: &[OscValue]) -> Vec<u8> {
     // ③ 数据段：string 依次排入（顺序与类型标签一致），bool 不占数据段。
     for arg in args {
         if let OscValue::String(s) = arg {
-            frame.extend_from_slice(s.as_bytes());
-            frame.push(0);
-            pad4(&mut frame);
+            push_osc_string(&mut frame, s);
         }
     }
 
     frame
+}
+
+/// 写入一个 OSC string 段：内容 + NUL 结尾 + 补零到 4 的倍数。
+fn push_osc_string(buf: &mut Vec<u8>, s: &str) {
+    buf.extend_from_slice(s.as_bytes());
+    buf.push(0);
+    pad4(buf);
 }
 
 /// 补零到 4 的倍数。

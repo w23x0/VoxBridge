@@ -8,8 +8,8 @@
 pub mod channels;
 pub mod chunk;
 mod denoise;
-pub mod ring;
 mod resample;
+pub mod ring;
 
 pub use denoise::{backend_name, Denoiser, NATIVE_SAMPLE_RATE};
 pub use resample::Resampler;
