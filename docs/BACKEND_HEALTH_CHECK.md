@@ -116,9 +116,9 @@
 - **建议**：先确认 vox-dsp 的 sinc 重采样器已稳定可用，再按上面注入方案让 `WinPlayback` 改用内核 `Resample` trait，最后删掉 vox-audio-win 这份线性重采样器。删之前这是 crate 里最大的并行实现。
 
 ### 4.2 `map_connect_error` 用字符串匹配判 DNS 错误（脆弱）
-- **位置**：`crates/vox-net/src/ws.rs:317-320`
+- **位置**：`crates/vox-net/src/ws.rs` 的 `map_connect_error()`（本仓库的行号引用会随改动漂移，按符号名找）
 - **问题**：用 `format!("{err}").contains("dns"/"resolve"/"getaddrinfo")` 字符串匹配来区分 DNS 失败与一般 TCP 失败——依赖错误消息文案，locale 或库版本一变就可能漏判。
-- **证据**：`:317 if format!("{err}").contains("dns") || ...contains("resolve") || ...contains("getaddrinfo")`
+- **证据**：函数里 `if format!("{err}").contains("dns") || ...contains("resolve") || ...contains("getaddrinfo")`
 - **严重度：低**（只是错误分类的文案友好度，不影响正确性）
 - **建议**：分类问题的判断成立，但**修复路径需注意**（codex 审查指出）：`std::io::ErrorKind` **没有** DNS 这个 kind，Windows DNS 失败是以原始 OS 错误码（如 11001/12007）出现的，不是独立 ErrorKind。所以不能简单"改成匹配 ErrorKind"。可考虑匹配底层 raw OS error code，或接受现状。收益小，当前可不动。
 

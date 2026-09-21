@@ -64,12 +64,14 @@ VoxBridge/
 ├─ Cargo.toml                  # workspace
 ├─ catalog/
 │  ├─ aliyun.json             # 阿里云模型、语言、音色与 API 元数据
-│  └─ gemini.json             # Gemini Live Translation 元数据
+│  ├─ gemini.json             # Gemini Live Translation 元数据
+│  └─ gpt.json                # GPT Realtime Translate 元数据
 ├─ docs/
 │  ├─ ARCHITECTURE.md          # 本文档
 │  ├─ QWEN_PROTOCOL.md         # qwen WS 协议实测规格（从旧 cloud.py + 官方文档整理）
 │  ├─ DECISIONS.md             # 拍板记录
-│  └─ PROVIDER_CATALOG.md      # 服务商能力表维护流程
+│  ├─ PROVIDER_CATALOG.md      # 服务商能力表维护流程
+│  └─ …（平台/协议/诊断类文档，共 14 份，按需查阅）
 ├─ crates/
 │  ├─ vox-core/                # 【内核】平台无关，零重依赖
 │  ├─ vox-net/                 # WS 传输实现（tokio + tokio-tungstenite）
@@ -79,23 +81,26 @@ VoxBridge/
 │  ├─ vox-input-win/           # Windows 全局热键
 │  ├─ vox-audio-linux/         # Linux 音频 I/O（PipeWire）
 │  ├─ vox-overlay-linux/       # GTK 悬浮字幕窗（XWayland）
-│  └─ vox-input-linux/         # Linux 全局热键（evdev）
+│  ├─ vox-input-linux/         # Linux 全局热键（evdev）
+│  └─ vox-osc/                 # VRChat OSC 发送（纯 std，两个平台共用）
 │  （另有平台中立的 vox-overlay-core：画布/布局/帧合成，两个平台共用）
+├─ tools/
+│  └─ linux-verify/            # Linux 界面像素级验证脚本（见 PLATFORM_LINUX.md）
 └─ app/
    ├─ src-tauri/               # 【外壳】Tauri 主程序，装配一切
    └─ ui/                      # 设置界面前端
 ```
 
-workspace 成员是 `crates/` 下这 6 个**加上 `app/src-tauri`**，一共 7 个。
+workspace 成员是 `crates/` 下这 11 个**加上 `app/src-tauri`**，一共 12 个。
 
 > 装配层必须在 workspace 里：否则 `cargo test --workspace` 和 `cargo clippy --workspace`
 > 就**扫不到它**——而装配层是唯一能暴露跨 crate 类型对不上的地方，排除在验收命令之外没有意义。
-> 代价是 `app/src-tauri` 跟着共用根 `Cargo.lock` 和 `target/`（六个 crate 和装配层用同一套依赖版本）。
+> 代价是 `app/src-tauri` 跟着共用根 `Cargo.lock` 和 `target/`（十一个 crate 和装配层用同一套依赖版本）。
 
 ## 4. 内核 `vox-core`
 
 平台无关，而且**没有任何重依赖**：整个 crate 只依赖 serde / serde\_json / base64 /
-thiserror / tracing / parking\_lot，**既没有 tokio 也没有 tokio-tungstenite**，
+tracing / parking\_lot，**既没有 tokio 也没有 tokio-tungstenite**，
 一个 async 函数都没有。
 
 网络怎么办？内核只定义一个同步的 `Transport` trait（`cloud/mod.rs` 里），
@@ -111,17 +116,18 @@ thiserror / tracing / parking\_lot，**既没有 tokio 也没有 tokio-tungsteni
 | `catalog.rs` | 服务商目录查询、**激活方式 `ActivationMode`（开关/按住）**、**键名 ↔ Windows VK 映射**。Aliyun 与 Gemini 元数据由 `catalog/*.json` 经 `build.rs` 校验并生成，前端读取同一数据源。 |
 | `gate.rs` | 音量阀门。**照抄旧 `vad.py`**，参数一个不改（手动 tail 150/preroll 100，电平默认 0.012，听人 0.006/600/200） |
 | `hotkey.rs` | 热键的数据结构：修饰键 + 键名、合法性校验、冲突检测、非法值回退。**键名 ↔ VK 那张表不在这里，在 `catalog.rs`** |
+| `latency.rs` | 实时链路的延迟统计：连接/首字/首声/首播/整轮等指标各留最近 64 个样本，对外只暴露 last / p50 / p95。只存时间与计数，不存音频或字幕内容 |
 | `cloud/mod.rs` | `Transport` trait + 会话状态机：握手、上传音频、热更新、断线重连退避、致命错误判定 |
 | `cloud/protocol.rs` | 协议的 serde 类型。收发的 JSON 长什么样只写在这一个文件里。详见 `QWEN_PROTOCOL.md` |
 | `usage.rs` | token 累计（总计/输入/输出，今日/本月，按模型分）+ 持久化 + 重置。**顶层文件，不在 `cloud/` 下面** |
 | `subtitle.rs` | 字幕模型：逐字流入、每字自己的 TTL 和淡出进度、双行（对外/听人）分色 |
-| `pipeline/mod.rs` | 流水线的执行骨架：`PipelineEngine`（管线程）+ `Deps`（外壳注入的一整套工厂）+ `Plan`（把两条流水线的差别压成一张作业单，骨架只认作业单）。节奏常量都在这里：采集块 `INPUT_BLOCK_MS = 40`、输入队列深度 `INPUT_QUEUE_SIZE = 32`、主循环一拍 `POLL_MS = 20`（也是 Stop 握手的最坏响应时间）、阀门状态限流 `GATE_THROTTLE_MS = 200`、降噪生效率 `DENOISE_RATE = 48_000` |
+| `pipeline/mod.rs` | 流水线的执行骨架：`PipelineEngine`（管线程）+ `Deps`（外壳注入的一整套工厂）+ `Plan`（把两条流水线的差别压成一张作业单，骨架只认作业单）。节奏常量都在这里：采集块 `INPUT_BLOCK_MS = 20`、输入队列深度 `INPUT_QUEUE_SIZE = 8`（约 160 ms）、主循环一拍 `POLL_MS = 5`（也是 Stop 握手的最坏响应时间）、阀门状态限流 `GATE_THROTTLE_MS = 200`、降噪生效率 `DENOISE_RATE = 48_000` |
 | `pipeline/speak.rs` | 对外说话流水线 |
 | `pipeline/listen.rs` | 听人说话流水线 |
 
 内核当前实际的模块清单（`lib.rs` 里 `pub mod` 的那些）：`catalog`、`cloud`、
-`event`、`gate`、`hotkey`、`pipeline`、`ports`、`runtime`、`settings`、`subtitle`、
-`usage`。当前是对外说话、听人说话两条流水线。
+`event`、`gate`、`hotkey`、`latency`、`pipeline`、`ports`、`runtime`、`settings`、
+`subtitle`、`usage`。当前是对外说话、听人说话两条流水线。
 
 外壳注入平台能力用的是 **工厂**（`Deps` 里那五个 `*Factory`）而不是实例：
 每次 Start 都要一个全新的采集源 / socket / 降噪器，复用上一次的实例会带着上一段
@@ -150,8 +156,8 @@ thiserror / tracing / parking\_lot，**既没有 tokio 也没有 tokio-tungsteni
 | `vox-audio-win` | 麦克风采集；**按设备名**输出到 CABLE Input；**进程环回**采集指定程序的声音；设备枚举与自动选择；输出采样率探测；VB-CABLE 检测与静默安装；**系统版本检测**（进程环回要求 build ≥ 20348） |
 | `vox-overlay-win` | Win32 分层窗（per-pixel alpha 真透明，不用 WebView2）；CPU 渲染中日韩文字；**永久鼠标穿透的纯显示窗**，不包含按钮、状态、token 计数或拖动交互；读取设置中的位置大小 |
 | `vox-input-win` | 全局热键监听（含鼠标侧键） |
-| `app/src-tauri` | 装配：建 Runtime、注入 Windows 实现、起悬浮窗线程、开热键线程、暴露 **20 个** Tauri 命令给前端、托盘、开机自启、单实例。另外自己负责**落盘去抖 + 原子写**（`persist.rs`）、**DPAPI 加密存密钥**（`sys/secrets.rs`）、**系统时钟**（`sys/clock.rs`）、**设备低频轮询**（`devices.rs`）、**事件桥**（`events.rs`：一条事件同时喂前端、悬浮窗、落盘、开机自启开关） |
-| `app/ui` | 设置界面。**侧栏切页**，共 **7** 页（见 `nav.ts`）：首页、模型服务商、听人说话、设置、用量、字幕外观、关于。首页分别在两张主卡内配置服务商、语言和音色；模型由服务商能力表固定。服务商页管理密钥并展示完整能力。前端只认一条事件通道 `voxbridge://event`（`api.ts` 里的 `EVENT_CHANNEL`）。运行期依赖只有 react + react-dom + @tauri-apps/api |
+| `app/src-tauri` | 装配：建 Runtime、注入 Windows 实现、起悬浮窗线程、开热键线程、暴露 **26 个** Tauri 命令给前端、托盘、开机自启、单实例。另外自己负责**落盘去抖 + 原子写**（`persist.rs`）、**DPAPI 加密存密钥**（`sys/secrets.rs`）、**系统时钟**（`sys/clock.rs`）、**设备低频轮询**（`devices.rs`）、**事件桥**（`events.rs`：一条事件同时喂前端、悬浮窗、落盘、开机自启开关） |
+| `app/ui` | 设置界面。**侧栏切页**，共 **7** 页（见 `nav.ts`）：首页、模型服务商、听人说话、设置、用量、字幕外观、关于。首页分别在两张主卡内配置服务商、语言和音色；模型由服务商能力表固定。服务商页管理密钥并展示完整能力。前端只认一条事件通道 `voxbridge://event`（`api.ts` 里的 `EVENT_CHANNEL`）。运行期依赖只有 react + react-dom + @tauri-apps/api + @tauri-apps/plugin-updater |
 
 ## 6. 线程拓扑
 
@@ -176,7 +182,7 @@ thiserror / tracing / parking\_lot，**既没有 tokio 也没有 tokio-tungsteni
 
 关于环形缓冲，采集侧和播放侧是**两条不同的路**：
 - **采集侧没有环形缓冲**：采集线程把定长块推给 `PipelineEngine` 的输入队列
-  （`Mutex` + `Condvar`，深度 `INPUT_QUEUE_SIZE = 32`，满了**丢最旧的**并打限流日志），
+  （`Mutex` + `Condvar`，深度 `INPUT_QUEUE_SIZE = 8`，满了**丢最旧的**并打限流日志），
   工作线程从这个队列取。
 - **无锁环形缓冲只在播放侧**（`vox-audio-win::ring::DropRing`，5 秒容量，
   满了也丢最旧的）：工作线程写，渲染线程读。这条路上确实不加锁不打日志。
@@ -237,4 +243,4 @@ RNNoise 这边：
 **让音量阀门判断准**，不是追求录音棚音质。
 
 > 这项替换属于**事后补票**，见 `DECISIONS.md` 的待拍板清单第 1 条。
-<!-- 精简：237 行 → 229 行 -->
+<!-- 精简：237 行 → 229 行；2026-09-21 补齐失实计数后 245 行 -->
