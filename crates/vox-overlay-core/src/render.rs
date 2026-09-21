@@ -254,15 +254,11 @@ impl Renderer {
         }
 
         let listen_ids = self.listen_ids.update(
-            find_line(input.frame, Track::Listen)
-                .map(|l| l.chars.as_slice())
-                .unwrap_or(&[]),
+            track_chars(input.frame, Track::Listen),
             &mut self.next_char_id,
         );
         let speak_ids = self.speak_ids.update(
-            find_line(input.frame, Track::Speak)
-                .map(|l| l.chars.as_slice())
-                .unwrap_or(&[]),
+            track_chars(input.frame, Track::Speak),
             &mut self.next_char_id,
         );
         let target_rows = self.collect_rows(&sub, &listen_ids, &speak_ids, input.frame);
@@ -270,10 +266,7 @@ impl Renderer {
             // Offline snapshots use content-sized layout and are rendered as a
             // single settled frame. Do not carry a real-window transition between
             // independent scenes.
-            let positions = target_rows
-                .iter()
-                .map(|row| (row.key, row.placed.plate.y as f32))
-                .collect();
+            let positions = settled_positions(&target_rows);
             self.previous_rows = target_rows;
             self.transition = None;
             positions
@@ -295,10 +288,7 @@ impl Renderer {
         let speak_color = parse_hex_rgb_or(&input.settings.speak_color, Rgb::WHITE);
         let keep_offscreen_rows = self.transition.is_some();
         for (track, color) in [(Track::Listen, listen_color), (Track::Speak, speak_color)] {
-            let placed_rows = match track {
-                Track::Listen => &sub.listen_rows,
-                Track::Speak => &sub.speak_rows,
-            };
+            let placed_rows = track_slice(track, &sub.listen_rows, &sub.speak_rows);
             let Some(line) = find_line(input.frame, track) else {
                 continue;
             };
@@ -317,14 +307,7 @@ impl Renderer {
                 {
                     continue;
                 }
-                let key = self.row_key(
-                    track,
-                    placed,
-                    match track {
-                        Track::Listen => listen_ids.as_slice(),
-                        Track::Speak => speak_ids.as_slice(),
-                    },
-                );
+                let key = self.row_key(track, placed, track_slice(track, &listen_ids, &speak_ids));
                 let y = positions
                     .iter()
                     .find(|(row_key, _)| *row_key == key)
@@ -351,9 +334,10 @@ impl Renderer {
             (Track::Listen, &layout.listen_rows, listen_ids),
             (Track::Speak, &layout.speak_rows, speak_ids),
         ] {
-            let Some(line) = find_line(frame, track) else {
+            // 源行不存在的视觉行既画不出来，也不该参与动画状态，直接跳过。
+            if find_line(frame, track).is_none() {
                 continue;
-            };
+            }
             for placed in placed_rows {
                 let ids_for_row = ids
                     .get(placed.first_visible..placed.last_visible.min(ids.len()))
@@ -365,9 +349,6 @@ impl Renderer {
                     char_ids: ids_for_row,
                 });
             }
-            // `line` is intentionally looked up above: a layout row without a source
-            // line cannot be drawn and should not participate in animation state.
-            let _ = line;
         }
         rows
     }
@@ -386,11 +367,7 @@ impl Renderer {
 
     fn current_positions(&self, now: std::time::Instant) -> Vec<(u64, f32)> {
         let Some(transition) = &self.transition else {
-            return self
-                .previous_rows
-                .iter()
-                .map(|row| (row.key, row.placed.plate.y as f32))
-                .collect();
+            return settled_positions(&self.previous_rows);
         };
         transition
             .target
@@ -495,9 +472,7 @@ impl Renderer {
     fn measure_rows(&mut self, frame: &SubtitleFrame) -> (RowMetrics, RowMetrics) {
         let fm = self.font.metrics();
         let mut make = |track: Track| {
-            let chars = find_line(frame, track)
-                .map(|l| l.chars.as_slice())
-                .unwrap_or(&[]);
+            let chars = track_chars(frame, track);
             RowMetrics {
                 advances: chars.iter().map(|c| self.font.advance(c.ch)).collect(),
                 line_height: fm.line_height,
@@ -565,6 +540,33 @@ fn draw_char_with(
 
 fn find_line(frame: &SubtitleFrame, track: Track) -> Option<&SubtitleLine> {
     frame.lines.iter().find(|l| l.track == track)
+}
+
+/// 某条轨上的字符序列；这条轨没有内容时给空切片。
+///
+/// 量字宽和更新字符身份都要按轨取一次字符，写法一模一样，收成这一个 lookup。
+fn track_chars(frame: &SubtitleFrame, track: Track) -> &[RenderedChar] {
+    find_line(frame, track)
+        .map(|line| line.chars.as_slice())
+        .unwrap_or(&[])
+}
+
+/// 按轨从"听人 / 对外"两份数据里挑出对应的那一份。
+///
+/// `Track` 到两个字段的映射在渲染循环里要写好几遍（视觉行、字符 id），
+/// 集中在一处免得两边写岔。
+fn track_slice<'a, T>(track: Track, listen: &'a [T], speak: &'a [T]) -> &'a [T] {
+    match track {
+        Track::Listen => listen,
+        Track::Speak => speak,
+    }
+}
+
+/// 已落位的行 → `(行 key, 底衬 y)`。过渡没在跑时位置就是布局算出来的那个 y。
+fn settled_positions(rows: &[StableRow]) -> Vec<(u64, f32)> {
+    rows.iter()
+        .map(|row| (row.key, row.placed.plate.y as f32))
+        .collect()
 }
 
 #[cfg(test)]

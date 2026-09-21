@@ -78,16 +78,14 @@ impl Overlay {
             .spawn(move || window::run(thread_shared, settings, thread_callback, tx))
             .map_err(|e| PortError::new(format!("启动悬浮窗线程失败: {e}")))?;
 
-        match rx.recv() {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => {
-                let _ = handle.join();
-                return Err(e);
-            }
-            Err(_) => {
-                let _ = handle.join();
-                return Err(PortError::new("悬浮窗线程在建窗前退出"));
-            }
+        let startup = match rx.recv() {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err(PortError::new("悬浮窗线程在建窗前退出")),
+        };
+        if let Err(e) = startup {
+            let _ = handle.join();
+            return Err(e);
         }
         let _ = overlay.thread_id.set(handle.thread().id());
         *overlay.thread.lock() = Some(handle);
@@ -169,8 +167,8 @@ fn sanitize(settings: &SubtitleSettings) -> SubtitleSettings {
         vox_core::settings::FONT_SIZE_RANGE.1,
     );
     if let Some(g) = &mut s.geometry {
-        g.width = g.width.clamp(160, 8192);
-        g.height = g.height.clamp(60, 4096);
+        // 尺寸上下限跟窗口线程那侧同一组常量（`window::clamp_geometry`），别在这边另写一份数字。
+        (g.width, g.height) = window::clamp_geometry(g.width, g.height);
     }
     s
 }

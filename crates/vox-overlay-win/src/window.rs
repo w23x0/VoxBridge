@@ -40,10 +40,11 @@ pub const WM_VOX_WAKE: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 1
 const DEFAULT_WIDTH: i32 = 880;
 const DEFAULT_HEIGHT: i32 = 170;
 const DEFAULT_BOTTOM_MARGIN: i32 = 80;
-const MIN_WIDTH: i32 = 160;
-const MIN_HEIGHT: i32 = 60;
-const MAX_WIDTH: i32 = 8192;
-const MAX_HEIGHT: i32 = 4096;
+/// 窗口尺寸上下限。`lib.rs` 的 `sanitize` 也拿这一组去夹设置，别在那边另写一份数字。
+pub(crate) const MIN_WIDTH: i32 = 160;
+pub(crate) const MIN_HEIGHT: i32 = 60;
+pub(crate) const MAX_WIDTH: i32 = 8192;
+pub(crate) const MAX_HEIGHT: i32 = 4096;
 const HIT_TEST_BORDER: i32 = 10;
 const ANIMATION_TIMER_ID: usize = 0x5642;
 const ANIMATION_TIMER_MS: u32 = 16;
@@ -464,10 +465,7 @@ impl WindowState {
         }
         // 系统给的建议矩形已经按新 DPI 缩放过，采纳它的位置和尺寸。
         if let Some(r) = suggested {
-            self.rect.x = r.left;
-            self.rect.y = r.top;
-            self.rect.w = clamp_width(r.right - r.left);
-            self.rect.h = clamp_height(r.bottom - r.top);
+            self.rect = rect_from_win32(r);
         }
         self.redraw();
     }
@@ -511,12 +509,7 @@ impl WindowState {
     fn sync_rect_from_window(&mut self) {
         let mut r = RECT::default();
         if unsafe { GetWindowRect(self.hwnd, &mut r) }.is_ok() {
-            self.rect = RectI::new(
-                r.left,
-                r.top,
-                clamp_width(r.right - r.left),
-                clamp_height(r.bottom - r.top),
-            );
+            self.rect = rect_from_win32(r);
         }
     }
 
@@ -640,12 +633,34 @@ fn signed_high_word(value: usize) -> i32 {
     ((value >> 16) as u16 as i16) as i32
 }
 
+/// Win32 的 `RECT`（left/top/right/bottom）→ 本 crate 的矩形，宽高按窗口上下限夹好。
+///
+/// 拖动/缩放（`WM_MOVE`/`WM_SIZE`/`WM_EXITSIZEMOVE`）和 DPI 变化都会拿到系统给的
+/// `RECT`，两处共用这一套换算。
+fn rect_from_win32(r: RECT) -> RectI {
+    RectI::new(
+        r.left,
+        r.top,
+        clamp_width(r.right - r.left),
+        clamp_height(r.bottom - r.top),
+    )
+}
+
 fn clamp_width(width: i32) -> i32 {
     width.clamp(MIN_WIDTH, MAX_WIDTH)
 }
 
 fn clamp_height(height: i32) -> i32 {
     height.clamp(MIN_HEIGHT, MAX_HEIGHT)
+}
+
+/// 把设置里带的几何尺寸夹进窗口允许的范围。`lib.rs` 的 `sanitize` 用它，
+/// 跟 `clamp_width`/`clamp_height` 共用同一组上下限。
+pub(crate) fn clamp_geometry(width: u32, height: u32) -> (u32, u32) {
+    (
+        width.clamp(MIN_WIDTH as u32, MAX_WIDTH as u32),
+        height.clamp(MIN_HEIGHT as u32, MAX_HEIGHT as u32),
+    )
 }
 
 /// Rust 字符串转以 0 结尾的 UTF-16 缓冲。

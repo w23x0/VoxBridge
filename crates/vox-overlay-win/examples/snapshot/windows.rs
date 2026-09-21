@@ -401,7 +401,7 @@ fn composite(canvas: &Canvas, bg: &[u8]) -> Vec<u8> {
     }
     let mut out = Vec::with_capacity(bg.len());
     for (y, row) in bg.chunks_exact((w as usize) * 4).enumerate() {
-        for (x, dst) in row.chunks_exact(4).enumerate() {
+        for (x, dst) in row.as_chunks::<4>().0.iter().enumerate() {
             let s = canvas.pixel(x as i32, y as i32);
             let inv = 255 - s.a as u32;
             let mix = |src: u8, d: u8| (src as u32 + d as u32 * inv / 255).min(255) as u8;

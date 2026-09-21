@@ -59,9 +59,8 @@ impl Canvas {
             self.clear();
             return;
         }
-        self.width = width;
-        self.height = height;
-        self.pixels = vec![0u8; (width as usize) * (height as usize) * 4];
+        // 重新分配就等于新建一块（夹负和清零都在 `new` 里）。
+        *self = Self::new(width, height);
     }
 
     /// 全部抹成透明。窗口范围内没画到的像素一律不上屏。

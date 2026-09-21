@@ -99,6 +99,16 @@ pub struct SubtitleLayout {
     pub client_height: i32,
 }
 
+/// 一行底衬的像素尺寸：宽 = 可见文字宽 + 左右内边距，高 = 行高 + 上下内边距。
+///
+/// "按内容尺寸"和"固定视口"两套布局都要这个换算，收在一处免得两边写岔。
+fn plate_extent(text_width: i32, line_height: i32, metrics: Metrics) -> (i32, i32) {
+    (
+        text_width + 2 * metrics.plate_pad_x,
+        line_height + 2 * metrics.plate_pad_y,
+    )
+}
+
 /// 摆两行字。
 ///
 /// `client_width` 是窗口宽度（持久化下来的，不随内容变）；高度由内容算出来——
@@ -119,8 +129,7 @@ pub fn layout_rows(
             continue;
         }
         let (first_visible, text_width) = visible_tail(&row.advances, avail);
-        let plate_w = text_width + 2 * metrics.plate_pad_x;
-        let plate_h = row.line_height + 2 * metrics.plate_pad_y;
+        let (plate_w, plate_h) = plate_extent(text_width, row.line_height, metrics);
         let placed = PlacedRow {
             // x/y 先占位，等总高度定了再统一往下挪。
             plate: RectI::new(0, 0, plate_w, plate_h),
@@ -253,9 +262,8 @@ pub fn layout_rows_in_viewport(
         ..Default::default()
     };
     for segment in segments {
-        let plate_h = segment.line_height + 2 * metrics.plate_pad_y;
-        let plate_w = (segment.text_width + 2 * metrics.plate_pad_x).min(inner_width);
-        let plate = RectI::new(metrics.padding, y, plate_w.max(1), plate_h);
+        let (plate_w, plate_h) = plate_extent(segment.text_width, segment.line_height, metrics);
+        let plate = RectI::new(metrics.padding, y, plate_w.min(inner_width).max(1), plate_h);
         let placed = PlacedRow {
             plate,
             first_visible: segment.first,

@@ -178,51 +178,6 @@ impl FontRaster {
         Ok(())
     }
 
-    fn metrics(&self) -> FontMetrics {
-        self.metrics
-    }
-
-    /// 量单个字的步进。
-    fn advance(&mut self, ch: char) -> i32 {
-        match self.glyph(ch) {
-            Some(g) => g.advance,
-            None => 0,
-        }
-    }
-
-    /// 取一个字的覆盖率掩码，失败返回 `None`（这一个字不画，别拖垮整帧）。
-    fn glyph(&mut self, ch: char) -> Option<&Glyph> {
-        // 控制字符统一当空格，免得跑出诡异的字形或者负宽度。
-        let ch = if ch.is_control() { ' ' } else { ch };
-        self.cache_clock = self.cache_clock.wrapping_add(1);
-        let now = self.cache_clock;
-        if self.cache.contains_key(&ch) {
-            let cached = self.cache.get_mut(&ch)?;
-            cached.last_used = now;
-            return Some(&cached.glyph);
-        }
-
-        let glyph = self.rasterize(ch)?;
-        if self.cache.len() >= MAX_CACHED_GLYPHS {
-            let oldest = self
-                .cache
-                .iter()
-                .min_by_key(|(_, cached)| cached.last_used)
-                .map(|(&key, _)| key);
-            if let Some(oldest) = oldest {
-                self.cache.remove(&oldest);
-            }
-        }
-        self.cache.insert(
-            ch,
-            CachedGlyph {
-                glyph,
-                last_used: now,
-            },
-        );
-        self.cache.get(&ch).map(|cached| &cached.glyph)
-    }
-
     fn rasterize(&mut self, ch: char) -> Option<Glyph> {
         let mut utf16 = [0u16; 2];
         let units: &[u16] = ch.encode_utf16(&mut utf16);
@@ -395,18 +350,52 @@ fn write_face_name(dst: &mut [u16; 32], family: &str) {
 
 /// 光栅器接口：渲染器只认这个 trait，Windows 用 GDI，Linux 用 swash。
 ///
+/// 实现直接写在这里，不再另开一套同名的私有方法转发——渲染器只经 trait 调它们。
 /// `measure` 用 trait 的默认实现（按 `advance` 累加）——GDI 那版原来也是这么算的。
 impl GlyphSource for FontRaster {
     fn metrics(&self) -> FontMetrics {
-        FontRaster::metrics(self)
+        self.metrics
     }
 
+    /// 量单个字的步进。
     fn advance(&mut self, ch: char) -> i32 {
-        FontRaster::advance(self, ch)
+        match self.glyph(ch) {
+            Some(g) => g.advance,
+            None => 0,
+        }
     }
 
+    /// 取一个字的覆盖率掩码，失败返回 `None`（这一个字不画，别拖垮整帧）。
     fn glyph(&mut self, ch: char) -> Option<&Glyph> {
-        FontRaster::glyph(self, ch)
+        // 控制字符统一当空格，免得跑出诡异的字形或者负宽度。
+        let ch = if ch.is_control() { ' ' } else { ch };
+        self.cache_clock = self.cache_clock.wrapping_add(1);
+        let now = self.cache_clock;
+        if self.cache.contains_key(&ch) {
+            let cached = self.cache.get_mut(&ch)?;
+            cached.last_used = now;
+            return Some(&cached.glyph);
+        }
+
+        let glyph = self.rasterize(ch)?;
+        if self.cache.len() >= MAX_CACHED_GLYPHS {
+            let oldest = self
+                .cache
+                .iter()
+                .min_by_key(|(_, cached)| cached.last_used)
+                .map(|(&key, _)| key);
+            if let Some(oldest) = oldest {
+                self.cache.remove(&oldest);
+            }
+        }
+        self.cache.insert(
+            ch,
+            CachedGlyph {
+                glyph,
+                last_used: now,
+            },
+        );
+        self.cache.get(&ch).map(|cached| &cached.glyph)
     }
 }
 
