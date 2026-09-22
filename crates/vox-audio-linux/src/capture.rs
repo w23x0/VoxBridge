@@ -230,6 +230,10 @@ fn resolve_plan(target: &CaptureTarget) -> PortResult<Plan> {
                 label: executable.clone(),
             })
         }
+        // 网络采集目标（媒体面）不归 PipeWire 这条路：它由 `vox-net` 的监听侧实现。
+        CaptureTarget::Net { .. } => Err(PortError::new(
+            "网络音频不归 PipeWire 采集实现（由 vox-net 的媒体面提供）",
+        )),
     }
 }
 

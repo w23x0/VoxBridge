@@ -122,6 +122,7 @@ fn capture(target: CaptureTarget, seconds: u64) -> Result<(), Box<dyn std::error
     let what = match &target {
         CaptureTarget::Microphone(name) => format!("麦克风 {}", name.clone().unwrap_or_default()),
         CaptureTarget::ProcessLoopback { executable, .. } => format!("程序 {executable}"),
+        CaptureTarget::Net { pipe } => format!("网络管子 {pipe}（不归本采集实现，必然报错）"),
     };
     println!("抓 {what}，{seconds} 秒…");
 

@@ -3,7 +3,7 @@
 //! 实现 `vox_core::ports` 里的 `CaptureSource` / `PlaybackSink` / `DeviceRegistry`。
 //!
 //! 几条贯穿全 crate 的规矩：
-//! - 音频回调线程只做“搬数据”，不分配、不加锁、不打日志（见 ARCHITECTURE.md §6）；
+//! - 音频回调线程只做“搬数据”，不分配、不加锁、不打日志（见 docs/architecture/ARCHITECTURE.md §6）；
 //! - 每个自己开的线程自己初始化 COM（MTA），退出时反初始化；
 //! - COM 错误一律翻成带 HRESULT 的中文 `PortError`，永不 panic；
 //! - 库代码里没有 `unwrap()` / `expect()`，测试里可以有。

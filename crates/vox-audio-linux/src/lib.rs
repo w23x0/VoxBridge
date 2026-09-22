@@ -1,7 +1,7 @@
 //! Linux 音频 I/O：**PipeWire**。
 //!
 //! 实现 `vox_core::ports` 里的 `CaptureSource` / `PlaybackSink` / `DeviceRegistry`，
-//! 对应 Windows 侧的 `vox-audio-win`。锚定范围见 `docs/PLATFORM_LINUX.md`：
+//! 对应 Windows 侧的 `vox-audio-win`。锚定范围见 `docs/platform/LINUX.md`：
 //! **PipeWire 必需**（主流发行版的默认音频服务），PulseAudio / 纯 ALSA 环境明确不支持
 //! ——那边没有"按进程抓音"这个概念，硬降级成整机环回会把用户自己的麦也翻一遍。
 //!
@@ -24,7 +24,9 @@ mod virtual_sink;
 pub use capture::LinuxCapture;
 pub use playback::LinuxPlayback;
 pub use registry::LinuxDeviceRegistry;
-pub use virtual_sink::{description as virtual_mic_description, VirtualSink};
+pub use virtual_sink::{
+    description as virtual_mic_description, VirtualSink, NODE_NAME as VIRTUAL_MIC_NODE_NAME,
+};
 
 /// PipeWire 在不在。装配层用它决定"能不能装音频后端"，连不上就该在界面上说清楚，
 /// 而不是等用户开了流水线才发现抓不到声音。

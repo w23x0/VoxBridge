@@ -88,6 +88,12 @@ impl CaptureSource for WinCapture {
                 },
                 format!("{executable} 的进程环回采集"),
             ),
+            // 网络采集目标（媒体面）不归 WASAPI 这条路：它由 `vox-net` 的监听侧实现。
+            CaptureTarget::Net { .. } => {
+                return Err(PortError::new(
+                    "网络音频不归 WASAPI 采集实现（由 vox-net 的媒体面提供）",
+                ))
+            }
         };
 
         let thread_control = Arc::clone(&control);
@@ -156,6 +162,12 @@ impl CaptureSource for EndpointLoopbackCapture {
         let device = match target {
             CaptureTarget::Microphone(name) => name.clone(),
             CaptureTarget::ProcessLoopback { .. } => None,
+            // 整机环回也是设备采集：网络源不归这条路。
+            CaptureTarget::Net { .. } => {
+                return Err(PortError::new(
+                    "网络音频不归 WASAPI 采集实现（由 vox-net 的媒体面提供）",
+                ))
+            }
         };
         let control = CaptureControl::new()?;
         let (handshake, rx) = Handshake::pair();

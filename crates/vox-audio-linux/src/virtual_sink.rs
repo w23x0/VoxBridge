@@ -8,6 +8,8 @@
 //!
 //! 用户那一步跟 Windows 上选 VB-CABLE 是同一个动作，所以引导文案可以照搬。
 
+use std::time::{Duration, Instant};
+
 use pipewire as pw;
 use pw::properties::properties;
 use vox_core::ports::{PortError, PortResult};
@@ -34,6 +36,10 @@ pub struct VirtualSink {
 
 impl VirtualSink {
     /// 在系统里建一个虚拟 sink。已有同名节点时会失败——调用方先查 `exists()`。
+    ///
+    /// **返回 `Ok` 就意味着节点在图里真的看得见**（不是"我们的请求发出去了"）：
+    /// 装配层拿"这个句柄建出来了"当能力位的凭据（S0 §2.5.4 的 R6），所以这里必须
+    /// 等到另一个客户端也查得到它才敢说建成了。
     pub fn create() -> PortResult<Self> {
         probe::init();
         let (main_loop, core) = probe::connect()?;
@@ -55,11 +61,41 @@ impl VirtualSink {
         probe::roundtrip(&main_loop, &core)?;
         probe::roundtrip(&main_loop, &core)?;
 
-        Ok(Self {
+        let sink = Self {
             node,
             core,
             main_loop,
-        })
+        };
+        sink.wait_until_visible()?;
+        Ok(sink)
+    }
+
+    /// 等节点在**图里**真的看得见（另开一个客户端收一轮快照来确认）。
+    ///
+    /// 为什么要等：`create_object` 返回、两轮 roundtrip 跑完，只说明**我们的请求**被
+    /// 服务端处理了；适配器节点被登记成全局对象可能还排在后面。本机实测（2026-09-22）
+    /// 约四分之一的启动里，紧接着的一次图快照还看不到它（10 ms 后就看得到）。
+    /// 不等就会出现"我们这边说建好了、别的程序（界面、`wpctl`、VRChat）却还看不到这个设备"
+    /// 的窗口——而"位说 ON、设备不存在"正是这一位要防的东西（S0 §1.4）。
+    ///
+    /// 超时还是看不见就报错（**不返回一个可能不存在的设备**）：调用方据此把能力位报假。
+    fn wait_until_visible(&self) -> PortResult<()> {
+        const TIMEOUT: Duration = Duration::from_millis(1_000);
+        const STEP: Duration = Duration::from_millis(20);
+
+        let started = Instant::now();
+        loop {
+            if Self::exists()? {
+                return Ok(());
+            }
+            if started.elapsed() >= TIMEOUT {
+                return Err(PortError::new(format!(
+                    "虚拟麦克风建出来了，但 {} ms 内图里都查不到它",
+                    TIMEOUT.as_millis()
+                )));
+            }
+            std::thread::sleep(STEP);
+        }
     }
 
     /// 系统里是不是已经有这个名字的 sink（比如上次没退干净）。

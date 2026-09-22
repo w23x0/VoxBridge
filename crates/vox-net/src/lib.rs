@@ -14,7 +14,11 @@
 //! 构造方式：
 //! - `WsTransport::new(handle)` —— 复用已有的 tokio runtime（Tauri 场景）。
 //! - `WsTransport::standalone()` —— 自己起一个 2 线程的 runtime（测试/CLI 场景）。
+//!
+//! 另一个子模块 [`media`] 是**媒体面**（网络音频进出）：裸 WebSocket + 自定义二进制帧 +
+//! 抖动缓冲/节拍。两条管子的协议、路径、凭据都不共用（见 `media` 的模块文档）。
 
+pub mod media;
 mod ws;
 
 pub use ws::WsTransport;
