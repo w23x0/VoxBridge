@@ -1,0 +1,68 @@
+[package]
+name = "vox-mcp"
+description = "VoxBridge 控制面出口：动作清单（唯一真源）+ MCP 协议面 + 本机 HTTP 传输 + voxctl CLI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# 打开后 `compose_endpoint` 的 `composition` 那一格**由 `vox_core::composition::Composition` 的
+# 类型生成**（`build.rs` 拿 schemars 0.8.22 生成，`actions.rs::composition_schema!` 读成字面量）。
+# 连带打开芯的 `json-schema` feature——用例要靠它把生成物与 `schema_for!(Composition)` 对上。
+#
+# **默认开**：这一格是协议面要广告的东西，交付出去的二进制（app / 无屏档 / `voxctl`）不该把它
+# 留在占位上。关掉（`--no-default-features`）时回退成放宽的占位，不广告类型级的形状——
+# 那条路径同样是可编、可测的（两条路径各有用例，`tests/protocol.rs`）。
+json-schema = ["vox-core/json-schema"]
+default = ["json-schema"]
+
+# 依赖表很小，而且**每个都已在 `Cargo.lock` 里**（`git diff Cargo.lock` 不新增任何包）：
+#
+# - `serde` / `serde_json`：协议面（JSON-RPC 帧 + JSON Schema 文本 + 分派）。
+# - `base64`：握手 token 的 32 字节 → 43 字符 base64url（设计稿 §2.5.1）。
+# - `getrandom`：token 的随机源。**不用 `/dev/urandom`**——本 crate 要能在 Windows / Android 上编。
+#
+# 传输面**不要 tokio**：本版规范把服务端压成"单路径 + POST-only + 无 session + 无 GET"
+# （§2.3.1 第 10 条），而 `ControlBackend` 的契约本身就是同步阻塞的 → `std::net::TcpListener`
+# + 每连接一个线程就够了（§2.6）。根 `Cargo.toml` 的 tokio 特性行因此**不用改**。
+#
+# schemars **不在**这张表（`[dependencies]`）里：`composition` 那一格的 schema 由 `build.rs`
+# 生成（见 [build-dependencies] 与 `actions.rs::composition_schema!`），本 crate 的运行期代码
+# 一行都不碰它。**别读成"整棵树没有"**：默认 feature 经 `vox-core/json-schema` 把它带进运行期
+# 依赖树（`cargo tree -p vox-mcp -e normal | grep schemars` 有命中）；`--no-default-features`
+# 关掉那条路径，运行期树里才一份没有。
+#
+# 硬约束（docs/plans/S1-AGENT-FACE.md §2.6）：绝不依赖界面外壳、媒体面、平台外壳那三类
+# crate；能力差异全部来自注入的 `HostFacts`，不靠平台 cfg（唯一的 cfg 是建握手文件时的
+# `0600`——那是内核 API，没有跨平台写法，且与能力位无关）。`cargo tree` 与 grep 都能证。
+#
+# `vox-core` 是**唯一**的 workspace 内部依赖（§2.6 的图：`MCP -->|只依赖芯| CORE`）：
+# 端点投影（`endpoints.rs`）必须走芯的 `Composition::of(&SessionConfig, &HostFacts)` 与
+# `Runtime::session_config*`，否则清单与事实就会有第二份。芯不反向依赖本 crate（第 24 条）。
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+base64.workspace = true
+getrandom = "0.3"
+vox-core.workspace = true
+
+# `composition` 那一格的**生成器**。schema 是喂 `concat!` 的**文本常量**，而
+# `schema_for!(Composition)` 是运行期值——所以生成发生在构建期，生成物写进 `$OUT_DIR`，
+# `composition_schema!` 用 `include_str!` 读成字面量。见 `build.rs`。
+#
+# 这里再用一份 `vox-core`（带 `json-schema`）是必须的：build 脚本只能吃 [build-dependencies]，
+# 而 resolver v2 不把 build 依赖的 feature 与正常依赖合并——本表里那份 `vox-core` 的 feature
+# 由上面那个 feature 决定，构建期这份恒定带 schemars。
+[build-dependencies]
+vox-core = { workspace = true, features = ["json-schema"] }
+schemars = "0.8.22"
+serde_json.workspace = true
+
+[dev-dependencies]
+# 只有用例用：把 `$defs.composition` 与 `schema_for!(Composition)` 的**运行期真值**对上
+# （证明那一格确实是从类型生成的，不是抄的）。版本必须与芯的可选依赖同一份（同一个 trait）。
+schemars = "0.8.22"
+
+[[bin]]
+name = "voxctl"
+path = "src/bin/voxctl.rs"
