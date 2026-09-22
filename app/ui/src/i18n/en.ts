@@ -12,6 +12,7 @@ const en = {
     providers: "Providers",
     subtitle: "Subtitles",
     vrchat: "VRChat",
+    agent: "Agent control",
     settings: "Settings",
     usage: "Usage",
     about: "About",
@@ -334,6 +335,85 @@ const en = {
   common: {
     cancel: "Cancel",
     connectFailed: "Failed to connect to backend: {error}",
+  },
+
+  /** Capability strings: bit names + reasons + `(bit, reason)` overrides. See `src/capabilities.ts`. */
+  capabilities: {
+    title: "Device capabilities",
+    note: "{bit}: {reason}",
+    tierName: {
+      windows: "Windows desktop",
+      linux_desktop: "Linux desktop",
+      android: "Android phone",
+      linux_headless: "Linux headless",
+    },
+    bit: {
+      mic: "Microphone capture",
+      programTap: "Per-app audio tap",
+      virtualMic: "Virtual microphone",
+      captions: "Captions",
+      globalHotkey: "Global hotkey",
+      tray: "Tray icon",
+      backgroundService: "Background service",
+      vrCaptions: "Headset captions",
+      netIn: "Audio in from network",
+      netOut: "Audio out to network",
+      fileConfig: "Config file control plane",
+    },
+    reason: {
+      unsupported: "This device can't do this: the current combination has no such path.",
+      notInstalled: "Not usable yet: install the virtual audio driver first, then come back to this page.",
+      permission: "Needs permission first: allow it in the system (e.g. add the user to the input group, allow recording or overlays), then restart this app.",
+      notBuilt: "Not compiled into this build: the matching cargo feature was off at build time; use a build that enables it.",
+      notWired: "This device can do it, but the assembly layer hasn't wired it up yet — the bit turns true on its own once it is, no setting to change.",
+      pendingReboot: "The driver is installed or removed, but a system reboot is required to take effect.",
+      busy: "Temporarily unavailable: another program is holding the device; it recovers once released.",
+    },
+    specific: {
+      trayUnsupported:
+        "The tray icon won't show: this machine has no tray host (GNOME ships without one; install the AppIndicator / KStatusNotifier extension for it to appear). Until then closing the window only minimizes it instead of hiding to tray.",
+      hotkeyPermission:
+        "Global hotkeys need permission first: add the current user to the input group (`usermod -aG input $USER`), log back in, then restart this app.",
+      programTapUnsupported:
+        "This device can't do this: this host tier has no per-app capture path (the headless tier doesn't capture locally; phones can't reach call-class audio by design). Use microphone capture instead, or move to a desktop machine.",
+      virtualMicNotInstalled:
+        "Not usable yet: install the virtual audio driver (VB-CABLE) first, then come back to this page — only then will other programs see it among recording devices.",
+    },
+  },
+
+  /**
+   * Agent control plane (S1): strings for the settings screen.
+   *
+   * The `status*` lines state **facts** (the observed `snapshot.control`), not what the
+   * settings say — when nothing is listening, say so and say why; never infer "should be
+   * running" from the switch.
+   */
+  agent: {
+    title: "Agent control plane",
+    enabled: "Master switch",
+    enabledDesc:
+      "Let an external agent (MCP / CLI) connect to this machine. While off nothing listens and no credential file is written; the four permission bits below have no effect.",
+    port: "Listen port",
+    portDesc: "Loopback only (127.0.0.1). 0 = assigned by the system (default); ports below 1024 fall back to 0.",
+    credentials: "Credential file",
+    credentialsDesc: "The agent's port and token live in this file (readable only by this machine's owner).",
+    status: "Status",
+    statusLoading: "Reading",
+    statusApplying: "Applying the new setting…",
+    statusOff: "Not listening (master switch is off)",
+    statusRunning: "Running: 127.0.0.1:{port}",
+    statusFailed: "Failed to start: {error}",
+    statusUnknown: "Failed to start (no reason reported)",
+    allowMicrophone: "Allow microphone",
+    allowMicrophoneDesc: "The agent may open the microphone (to listen and translate on its own).",
+    allowSystemAudio: "Allow app audio capture",
+    allowSystemAudioDesc: "The agent may record one program's audio.",
+    allowAudibleOutput: "Allow audible output",
+    allowAudibleOutputDesc: "The agent may play sound to an audible output — people will hear it.",
+    allowConfigWrite: "Allow config changes",
+    allowConfigWriteDesc: "The agent may change this machine's endpoint config (target language, voice and the like).",
+    notify: "Transcript notify interval",
+    notifyDesc: "Transcript changes are collapsed into one notification per interval (ms, 50–5000).",
   },
 
   controls: {

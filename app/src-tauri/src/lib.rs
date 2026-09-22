@@ -1,7 +1,7 @@
 //! VoxBridge 装配层。
 //!
 //! 这个 crate 自己不做任何业务判断：它把 Windows 的实现塞进 `vox-core` 的每个
-//! 端口，把线程按 ARCHITECTURE.md §6 的拓扑摆好，再把内核事件转成前端认的那一个
+//! 端口，把线程按 docs/architecture/ARCHITECTURE.md §6 的拓扑摆好，再把内核事件转成前端认的那一个
 //! 事件通道。所有"要不要做、什么时候做"的决定都在内核里。
 //!
 //! 线程拓扑（§6）：
@@ -25,10 +25,12 @@ use vox_core::{PipelineEngine, Runtime};
 // ── 平台无关 ────────────────────────────────────────────────────────────────
 mod catalog_updater;
 mod commands;
+mod composition;
 mod devices;
 mod dsp;
 mod dto;
 mod events;
+pub mod mcp;
 mod net;
 mod overlay;
 mod persist;
@@ -55,6 +57,12 @@ pub fn run() {
     // 写回就退出，不构建 Tauri（避免被单实例插件当成「重复启动」吞掉）。
     if platform::pre_main() {
         return;
+    }
+
+    // 隐藏 CLI 模式（两个平台都有）：`--print-composition` 打两份清单 + 有效能力位就退
+    // （S0 §4.3-A）。同样排在 Tauri 之前，理由见 `composition.rs` 头注释。
+    if composition::requested() {
+        composition::print_and_exit();
     }
 
     let app = tauri::Builder::default()
@@ -148,7 +156,8 @@ pub fn run() {
 fn assemble(app: &tauri::AppHandle) -> Result<Arc<AppState>, Box<dyn std::error::Error>> {
     let config_dir = app.path().app_config_dir()?;
     // start() 而不是 new()：去抖线程要持一份 Arc 才能保证对象活着（详见 persist.rs）。
-    let persist = persist::Persist::start(config_dir);
+    // 目录自己留一份：控制面的握手文件（`control.json`）也落在同一个目录里（第 14 步）。
+    let persist = persist::Persist::start(config_dir.clone());
 
     // 1. 设置 + 时钟 + Runtime。
     let settings = persist.load_settings();
@@ -191,16 +200,24 @@ fn assemble(app: &tauri::AppHandle) -> Result<Arc<AppState>, Box<dyn std::error:
     runtime.set_control(Arc::clone(&engine) as Arc<_>);
 
     let registry = platform::registry();
+    // 控制面（Agent 面）的 reconciler。**这里只是构造**：不监听、不起服务、也不挂监听器——
+    // 开门在第 14 步（事实齐了才开，见 `mcp.rs` 的头注释）。
+    let control = Arc::new(mcp::ControlPlane::new(runtime.clone(), config_dir.clone()));
     let state = Arc::new(AppState::new(
         runtime.clone(),
         Arc::clone(&engine),
         Arc::clone(&registry),
         Arc::clone(&persist),
+        Arc::clone(&control),
     ));
 
     // 6. 纯显示悬浮窗 + 字幕帧线程。悬浮窗永久穿透，不处理按钮或设置命令。
-    overlay::start(&state);
+    //    返回值是 `captions` 这一位的定义者（§2.5.4）：窗口和帧线程都起来了才是 ON，
+    //    记进观测槽给 `host_facts()` 读（第 13 步）。
+    platform::record_captions(overlay::start(&state));
     // 7. SteamVR 头显字幕。不可用时只在后台等待，不影响桌面字幕和 VRChat OSC。
+    //    `vr_captions` 这一位由 `vr_overlay::status()` 报（`RUNNING` × `CONNECTED`），
+    //    `host_facts()` 直接读它，不用再记一份。
     #[cfg(all(windows, feature = "steamvr-overlay"))]
     vr_overlay::start(runtime.clone());
 
@@ -216,10 +233,17 @@ fn assemble(app: &tauri::AppHandle) -> Result<Arc<AppState>, Box<dyn std::error:
     // `update_settings`，要是那会儿 listener 还没挂上，这次改动就不会被标脏，
     // 也就永远不落盘。中间夹着建 Win32 窗口，窗口不止几微秒。
     match platform::start_hotkeys(runtime.clone()) {
-        Ok(host) => runtime.set_hotkey_host(host),
-        Err(e) => runtime.notify(vox_core::event::Notice::error(format!(
-            "全局热键起不来，只能用界面上的开关：{e}"
-        ))),
+        Ok(host) => {
+            platform::record_hotkeys(true);
+            runtime.set_hotkey_host(host);
+        }
+        Err(e) => {
+            // 位 + Notice：位是机器可读的那一面（界面/出口按它降级），Notice 是给人看的那句。
+            platform::record_hotkeys(false);
+            runtime.notify(vox_core::event::Notice::error(format!(
+                "全局热键起不来，只能用界面上的开关：{e}"
+            )));
+        }
     }
 
     // 11. 托盘。起不来不致命——设置窗和悬浮窗都还在；但托盘不可用时关窗逻辑会退化成
@@ -237,6 +261,36 @@ fn assemble(app: &tauri::AppHandle) -> Result<Arc<AppState>, Box<dyn std::error:
         runtime.notify(vox_core::event::Notice::warning(note));
     }
 
+    // 13. 宿主事实：虚拟麦接线 + 报事实，各一次。
+    //     **排在这里**：定义者都在前面的步骤里跑——悬浮窗（第 6 步）、头显（第 7 步）、
+    //     自启（第 9 步）、热键（第 10 步）、托盘（第 11 步）；早注入会漏掉它们
+    //     （§2.5.4）。位由芯算（档位上限 − 关掉的），外壳只报事实。
+    //     Linux 上这一步会真的在 PipeWire 图里建出虚拟麦节点——**位为真的唯一凭据
+    //     就是那个句柄**（§3.2 ①）；Windows 上只读探测 VB-CABLE，不建节点。
+    //     返回的那一位不用接：它在下面跟其余事实一起报（`virtual_mic_ensure()` 只负责"把路打开"）。
+    platform::virtual_mic_ensure();
+    let facts = platform::host_facts();
+    tracing::debug!(
+        tier = ?facts.host,
+        off = ?facts.off.keys().map(|bit| bit.id()).collect::<Vec<_>>(),
+        virtual_mic_device = ?facts.virtual_mic_device,
+        "宿主事实已注入（位由芯算）"
+    );
+    runtime.set_host_facts(facts);
+
+    // 14. 控制面（Agent 面）。**排在最后**：`list_endpoints` / `describe_endpoint` 报的是
+    //     能力位与清单，而事实刚在第 13 步注入——早开门的话，先连上来的客户端会拿到一份
+    //     建立在默认事实上的清单（"广告了做不到的事"）。开关关着就什么都不做：不监听、
+    //     不写握手文件。
+    //
+    //     两步都要：`install()` 挂上监听器（此后设置页拨开关就是热切换，见 `mcp.rs`），
+    //     `reconcile()` 按**现在**这一档把服务起起来。`install()` 排在 `set_host_facts()`
+    //     之后不是巧合——监听器一挂上，任何一次设置变更都会走到起停。
+    state.control.install();
+    state
+        .control
+        .reconcile(mcp::Switch::from_settings(&runtime.settings()));
+
     Ok(state)
 }
 
@@ -248,10 +302,14 @@ fn assemble(app: &tauri::AppHandle) -> Result<Arc<AppState>, Box<dyn std::error:
 ///
 /// 1. `tray::begin_shutdown()` 头一个：主线程马上要卡在下面的 join 里，事件
 ///    循环停转，这时候再往主线程投递 `set_checked` 没有任何意义。
-/// 2. 热键线程最先停——它是唯一能在退出中途 `toggle()` 拉起新工作线程去开麦的。
-/// 3. 设备线程、字幕线程，都是会 emit 事件的。
-/// 4. 工作线程（`engine.shutdown()`），再关悬浮窗窗口。
-/// 5. 最后 flush。此时没有别的线程能碰账本了。
+/// 2. 控制面紧跟着停：它是**外部进程能碰账本的那条路**，而 `ServerHandle::shutdown`
+///    会等当前那次调用跑完（不打断半截的配置写入）——不等它，那次写就落在 flush 之后。
+/// 3. 热键线程其次——它是唯一能在退出中途 `toggle()` 拉起新工作线程去开麦的。
+/// 4. 设备线程、字幕线程，都是会 emit 事件的。
+/// 5. 工作线程（`engine.shutdown()`），再关悬浮窗窗口。
+/// 6. Linux 的虚拟麦节点排在**工作线程之后**：播放流还挂在节点上时先删节点，
+///    会留下一条指向不存在节点的悬挂 stream。
+/// 7. 最后 flush。此时没有别的线程能碰账本了。
 fn shutdown(app: &tauri::AppHandle) {
     let Some(state) = app.try_state::<Arc<AppState>>() else {
         return;
@@ -259,12 +317,15 @@ fn shutdown(app: &tauri::AppHandle) {
     let state = state.inner();
 
     tray::begin_shutdown();
+    // 先停控制面：`shutdown()` 可能等上一次 `tools/call` 跑完（不打断半截的配置写入）。
+    state.control.shutdown();
     platform::stop_hotkeys();
     devices::stop();
     overlay::stop();
     #[cfg(all(windows, feature = "steamvr-overlay"))]
     vr_overlay::stop();
     state.engine.shutdown();
+    platform::virtual_mic_shutdown();
     platform::shutdown_overlay();
     if let Some(client) = state.osc.lock().take() {
         drop(client);

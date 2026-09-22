@@ -6,6 +6,9 @@
 //!
 //! 轮询而不是订阅 `IMMNotificationClient`：那个要 COM 回调对象和消息泵，
 //! 复杂度换来的只是几秒的延迟差，不值。
+//!
+//! 每个 tick 还顺手刷新一次**宿主事实**（能力位，S0 §2.5.0 第 3 步）：设备/宿主侧的事实
+//! 跟设备列表一样会变，界面按能力位降级，所以两者搭同一个 tick 一起报。
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -13,7 +16,7 @@ use std::time::Duration;
 
 use parking_lot::Mutex;
 use vox_core::ports::DeviceRegistry;
-use vox_core::runtime::DeviceSnapshot;
+use vox_core::runtime::{DeviceSnapshot, Runtime};
 
 use crate::state::AppState;
 
@@ -37,6 +40,12 @@ pub fn start(state: &Arc<AppState>) {
                 loop {
                     let snapshot = scan(state.registry.as_ref());
                     state.runtime.set_devices(snapshot);
+                    if refresh_host_facts(&state.runtime) {
+                        // 事实变了 ⇒ 能力位可能变了。设备列表没变时 `set_devices` 的去重会把
+                        // 这一声吞掉，界面就还拿着旧位降级（"位说能用、点下去没反应"的老毛病）。
+                        // 位变了的刷新走同一条通道（S0 §2.6 R7）：补发一声，前端重取快照。
+                        state.runtime.touch_devices();
+                    }
                     // 分段睡，好让退出时最多等 250 ms 而不是一整个周期。
                     let mut slept = Duration::ZERO;
                     while slept < POLL_INTERVAL {
@@ -73,6 +82,23 @@ pub fn stop() {
     }
 }
 
+/// 顺带刷新一次宿主事实（§2.5.0 第 3 步）：**这台机器的事实会变**——虚拟麦节点被别的东西
+/// 删了、PipeWire 断了、托盘宿主装上/卸掉、VB-CABLE 装完重启过——变了就得让能力位跟着变。
+///
+/// 跟 `set_devices` 同一个 tick、同一个理由：能力位是设备/宿主侧的事实，界面按它降级。
+/// **只在真的变了才注入**，免得每个 tick 都写一次账本。
+///
+/// 返回值 = 事实真的变了（调用方据此补发一声 `DevicesChanged`，见轮询循环里的注释）。
+fn refresh_host_facts(runtime: &Runtime) -> bool {
+    let facts = crate::platform::host_facts();
+    if runtime.host_facts() == facts {
+        return false;
+    }
+    tracing::debug!("宿主事实变了，重新注入能力位");
+    runtime.set_host_facts(facts);
+    true
+}
+
 /// 同步扫一遍。命令 `refresh_devices` 也用这个，但要在别的线程上跑。
 pub fn scan(registry: &dyn DeviceRegistry) -> DeviceSnapshot {
     // 任一项失败就给空列表——UI 上少几个选项，比整个面板打不开好。
@@ -81,5 +107,35 @@ pub fn scan(registry: &dyn DeviceRegistry) -> DeviceSnapshot {
         outputs: registry.output_devices().unwrap_or_default(),
         audio_apps: registry.audio_apps().unwrap_or_default(),
         virtual_cable_installed: registry.virtual_cable_installed(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vox_core::Settings;
+
+    /// 事实没变就不许再注入（每 4 秒一次，注入一次就多一条事件）；变了必须报出来——
+    /// 调用方据此补发一声 `DevicesChanged`，界面才会重取快照里的能力位（§2.6 R7）。
+    #[test]
+    fn host_facts_refresh_reports_only_real_changes() {
+        // 观测槽是进程级的，而这条用例要前后比两次 `host_facts()`：与写槽的用例
+        // （`platform::tests` 里那两条）串起来跑，免得把测试并行造的假象当成竞态。
+        let _guard = crate::platform::OBSERVED_BIT_LOCK.lock();
+        let runtime = Runtime::new(Settings::default(), crate::platform::clock());
+
+        // 账本刚建好时是芯的缺省事实（`HostFacts::uninjected`，fail-closed 那一份），
+        // 跟这台机器的真实事实**不是**同一个值：第一次刷新必须报"变了"。
+        assert!(
+            refresh_host_facts(&runtime),
+            "首次刷新要把外壳的事实注入进去，并报出这次变化"
+        );
+        assert_eq!(runtime.host_facts(), crate::platform::host_facts());
+
+        // 第二次：同一份事实再报一次不算变化（否则每个 tick 都会补发事件）。
+        assert!(
+            !refresh_host_facts(&runtime),
+            "事实没变就不该再注入、也不该再补发事件"
+        );
     }
 }

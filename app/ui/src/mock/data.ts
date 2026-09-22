@@ -1,6 +1,19 @@
 /** 假数据素材：设备、进程、字幕脚本、初始用量。只在 dev / 浏览器预览里用。 */
 
-import type { AudioApp, DeviceInfo, UsageLedger } from "../types.snapshot";
+import type {
+  AudioApp,
+  Capabilities,
+  CapabilityStatus,
+  DeviceInfo,
+  HostCapability,
+  HostTier,
+  ProviderCapability,
+  UnavailableReason,
+  UsageLedger,
+} from "../types.snapshot";
+import type { ModelProvider } from "../types";
+import { HOST_CAPABILITIES } from "../capabilities";
+import * as catalog from "../catalog";
 import { DEFAULT_MODEL_NAME } from "../catalog";
 import { dateKey, monthKey } from "../lib/format";
 
@@ -61,5 +74,96 @@ export function mockUsage(): UsageLedger {
       monthly_month: MOCK_MONTH,
       updated_at: Math.floor(Date.now() / 1000) - 90,
     },
+  };
+}
+// ─── 能力位（假后端自己算一份报告） ──────────────────────────────────────────
+//
+// 这里**故意**抄一遍 `crates/vox-core/src/capability.rs` 的两张表：假后端要能造出真后端
+// 会造出的那份 `CapabilityReport`，界面才有得降级（`?host=` 四档 + `?off=` 任意 reason）。
+//
+// 界面**不许**自带上限表——真实路径上界面只读快照里的 `capabilities`，这个文件只被 mock 引用。
+
+/** 假后端的四档宿主（`?host=` 的取值，`embedded` = 内核的无屏档）。 */
+export type MockHost = "windows" | "linux" | "android" | "embedded";
+
+/** 档位 → 内核档位名（`CapabilityReport.tier`）。 */
+export const MOCK_TIER: Record<MockHost, HostTier> = {
+  windows: "windows",
+  linux: "linux_desktop",
+  android: "android",
+  embedded: "linux_headless",
+};
+
+/** 档位上限（= 芯的 `host_ceiling` 四行，逐位对齐）。 */
+const MOCK_CEILING: Record<MockHost, readonly HostCapability[]> = {
+  windows: [
+    "mic",
+    "program_tap",
+    "virtual_mic",
+    "captions",
+    "global_hotkey",
+    "tray",
+    "background_service",
+    "vr_captions",
+  ],
+  linux: [
+    "mic",
+    "program_tap",
+    "virtual_mic",
+    "captions",
+    "global_hotkey",
+    "tray",
+    "background_service",
+  ],
+  android: ["mic", "captions", "background_service"],
+  embedded: ["mic", "background_service"],
+};
+
+export interface MockFacts {
+  host: MockHost;
+  /** 这台机器上报"关掉的位"（`?off=` / `?virtual_mic=`）。上限之外的位会被忽略（上限是硬的）。 */
+  off: Partial<Record<HostCapability, UnavailableReason>>;
+  speak: ModelProvider;
+  listen: ModelProvider;
+}
+
+const on = (enabled: boolean): CapabilityStatus =>
+  enabled ? { enabled: true, reason: null } : { enabled: false, reason: "unsupported" };
+
+/** 一位的状态：**先看上限、再看 off**（与芯的 `status_of` 同序：上限是硬的）。 */
+function bitStatus(
+  ceiling: readonly HostCapability[],
+  off: Partial<Record<HostCapability, UnavailableReason>>,
+  bit: HostCapability,
+): CapabilityStatus {
+  if (!ceiling.includes(bit)) return { enabled: false, reason: "unsupported" };
+  const reason = off[bit];
+  return reason ? { enabled: false, reason } : { enabled: true, reason: null };
+}
+
+/** provider 位：已实现那 4 位读目录 JSON（与界面同一份），另 4 位占名恒假（S0 §2.5.1）。 */
+function providerBits(provider: ModelProvider): Record<ProviderCapability, CapabilityStatus> {
+  return {
+    voice_selection: on(catalog.supportsVoiceSelection(provider)),
+    voice_clone: on(catalog.supportsVoiceClone(provider)),
+    source_language: on(catalog.supportsSourceLanguage(provider)),
+    hot_update_language: on(catalog.supportsHotUpdateLanguage(provider)),
+    usage_reporting: on(false),
+    speech_activity: on(false),
+    turn_end: on(false),
+    source_transcript: on(false),
+  };
+}
+
+export function mockCapabilities(facts: MockFacts): Capabilities {
+  const ceiling = MOCK_CEILING[facts.host];
+  const host = Object.fromEntries(
+    HOST_CAPABILITIES.map((bit) => [bit, bitStatus(ceiling, facts.off, bit)]),
+  ) as Record<HostCapability, CapabilityStatus>;
+  return {
+    tier: MOCK_TIER[facts.host],
+    host,
+    speak: providerBits(facts.speak),
+    listen: providerBits(facts.listen),
   };
 }

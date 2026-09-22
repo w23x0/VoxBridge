@@ -1,7 +1,15 @@
+/**
+ * 首页全流程自查：密钥隔离、Gemini 的联动、跨页面布局与窄窗。
+ *
+ * 自包含：和 a11y.mjs 一样自己起 vite preview（端口由内核分配、产物同一性自检都在
+ * `preview.mjs` 里），不再认"某个固定端口上有个服务"——那个约定让这条自查可能跑在
+ * 别人的（旧）构建上（verifier 第七轮 F3）。
+ * 用法：npm run build && npm run qa:home
+ */
 import { chromium } from "playwright";
 
-const baseUrl = process.env.VOXBRIDGE_UI_URL ?? "http://127.0.0.1:5188/?mock=1";
-const browser = await chromium.launch();
+import { startPreview } from "./preview.mjs";
+
 const failures = [];
 const browserErrors = [];
 const secretSentinel = "VB_TEST_SECRET_9f41c0d2";
@@ -60,7 +68,12 @@ async function navigate(page, label) {
   await page.getByRole("heading", { name: label, exact: true }).waitFor();
 }
 
+const preview = await startPreview("qa:home");
+const baseUrl = `${preview.base}/?mock=1`;
+
+let browser;
 try {
+  browser = await chromium.launch();
   const cold = await browser.newPage({ viewport: { width: 1180, height: 820 } });
   watch(cold, "cold");
   await cold.goto(`${baseUrl}&cold=1`, { waitUntil: "networkidle" });
@@ -83,6 +96,9 @@ try {
   }
 
   await navigate(cold, "模型服务商");
+  // 显式选服务商，不依赖"默认停在哪个"（那是界面的自由，不是契约）：这一档要测的正是
+  // "保存的只是 Google Gemini 的密钥，别家的密钥状态一个字节都没动"。
+  await selectOption(cold, "#dd-provider-config", "Google Gemini");
   const keyInput = cold.locator("#f-api-key");
   if ((await keyInput.getAttribute("type")) !== "password") failures.push("API Key 输入框不是 password");
   if (!(await cold.getByRole("button", { name: "保存", exact: true }).isDisabled())) {
@@ -128,7 +144,7 @@ try {
   await page.waitForSelector(".stats-row.cols-2 > .stat-card");
 
   await selectOption(page, "#dd-home-speak-provider", "Google Gemini");
-  await expectText(page.locator("#dd-home-speak-voice"), "Gemini 自动音色", "Gemini 对外说话音色");
+  await expectText(page.locator("#dd-home-speak-voice"), "自动音色", "对外说话的音色（Gemini 不给选手动音色）");
   if (!(await page.locator("#dd-home-speak-voice").isDisabled())) failures.push("Gemini 对外说话音色仍可手动选择");
   await page.getByText(/重启「对外说话」后生效/).waitFor({ timeout: 1500 }).catch(() => {
     failures.push("运行中切换对外说话服务商后没有重启提示");
@@ -137,7 +153,7 @@ try {
   await selectOption(page, "#dd-home-listen-provider", "Google Gemini");
   await expectText(page.locator("#dd-home-listen-source"), "自动识别", "Gemini 听人说话源语言");
   if (!(await page.locator("#dd-home-listen-source").isDisabled())) failures.push("Gemini 源语言仍可手动选择");
-  await expectText(page.locator("#dd-home-listen-voice"), "Gemini 自动音色", "Gemini 听人说话音色");
+  await expectText(page.locator("#dd-home-listen-voice"), "自动音色", "听人说话的音色（Gemini 不给选手动音色）");
   if (!(await page.locator("#dd-home-listen-voice").isDisabled())) failures.push("Gemini 听人说话音色仍可手动选择");
   await page.getByText(/重启「听人说话」后生效/).waitFor({ timeout: 1500 }).catch(() => {
     failures.push("运行中切换听人说话服务商后没有重启提示");
@@ -158,18 +174,17 @@ try {
   await listenAudioToggle.click();
   if ((await listenAudioToggle.getAttribute("aria-checked")) !== "true") failures.push("播放译音开关开启后状态不清楚");
 
-  const catalogCheck = await page.evaluate(async () => {
-    const catalog = await import("/src/catalog.ts");
-    return catalog.defaultModelForProvider("gemini");
-  });
-  if (catalogCheck !== "gemini-3.5-live-translate-preview") {
-    failures.push(`Gemini 默认模型错误：${catalogCheck}`);
-  }
-
   await inspectVisibleLayout(page, "首页 1180x820 亮色");
   await navigate(page, "模型服务商");
-  await expectText(page.locator("#dd-provider-config"), "Google Gemini", "服务商页默认选项");
-  await expectCount(page.getByText("gemini-3.5-live-translate-preview", { exact: true }), 1, "Gemini 模型能力");
+  // 同冷启动那档：先把服务商选到要测的那个，再断言它渲染出来的东西。
+  await selectOption(page, "#dd-provider-config", "Google Gemini");
+  /*
+   * Gemini 的默认模型。以前这里 `import("/src/catalog.ts")` 直接把源码模块拉进来问——
+   * 那只在 dev server 上成立（preview 服务的是打包后的 dist，没有 `/src/*`）。
+   * 打包之后这个值只有一个对外可见的出口：服务商页上那行模型能力。问界面，
+   * 顺带也就验了"目录里的默认模型真的渲染出来了"。
+   */
+  await expectCount(page.getByText("gemini-3.5-live-translate-preview", { exact: true }), 1, "Gemini 默认模型");
   await inspectVisibleLayout(page, "模型服务商 1180x820 亮色");
   await page.locator("#toast-container .toast-item").first().waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
   await page.screenshot({ path: "../../target/ui-qa-gemini-provider-1180x820-light.png" });
@@ -207,5 +222,6 @@ try {
     console.log("Gemini UI、密钥隔离、跨页面布局与窄窗口检查通过。");
   }
 } finally {
-  await browser.close();
+  await browser?.close();
+  preview.stop();
 }

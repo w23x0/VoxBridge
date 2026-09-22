@@ -2,6 +2,12 @@
  * 虚拟麦克风（VB-CABLE）管理区：安装状态、二次确认卸载、重新安装、
  * 16 声道端点的隐藏与恢复。
  *
+ * **能不能用读能力位 `virtual_mic`**（`hostBit`），**不是**读
+ * `devices.virtual_cable_status`：那个字段只说明安装器 / 平台形态（装没装、要不要重启、
+ * 这一档有没有"装驱动"这一步），只决定这一页摆哪些管理动作。位为假时不再渲染
+ * "去目标程序里选 VoxBridge Virtual Mic"那句引导，改渲染 `CapabilityNote` 的 reason 文案
+ * （S0 §2.6 R1/R9：不静默、说清"这台设备做不到"）。
+ *
  * 从 Settings.tsx 抽出来的一整块 Cable 相关 UI：状态徽标、安装/卸载按钮、
  * 驱动下载入口、多声道隐藏/恢复，以及卸载前的二次确认弹窗。徽标文案与
  * 样式类原来是嵌套三元，现在改成模块级 Record 表查表（badges 是静态 class，
@@ -12,6 +18,8 @@
  */
 
 import { useState } from "react";
+import { hostBit } from "../capabilities";
+import { CapabilityNote } from "../components/Capability";
 import { useT } from "../i18n/context";
 import { useStore } from "../store";
 import type { AudioApp, Snapshot } from "../types.snapshot";
@@ -62,37 +70,55 @@ export function CableManager() {
   >(null);
   const [uninstallDialog, setUninstallDialog] = useState<UninstallDialogState | null>(null);
   const loading = snapshot === null;
-  const cableStatus = snapshot?.devices.virtual_cable_status ?? "not_installed";
-  const cableInstalled = cableStatus === "installed";
-  const cablePending = cableStatus === "install_pending_reboot";
-  const cableIncomplete = cableStatus === "uninstall_incomplete";
-  const cableBadgeClass = CABLE_BADGE[cableStatus];
-
+  /**
+   * **能不能用**只看能力位（`virtual_mic`）——位是事实，由"真的把这条路打开的那段代码"负责
+   * （S0 §2.5.4）。
+   *
+   * `virtual_cable_status` 是**安装器 / 平台形态**：装没装、要不要重启、这一档有没有
+   * "装驱动"这一步。它**不是**"能不能用"的判据（§3.2：这个字段降级成安装器状态），
+   * 只决定这一页摆哪些管理动作。
+   */
+  const micBit = hostBit(snapshot, "virtual_mic");
+  const usable = snapshot !== null && micBit.enabled;
+  const detail = snapshot?.devices.virtual_cable_status ?? "not_installed";
+  /** 这一档有没有"装 / 卸 / 多声道"这套动作（Linux 是 PipeWire 原生 sink，没有）。 */
+  const manageable = detail !== "not_applicable";
   const cableStatusLabel = loading
     ? t("settings.cableStatus.checking")
-    : t(CABLE_STATUS_LABEL[cableStatus]);
+    : t(CABLE_STATUS_LABEL[detail]);
+  const cableBadgeClass = CABLE_BADGE[detail];
+  const cableInstalled = detail === "installed";
+  const cablePending = detail === "install_pending_reboot";
+  const cableIncomplete = detail === "uninstall_incomplete";
 
   const channelStatus = snapshot?.devices.virtual_cable_16ch_status ?? "absent";
   const channelBadgeClass = CHANNEL_BADGE[channelStatus];
 
   /**
-   * Linux（`not_applicable`）：虚拟麦克风是 PipeWire 原生能力，**没有装/卸/多声道
-   * 这一套**。这里只报状态 + 告诉用户去哪选设备——那一步跟 Windows 上选 VB-CABLE
-   * 是同一个动作，所以引导文案能对上。
+   * 这一档没有"装 / 卸"这一步：只报状态 + 告诉用户去哪选设备。
+   *
+   * **位为真才给"去目标程序里选 VoxBridge Virtual Mic"那句引导**：位为假时（比如 Linux
+   * 接线前的 `not_wired`）那句引导指向一个不存在的设备，正是 §1.4 的老毛病——改成
+   * `CapabilityNote` 的 reason 文案（R1/R9）。
    */
-  if (cableStatus === "not_applicable") {
+  if (!manageable) {
     return (
       <div className="settings-group">
         <SettingsItem
           title={t("settings.virtualCable")}
-          desc={t("settings.virtualCableNativeHint")}
+          desc={usable ? t("settings.virtualCableNativeHint") : undefined}
           control={
-            <span className={cableBadgeClass}>
-              <span className="status-dot running" />
-              {t("settings.cableStatus.notApplicable")}
+            <span className="badge badge-neutral">
+              <span className={usable ? "status-dot running" : "status-dot"} />
+              {loading
+                ? t("settings.cableStatus.checking")
+                : usable
+                  ? t("settings.cableStatus.notApplicable")
+                  : t("capabilities.unavailable")}
             </span>
           }
         />
+        <CapabilityNote bit="virtual_mic" style={{ marginTop: 8 }} />
       </div>
     );
   }
@@ -200,6 +226,7 @@ export function CableManager() {
             </div>
           }
         />
+        <CapabilityNote bit="virtual_mic" style={{ marginTop: 8 }} />
         <SettingsItem
           title={t("settings.driveSource")}
           control={

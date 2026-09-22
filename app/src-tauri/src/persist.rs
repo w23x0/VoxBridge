@@ -39,15 +39,15 @@ pub struct Persist {
 }
 
 impl Persist {
-    /// 纯构造，**不起**后台线程。生产代码请用 [`Persist::start`]。
+    /// 纯构造，**不起**后台线程、**不碰盘**。生产代码请用 [`Persist::start`]。
     ///
     /// 单独留一个不起线程的构造函数是给测试用的：测试都显式调 `flush()`，
     /// 不需要去抖线程，也不希望测试进程里堆一串线程。
+    ///
+    /// **不建目录**是有意的：只读出口（`composition.rs::print` 的 `--print-composition`）
+    /// 也用它读设置，而"打一份 JSON"不该在别人机器上留下一个空目录。要写盘的走
+    /// [`Persist::start`]（那里建目录），真落盘时 [`atomic_write`] 还会再建一次兜底。
     pub fn new(dir: PathBuf) -> Self {
-        // 目录可能还不存在（首次启动），提前建好。
-        // 失败了也不 panic：后续读会走默认值，写会再试一次。
-        let _ = fs::create_dir_all(&dir);
-
         Self {
             dir,
             dirty: Mutex::new(Dirty {
@@ -69,6 +69,9 @@ impl Persist {
     /// 退出时那一次 `flush` 落盘）、或在垃圾 Mutex 上永久 park、或把任意堆字节
     /// 当 JSON 写进 settings.json。
     pub fn start(dir: PathBuf) -> Arc<Self> {
+        // 目录可能还不存在（首次启动），要写盘的这条路先建好——[`Persist::new`] 只读、不建。
+        // 失败了也不 panic：读会走默认值，写会在 [`atomic_write`] 里再报一次。
+        let _ = fs::create_dir_all(&dir);
         let me = Arc::new(Self::new(dir));
         me.spawn_flusher();
         me
@@ -178,8 +181,14 @@ impl Persist {
     }
 }
 
-/// 原子写：先写临时文件再 rename，确保断电/崩溃不留半截 JSON。
+/// 原子写：先写临时文件再 `rename`。断电/崩溃不会留半截 JSON。
+///
+/// 写之前顺手把目录建出来（`create_dir_all` 幂等）：目录是"要往里写"才需要的东西，
+/// 这样 [`Persist::new`] 那条只读路一个目录都不建。
 fn atomic_write(path: &PathBuf, content: &str) {
+    if let Some(dir) = path.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
     let tmp = path.with_extension("json.tmp");
     if let Err(e) = fs::write(&tmp, content) {
         tracing::warn!("写临时文件失败 {}: {e}", tmp.display());
@@ -268,26 +277,45 @@ mod tests {
 
     #[test]
     fn load_settings_returns_default_when_dir_missing() {
-        // 给一个肯定不存在的路径，不建目录。
+        // 给一个肯定不存在的路径：`Persist::new` 只读——不建目录、也不起线程。
         let dir = std::env::temp_dir().join("voxbridge_persist_test_nonexistent_42");
         let _ = fs::remove_dir_all(&dir);
 
-        // 直接构造，不让 new 建目录——模拟目录被删的场景。
-        let persist = Persist {
-            dir: dir.clone(),
-            dirty: Mutex::new(Dirty {
-                settings: None,
-                usage: None,
-            }),
-            stop: AtomicBool::new(true), // 不起后台线程
-            flusher: Mutex::new(None),
-        };
+        let persist = Persist::new(dir.clone());
 
         let settings = persist.load_settings();
         assert_eq!(settings, Settings::default());
+        assert!(!dir.exists(), "只读构造不该把目录建出来");
 
         // 确保没有残留。
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// 第 7 条：**只读构造不碰盘**。`--print-composition` 用它读设置——打一份 JSON 不该在
+    /// 别人机器上留下一个空目录；要写盘的 [`Persist::start`] 才建目录（首次启动时目录还没有）。
+    #[test]
+    fn new_does_not_create_the_directory_but_start_does() {
+        let dir = temp_dir().join("not-yet");
+        let _ = fs::remove_dir_all(&dir);
+
+        let read_only = Persist::new(dir.clone());
+        assert_eq!(
+            read_only.load_settings(),
+            Settings::default(),
+            "读不出来就走默认值"
+        );
+        assert!(!dir.exists(), "只读构造不该建目录：{}", dir.display());
+
+        let writing = Persist::start(dir.clone());
+        assert!(
+            dir.is_dir(),
+            "要写盘的 start 该把目录建出来：{}",
+            dir.display()
+        );
+        writing.flush();
+
+        cleanup(&dir);
+        cleanup(&dir.parent().expect("有父目录").to_path_buf());
     }
 
     #[test]

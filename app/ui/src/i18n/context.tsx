@@ -37,15 +37,19 @@ const FLAT: Record<UiLang, Record<string, string>> = {
   en: flatten(en),
 };
 
-/** 校验并替换 `{var}` 占位符。找不到的 key 原样返回 key（便于排查漏翻译）。
+/** 校验并替换 `{var}` 占位符。
  *
+ * 查不到时的两级兜底：
+ * 1. **ja 缺的键回落到基准中文**（zh）——日语包已冻结（`i18n/ja.ts` 头注释），
+ *    新增条目只加 zh + en，缺的键在日文界面下显示中文，**不许**露出 `capabilities.xxx` 这种 key；
+ * 2. 连 zh 都没有 → 原样返回 key（便于排查漏翻译）。
  */
 export function translate(
   lang: UiLang,
   key: string,
   params?: TParams,
 ): string {
-  let text = FLAT[lang][key];
+  let text = FLAT[lang][key] ?? (lang === "zh-CN" ? undefined : FLAT["zh-CN"][key]);
   if (text === undefined) text = key;
   if (!params) return text;
   return text.replace(/\{(\w+)\}/g, (match, name: string) =>

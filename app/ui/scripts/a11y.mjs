@@ -1,7 +1,7 @@
 /**
  * 界面自查：不靠看截图，全部是程序化断言。
  *
- * 七页 × 亮暗两主题，每页查：
+ * 八页 × 亮暗两主题，每页查：
  *   1. 运行时干净        —— 控制台没有 error/warning，没有未捕获异常，没有 4xx/5xx
  *   2. 控件有可读名字    —— label[for] / aria-label / 自身文本
  *   3. settings-item 真的左右分栏 —— 文字在左、控件在右且同一行
@@ -12,12 +12,9 @@
  *
  * 用法：npm run build && npm run a11y
  */
-import { spawn } from "node:child_process";
-import { createConnection } from "node:net";
 import { chromium } from "playwright";
 
-const PORT = 5185;
-const BASE = `http://127.0.0.1:${PORT}`;
+import { startPreview } from "./preview.mjs";
 
 /** 和 src/nav.ts 保持一致。对不上就是导航表改了没同步过来。 */
 const PAGES = [
@@ -25,29 +22,13 @@ const PAGES = [
   { id: "providers", label: "模型服务商" },
   { id: "subtitle", label: "字幕外观" },
   { id: "vrchat", label: "VRChat" },
+  { id: "agent", label: "Agent 控制面" },
   { id: "usage", label: "用量" },
   { id: "about", label: "关于" },
   { id: "settings", label: "设置" },
 ];
 
 const PAGE_BUTTONS = ".sidebar .nav-item[data-page]";
-
-function portOpen(port) {
-  return new Promise((resolve) => {
-    const s = createConnection({ port, host: "127.0.0.1" });
-    s.on("connect", () => (s.end(), resolve(true)));
-    s.on("error", () => resolve(false));
-    setTimeout(() => (s.destroy(), resolve(false)), 800);
-  });
-}
-
-async function waitPort(p, tries = 60) {
-  for (let i = 0; i < tries; i += 1) {
-    if (await portOpen(p)) return true;
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  return false;
-}
 
 async function launch() {
   for (const channel of ["chrome", "msedge", undefined]) {
@@ -146,14 +127,10 @@ const AUDIT = () => {
   return out;
 };
 
-const server = spawn(
-  process.platform === "win32" ? "npx.cmd" : "npx",
-  ["vite", "preview", "--port", String(PORT), "--strictPort", "--host", "127.0.0.1"],
-  { stdio: "ignore", shell: process.platform === "win32" },
-);
+const preview = await startPreview("a11y");
+const BASE = preview.base;
 
 try {
-  if (!(await waitPort(PORT))) throw new Error("preview 没起来，先 npm run build。");
   const browser = await launch();
   // 按真窗口默认尺寸：tauri.conf.json 里 main 窗口是 1040×780
   const page = await browser.newPage({ viewport: { width: 1040, height: 780 } });
@@ -478,5 +455,5 @@ try {
   console.log(bad === 0 ? "\n全部通过。" : `\n${bad} 项要修。`);
   process.exitCode = bad === 0 ? 0 : 1;
 } finally {
-  server.kill();
+  preview.stop();
 }

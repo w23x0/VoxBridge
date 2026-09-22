@@ -11,6 +11,7 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use tauri::Emitter;
 use tauri_plugin_autostart::ManagerExt;
+use vox_core::capability::{CapabilityStatus, UnavailableReason};
 use vox_core::event::Event;
 use vox_core::runtime::Listener;
 use vox_core::settings::SubtitleSettings;
@@ -27,7 +28,12 @@ pub(crate) const EVENT_CHANNEL: &str = "voxbridge://event";
 /// 2. 挂内核事件监听器，后续所有变动由回调驱动。
 pub fn wire(state: &Arc<AppState>, app: tauri::AppHandle) {
     // --- 初始同步 ---
-    sync_autostart(&app, state.runtime.settings().autostart);
+    // 结果记进观测槽：它是 `background_service` 这一位的定义者（§2.5.4），
+    // `host_facts()` 读的就是这份观测。
+    crate::platform::record_background_service(sync_autostart(
+        &app,
+        state.runtime.settings().autostart,
+    ));
 
     // --- 挂监听器 ---
     // 闭包只能捕 `Weak<AppState>`，**不能**捕 `Arc<AppState>`。
@@ -71,8 +77,12 @@ pub fn wire(state: &Arc<AppState>, app: tauri::AppHandle) {
                 // 落盘（persist 内部有去抖，直接调即可）。
                 st.persist.save_settings(settings);
 
-                // 同步开机自启注册表（只在不一致时才动）。
-                sync_autostart(&handle, settings.autostart);
+                // 同步开机自启注册表（只在不一致时才动），结果记进 `background_service`
+                // 这一位的观测槽——用户勾了却写不进去时，位最迟 4 秒内翻假（§2.5.4）。
+                crate::platform::record_background_service(sync_autostart(
+                    &handle,
+                    settings.autostart,
+                ));
 
                 // 字幕样式或 geometry 变化时同步原生悬浮窗；visible 也会随设置
                 // 一并投递，具体显示切换仍由帧线程负责。
@@ -230,39 +240,77 @@ fn truncate_for_chat(text: &str) -> String {
 /// 让每条 SettingsChanged 都去读一次注册表是不能接受的。
 static AUTOSTART_KNOWN: AtomicI8 = AtomicI8::new(-1);
 
+/// `background_service` 这一位的判据，**纯函数**（§2.5.4）：注册这条路通不通。
+///
+/// 抽成纯函数（两件事实 → 位）是为了**能被单测钉住**：这一段就是"判定"本身，
+/// 单测直接喂四种组合即可；`sync_autostart` 只负责产出这两件事实（读注册状态、需要时写）。
+/// 第七轮复核的变异（把定义者改成恒 `ON`）当时全绿，根因就是判定散在 `sync_autostart`
+/// 的函数体里、没有任何一条单测看得到它。
+///
+/// - `is_enabled`: `app.autolaunch().is_enabled()` 的结果。`Err` = **查不到**注册状态
+///   （插件不支持 / 读失败）→ `unsupported`；
+/// - `write`: 需要写时那次写的结果；`None` = 读到的状态已与期望一致，不需要写。
+///   写不进（企业组策略锁了启动项）→ `permission`。
+///
+/// **`desired`（要不要）不进判据**：位是"能不能"，用户开关是"要不要"（§2.6 R5）——
+/// 用户把自启关掉（`desired == false`）不会让这一位翻假。
+pub(crate) fn autostart_status(
+    is_enabled: Result<bool, ()>,
+    write: Option<Result<(), ()>>,
+) -> CapabilityStatus {
+    if is_enabled.is_err() {
+        return CapabilityStatus::off(UnavailableReason::Unsupported);
+    }
+    match write {
+        Some(Err(())) => CapabilityStatus::off(UnavailableReason::Permission),
+        Some(Ok(())) | None => CapabilityStatus::ON,
+    }
+}
+
 /// 把设置里的 `autostart` 和注册表实际状态对齐。只在不一致时才写注册表。
 /// 失败只 warn：有些企业环境用组策略锁了注册表启动项。
-fn sync_autostart(app: &tauri::AppHandle, desired: bool) {
+///
+/// 返回值就是 `background_service` 这一位的定义者（§2.5.4）：**注册这条路通不通**。
+/// 判定本身在 [`autostart_status`] 里（纯函数，可单测）；两条调用点都把它交给
+/// [`crate::platform::record_background_service`]，`host_facts()` 每 4 秒读一次那份观测
+/// （§2.6 R7）。
+///
+/// 注意判的是"能不能"，不是"要不要"（§2.6 R5）：用户把自启开关关掉（`desired == false`）
+/// 不会让这一位翻假，只有**查不到状态 / 写不进去**才会。
+fn sync_autostart(app: &tauri::AppHandle, desired: bool) -> CapabilityStatus {
     // 快路径：跟我们已知的状态一致就什么都不做，一次注册表 IO 都不发生。
     // 用户从别处改了注册表我们会漏掉，但那是他自己动的，下次启动会重新对齐。
     if AUTOSTART_KNOWN.load(Ordering::Relaxed) == i8::from(desired) {
-        return;
+        return autostart_status(Ok(desired), None);
     }
 
     let manager = app.autolaunch();
     let current = match manager.is_enabled() {
         Ok(v) => v,
         Err(e) => {
+            // 问不到注册状态 = 这台机器上自启这条路走不通（插件不支持 / 读失败）。
             tracing::warn!("查询开机自启状态失败：{e}");
-            return;
+            return autostart_status(Err(()), None);
         }
     };
     if current == desired {
         AUTOSTART_KNOWN.store(i8::from(desired), Ordering::Relaxed);
-        return;
+        return autostart_status(Ok(current), None);
     }
     let result = if desired {
         manager.enable()
     } else {
         manager.disable()
     };
-    match result {
+    match &result {
         Ok(()) => AUTOSTART_KNOWN.store(i8::from(desired), Ordering::Relaxed),
         Err(e) => {
             // 写失败就不缓存——下次还得再试，否则用户勾了开机自启却永远不生效。
+            // 位跟着翻假：企业环境用组策略锁了启动项时，用户看到的是"需要先授权"。
             tracing::warn!("同步开机自启失败（期望={desired}, 当前={current}）：{e}");
         }
     }
+    autostart_status(Ok(current), Some(result.map_err(|_| ())))
 }
 
 // ---------------------------------------------------------------------------
@@ -359,6 +407,46 @@ mod tests {
         assert!(
             !subtitle_style_changed(&a, &b),
             "时序变化不需要重建窗口渲染器"
+        );
+    }
+
+    // -- 开机自启这一位的判据（§2.5.4 的 `background_service`） --
+
+    /// 判据（纯函数）：**查得到注册状态 × 需要写的时候写得进去** → 位。
+    ///
+    /// 第七轮 D3：这一跳原来藏在 `sync_autostart` 的函数体里，把它改成恒 `ON` 单测全绿。
+    /// **自证**：把 [`autostart_status`] 改成恒 `ON`，这条变红，
+    /// `platform::tests::background_service_bit_follows_the_autostart_result` 也跟着红。
+    #[test]
+    fn autostart_status_maps_the_read_and_the_write_to_the_bit() {
+        use vox_core::capability::UnavailableReason;
+
+        // 读得到、不需要写（当前状态已与期望一致，或快路径命中）→ 这条路通。
+        assert_eq!(autostart_status(Ok(true), None), CapabilityStatus::ON);
+        assert_eq!(autostart_status(Ok(false), None), CapabilityStatus::ON);
+        // 需要写且写成功 → 通。
+        assert_eq!(
+            autostart_status(Ok(false), Some(Ok(()))),
+            CapabilityStatus::ON
+        );
+        assert_eq!(
+            autostart_status(Ok(true), Some(Ok(()))),
+            CapabilityStatus::ON
+        );
+        // 需要写但写不进（企业组策略锁了启动项）→ 要授权。
+        assert_eq!(
+            autostart_status(Ok(true), Some(Err(()))),
+            CapabilityStatus::off(UnavailableReason::Permission)
+        );
+        // 查不到注册状态（插件不支持 / 读失败）→ 这台机器上这条路走不通；
+        // 读都读不到就谈不上去写，所以写的结果不改变结论。
+        assert_eq!(
+            autostart_status(Err(()), None),
+            CapabilityStatus::off(UnavailableReason::Unsupported)
+        );
+        assert_eq!(
+            autostart_status(Err(()), Some(Err(()))),
+            CapabilityStatus::off(UnavailableReason::Unsupported)
         );
     }
 

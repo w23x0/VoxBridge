@@ -2,7 +2,7 @@
  * 外壳：38px 标题栏（只有居中页面名）+ 64px 浮空侧栏 + app-layout 主内容。
  * 结构照 GlassUI：顶栏固定应用名，工具项在侧栏底部。
  *
- * 七个页面全在 DOM 里，靠 .page.active 切显，不做入场动画。
+ * 八个页面全在 DOM 里，靠 .page.active 切显，不做入场动画。
  *
  * 应用级键盘也挂在这里：方向键焦点网格（focus.ts）+ 快捷键（shortcuts.ts）。
  * 挂 document 而非内容区 —— 焦点可能停侧栏图标，但 PgUp/PgDn 滚的必须是内容区。
@@ -32,6 +32,7 @@ import {
 import { handleShortcut } from "./lib/shortcuts";
 import { ABOUT_NAV, DEFAULT_PAGE, PAGE_NAV } from "./nav";
 import { AboutPage } from "./sections/About";
+import { AgentControlPage } from "./sections/AgentControl";
 import { ProvidersPage } from "./sections/Aliyun";
 import { HomePage } from "./sections/Home";
 import { SettingsPage } from "./sections/Settings";
@@ -49,6 +50,7 @@ const PAGES: Record<string, () => React.ReactElement> = {
   providers: ProvidersPage,
   subtitle: SubtitlePage,
   vrchat: VrchatPage,
+  agent: AgentControlPage,
   settings: SettingsPage,
   usage: UsagePage,
   about: AboutPage,

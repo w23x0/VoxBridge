@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as catalog from "../catalog";
+import { CapabilityPanel } from "../components/Capability";
 import { useLang, useT } from "../i18n/context";
 import { useStore } from "../store";
 import type { ModelProvider } from "../types";
@@ -235,6 +236,9 @@ export function AboutPage() {
             )}
           </div>
         </div>
+
+        {/* 这台设备 / 这份构建能做什么：位 + reason 全摆出来（位是事实，不是期望）。 */}
+        <CapabilityPanel />
       </div>
     </div>
   );

@@ -1,5 +1,7 @@
 /** 字幕外观：悬浮窗的显示开关、字体、颜色、整句淡出，加一块按真实参数渲染的预览。 */
 
+import { hostBit } from "../capabilities";
+import { CapabilityNote } from "../components/Capability";
 import {
   BACKGROUND_ALPHA_RANGE,
   CHAR_FADE_RANGE,
@@ -63,6 +65,18 @@ export function SubtitlePage() {
   const loading = snapshot === null;
   const sub = settings.subtitle;
   const t = useT();
+  /**
+   * 字幕这一位（R1/R8）：位为假 = 这一档宿主没有屏幕（无屏档）——整页外观设置与预览
+   * 都不渲染，只留一句 reason 说明"这台设备做不到"。位为真时这一页与从前一模一样。
+   */
+  const captions = hostBit(snapshot, "captions");
+  if (!loading && !captions.enabled) {
+    return (
+      <div className="settings-group">
+        <CapabilityNote bit="captions" />
+      </div>
+    );
+  }
 
   return (
     <>

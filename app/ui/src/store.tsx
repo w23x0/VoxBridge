@@ -141,7 +141,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setSnapshot((s) => (s ? { ...s, mic_active: event.active } : s));
           break;
         case "devices_changed":
-          void api.snapshot().then((s) => setSnapshot((prev) => (prev ? { ...prev, devices: s.devices } : s)));
+          // 设备与宿主事实是同一个轮询 tick 报的（`devices.rs`）：能力位跟着一起刷新。
+          // 只取 `devices` 的话，虚拟麦节点掉了 / 托盘宿主装上这类**位变了但设备列表没变**
+          // 的情况界面永远看不到，就会拿着旧位降级（S0 §2.6 R7）。
+          void api.snapshot().then((s) =>
+            setSnapshot((prev) =>
+              prev ? { ...prev, devices: s.devices, capabilities: s.capabilities } : s,
+            ),
+          );
           break;
         case "notice":
           setSnapshot((s) => (s ? { ...s, notices: [...s.notices, event.notice].slice(-50) } : s));
@@ -149,6 +156,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     });
   }, [api]);
+
+  /**
+   * 只刷控制面那一格（快照的其余部分不动，免得把别处刚到的增量盖回去）。
+   *
+   * 起/停是后端按新开关真做的事，本地推不出来：设置页据此说"在跑 / 没在跑、为什么"。
+   */
+  function refreshControl(): void {
+    void api
+      .snapshot()
+      .then((s) => setSnapshot((prev) => (prev ? { ...prev, control: s.control } : s)));
+  }
 
   const store: Store = {
     api,
@@ -165,6 +183,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         .then((next) => {
           setSettings(next);
           setError(null);
+          /*
+           * 控制面那一格要重新拉：起/停是后端按新开关**真做**的事（`SettingsChanged` 一到
+           * 就在 `update_settings` 里同步起/停完），本地推不出来。`settings_changed` 事件
+           * 比这次 invoke 先到，那时服务还没起停完，拿不到结果——所以拉在 promise 之后。
+           */
+          if (p.control !== undefined) refreshControl();
         })
         .catch((e: unknown) => {
           setError(String(e));

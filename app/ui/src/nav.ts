@@ -4,6 +4,7 @@ import type { ReactElement } from "react";
 import type { TParams } from "./i18n/types";
 
 import {
+  IconAgent,
   IconChart,
   IconHome,
   IconInfo,
@@ -43,6 +44,11 @@ export const NAV: NavItem[] = [
     id: "vrchat",
     label: (t) => t("nav.vrchat"),
     icon: IconVrc,
+  },
+  {
+    id: "agent",
+    label: (t) => t("nav.agent"),
+    icon: IconAgent,
   },
   {
     id: "settings",

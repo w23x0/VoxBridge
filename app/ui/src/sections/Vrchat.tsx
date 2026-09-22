@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+import { hostBit } from "../capabilities";
+import { CapabilityNote } from "../components/Capability";
 import { useT } from "../i18n/context";
 import { useStore } from "../store";
 import { SettingsItem, Toggle } from "../ui/controls";
@@ -10,9 +12,11 @@ const DEFAULT_PARAM = "VoxSpeaking";
 const DEFAULT_PORT = 9000;
 
 export function VrchatPage() {
-  const { api, settings, patch } = useStore();
+  const { api, settings, patch, snapshot } = useStore();
   const toast = useToast();
   const t = useT();
+  /** 头显字幕这一位：位为假时不渲染 SteamVR 开关（R5）。 */
+  const vrCaptions = hostBit(snapshot, "vr_captions");
 
   // 总开关 + 收发忙态
   const [running, setRunning] = useState(false);
@@ -119,17 +123,24 @@ export function VrchatPage() {
               </button>
             }
           />
-          <SettingsItem
-            title={t("vrchat.steamVrOverlay")}
-            desc={t("vrchat.steamVrOverlayDesc")}
-            control={
-              <Toggle
-                checked={settings.subtitle.vr_overlay_enabled}
-                label={t("vrchat.steamVrOverlay")}
-                onChange={(enabled) => patch({ subtitle: { vr_overlay_enabled: enabled } })}
-              />
-            }
-          />
+          {vrCaptions.enabled ? (
+            <SettingsItem
+              title={t("vrchat.steamVrOverlay")}
+              desc={t("vrchat.steamVrOverlayDesc")}
+              control={
+                <Toggle
+                  checked={settings.subtitle.vr_overlay_enabled}
+                  label={t("vrchat.steamVrOverlay")}
+                  onChange={(enabled) => patch({ subtitle: { vr_overlay_enabled: enabled } })}
+                />
+              }
+            />
+          ) : (
+            /* 位为假（构建里没编进去 / 这一档没有头显字幕）：开关整个不渲染，只留 reason。
+               从前这个开关是无条件渲染的——没有该 feature 的构建上，用户会点到一个
+               不存在的功能（S0 §2.6 R5 的现状缺口）。 */
+            <CapabilityNote bit="vr_captions" />
+          )}
         </div>
       </div>
 

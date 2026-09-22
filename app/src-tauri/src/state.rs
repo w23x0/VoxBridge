@@ -35,6 +35,12 @@ pub struct AppState {
     pub overlay: OnceLock<OverlayHandle>,
     /// VRChat OSC 客户端（把译文写进聊天框/头像参数），起完才有。
     pub osc: Mutex<Option<vox_osc::OscClient>>,
+    /// 控制面（Agent 面）：按开关起/停的那个 reconciler。开关关着时它手里没有句柄
+    /// （不监听、也没有握手文件），**"起没起"的事实就是它手里那个 `Option`**。
+    ///
+    /// 它是**唯一**能被外部进程用来改账本的东西，所以 `lib.rs::shutdown` 必须**在
+    /// `persist.flush()` 之前**把它停掉（`ServerHandle::shutdown` 会等当前那次调用跑完）。
+    pub control: Arc<crate::mcp::ControlPlane>,
 }
 
 impl AppState {
@@ -43,6 +49,7 @@ impl AppState {
         engine: Arc<PipelineEngine>,
         registry: Arc<dyn DeviceRegistry>,
         persist: Arc<crate::persist::Persist>,
+        control: Arc<crate::mcp::ControlPlane>,
     ) -> Self {
         Self {
             runtime,
@@ -52,6 +59,7 @@ impl AppState {
             gates: Mutex::new(BTreeMap::new()),
             overlay: OnceLock::new(),
             osc: Mutex::new(None),
+            control,
         }
     }
 

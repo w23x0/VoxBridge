@@ -1,14 +1,27 @@
 /**
  * 界面文案 · 日本語（日本語パック）。
  *
- * `satisfies DictShape` により key 集合が zh.ts と厳密に一致することを保証し、
- * 欠落・余剰・型の不一致はコンパイル時に検出されます。
+ * `satisfies Omit<DictShape, "capabilities">` により、**能力位以外**の key 集合が
+ * zh.ts と厳密に一致することを保証します（欠落・余剰・型の不一致はコンパイル時に検出）。
  *
- * ⚠ 保守ルール：新規の訳語を追加する際は、zh.ts / en.ts / ja.ts の 3 ファイルに
- * 同じ key を同時に追加してください。
+ * ⚠ 保守ルール（2026-09-22 改定）：日本語パックは**凍結**です。`DIRECTIONS.md` §10.5
+ * 「機能処置表」で三言語 → 二言語（zh / en）に収束したため、**新規 key は ja に足しません**
+ * （`capabilities` と、第十三輪で足した `agent` は意図的に持ちません）。足りない key は
+ * `i18n/context.tsx` のフォールバックで基準中国語（zh）が出ます。既存 key の修正は可。
  */
 
 import type { DictShape } from "./zh";
+
+/**
+ * 冻结包的形状：`capabilities` 整组没有，第十三轮加的 `agent` 整组没有，
+ * **`nav.agent` 那一格也没有**（新页面的名字回落到基准中文）。
+ *
+ * 嵌套那一格要单独 `Omit`：顶层 `Omit<DictShape, "agent">` 只管整组，
+ * `nav` 里缺 `agent` 照样是编译错——而"缺的键回落 zh"这条口径正是靠类型钉住的。
+ */
+type JaShape = Omit<DictShape, "capabilities" | "agent" | "nav"> & {
+  nav: Omit<DictShape["nav"], "agent">;
+};
 
 const ja = {
   nav: {
@@ -358,6 +371,6 @@ const ja = {
     defaultVoiceSuffix: "・既定",
     autoVoice: "自動音声",
   },
-} satisfies DictShape;
+} satisfies JaShape;
 
 export default ja;

@@ -12,12 +12,13 @@
 //! GNOME 的 Wayland 会话下 GTK 客户端**不能自定坐标、不能置顶**（协议层就没有
 //! 这两样），所以这条路的实际形态是 XWayland：装配层在 Wayland 会话里把
 //! `GDK_BACKEND=x11` 设上，整个应用跑在 X11 兼容层里。实测 X11 下 `move()` 与
-//! `set_keep_above()` 都生效（见 `docs/PLATFORM_LINUX.md` §2.3）。
+//! `set_keep_above()` 都生效（见 `docs/platform/LINUX.md` §2.3）。
 //!
-//! 鼠标穿透按 `DECISIONS.md` A5 的既定方针：**永久穿透**，不做拖动/缩放交互
+//! 鼠标穿透按 `docs/architecture/DECISIONS.md` A5 的既定方针：**永久穿透**，不做拖动/缩放交互
 //! （Windows 侧后来加了拖动，那属于那边的历史包袱，Linux 这边不做）。
 
 use std::cell::RefCell;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use gtk::prelude::*;
@@ -31,10 +32,32 @@ use vox_overlay_core::text::FontFactory;
 use super::mailbox::Mailbox;
 
 // GTK 对象只能在主线程碰，所以放 `thread_local`（`static` 要求 `Sync`，GTK 不是）。
-// 全进程只有一个悬浮窗（`DECISIONS.md` A6：两条流水线共用一个窗、两行分色），
+// 全进程只有一个悬浮窗（`docs/architecture/DECISIONS.md` A6：两条流水线共用一个窗、两行分色），
 // 所以这一份就够。
 thread_local! {
     static INNER: RefCell<Option<Inner>> = const { RefCell::new(None) };
+}
+
+/// 悬浮窗活着的唯一凭据。**进程级**，任何线程读到的都是同一个值。
+///
+/// 为什么不能拿 `INNER` 判存活：`INNER` 是 `thread_local!`（GTK 对象只有建窗线程能碰，
+/// 那是它存在的理由），**别的线程读它只会读到 `None`**。而"窗还在不在"不是建窗线程的
+/// 私事：字幕帧线程拿它发现"窗没了"（`app/src-tauri/src/overlay.rs` 的帧循环），
+/// 装配层拿它算 `captions` 位（`platform::overlay_running`）——这两条都在**非建窗线程**上。
+/// 拿 `INNER` 判会让帧循环第一句就 `break`、字幕永不渲染，而位还以为自己能画。
+///
+/// 三处写它：建窗成功置活、`shutdown()` 清零、窗口自己 `destroy` 时清零。
+/// 对端（Windows）是 `vox-overlay-win` 的 `Shared::alive`，同样是原子、同样跨线程读。
+static ALIVE: AtomicBool = AtomicBool::new(false);
+
+/// 窗口活着吗。**任何线程**读到的都是同一个答案。
+fn alive() -> bool {
+    ALIVE.load(Ordering::Acquire)
+}
+
+/// 置位/清零存活凭据。
+fn set_alive(value: bool) {
+    ALIVE.store(value, Ordering::Release);
 }
 
 /// 窗口相关的一切（主线程独占）。
@@ -127,9 +150,16 @@ impl Overlay {
             glib::Propagation::Proceed
         });
 
+        // 窗口自己没了（`close()` / 合成器把窗销毁）也要清零存活凭据：`destroy`
+        // 在**任何**销毁路径上都会跑，不依赖谁调过 `shutdown()`。
+        window.connect_destroy(|_| set_alive(false));
+
         window.show();
         // 窗口可见之后再把输入域清一次：有些后端在 map 时会重置 shape。
         clear_input_shape(&window);
+
+        // 建窗全部成功之后才标活——建到一半失败的话，外面读到的必须是"没起来"。
+        set_alive(true);
 
         Ok(Arc::new(Self { mailbox }))
     }
@@ -146,12 +176,18 @@ impl Overlay {
     }
 
     /// 窗口还活着吗（帧线程用它发现"窗被关了"）。
+    ///
+    /// 读的是进程级的 [`ALIVE`]，不是 `thread_local! INNER`——帧线程 / 装配层 /
+    /// 4 秒轮询线程都不是建窗线程，`INNER` 在它们那儿恒为 `None`。理由见 [`ALIVE`]。
     pub fn is_running(&self) -> bool {
-        INNER.with(|slot| slot.borrow().as_ref().is_some())
+        alive()
     }
 
     /// 关窗。主线程执行；可重复调用。
     pub fn shutdown(&self) {
+        // 先竖旗再关窗：别的线程此刻问"还活着吗"，答案必须立刻是"没了"，
+        // 不能等主线程把 `close()` 跑完（非主线程调 `invoke` 时它只是排队）。
+        set_alive(false);
         glib::MainContext::default().invoke(|| {
             INNER.with(|slot| {
                 if let Some(inner) = slot.borrow_mut().take() {
@@ -293,4 +329,40 @@ fn placement_of(
     // 离底边 80px：跟 Windows 侧 `DEFAULT_BOTTOM_MARGIN` 同一个值（照搬旧版）。
     let placed = layout::default_placement(rect, width, height, 80);
     (placed.x, placed.y)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 存活凭据是**进程级**的，用例之间不能互相踩。
+    static ALIVE_LOCK: Mutex<()> = Mutex::new(());
+
+    /// 窗口存活必须是**进程级事实**：帧线程（`app/src-tauri/src/overlay.rs` 的帧循环）
+    /// 与 4 秒轮询线程都不是建窗线程，也必须读到跟建窗线程一样的答案。
+    ///
+    /// 这条钉的是"窗还在不在"这个谓词的**线程无关性**——第七轮 D1：那时 `is_running`
+    /// 读 `thread_local! INNER`，非建窗线程恒读 `false`（Linux 上字幕帧循环第一句就
+    /// `break` → 字幕永不渲染；`captions` 位也在轮询线程上翻成 `off(busy)`）。
+    ///
+    /// **自证**：把 `alive()` 改回读 `INNER`（或任何线程相关的来源），这条立刻变红。
+    #[test]
+    fn running_is_a_process_wide_fact() {
+        let _guard = ALIVE_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        set_alive(true);
+        assert!(alive(), "建窗线程自己读");
+        assert!(
+            std::thread::spawn(alive).join().expect("另一条线程"),
+            "窗活着就是活着：别的线程必须读到同一个答案"
+        );
+
+        set_alive(false);
+        assert!(
+            !std::thread::spawn(alive).join().expect("另一条线程"),
+            "窗没了就是没了：别的线程也必须读到同一个答案"
+        );
+    }
 }

@@ -11,12 +11,15 @@
 use serde::Serialize;
 use std::collections::BTreeMap;
 
+use vox_core::capability::CapabilityReport;
 use vox_core::event::{Notice, Pipeline, PipelineState};
 use vox_core::gate::GateStatus;
 use vox_core::latency::LatencySnapshot;
 use vox_core::ports::{AudioApp, DeviceInfo};
 use vox_core::runtime::Snapshot as CoreSnapshot;
-use vox_core::settings::{ListenSettings, Settings, SpeakSettings, SubtitleSettings};
+use vox_core::settings::{
+    ControlSettings, ListenSettings, Settings, SpeakSettings, SubtitleSettings,
+};
 use vox_core::usage::UsageLedger;
 
 use crate::state::AppState;
@@ -34,6 +37,9 @@ pub struct SettingsDto {
     pub autostart: bool,
     pub start_minimized: bool,
     pub ui_language: String,
+    /// Agent 控制面的开关与授权位。设置页那一屏（`sections/AgentControl.tsx`）读写它，
+    /// **起没起**是另一回事——那在 `SnapshotDto.control` 里（观察值，不是设置）。
+    pub control: ControlSettings,
 }
 
 impl From<Settings> for SettingsDto {
@@ -46,6 +52,7 @@ impl From<Settings> for SettingsDto {
             autostart: s.autostart,
             start_minimized: s.start_minimized,
             ui_language: s.ui_language,
+            control: s.control,
         }
     }
 }
@@ -86,6 +93,17 @@ pub struct SnapshotDto {
     pub devices: DeviceSnapshotDto,
     pub usage: UsageLedger,
     pub notices: Vec<Notice>,
+    /// **能力位报告**：芯算好的那一份（`{ tier, host, speak, listen }`），原样透传。
+    ///
+    /// 界面按 `(位, reason)` 渲染 / 降级（S0 §2.6 R1–R9），**不另立**第二份位表——
+    /// 所以这里不做任何加工、也不改名。`tier` 只是显示用的档位名，界面**不许**按它分支。
+    pub capabilities: CapabilityReport,
+    /// **控制面现在的样子**：设置里要的那一档（`enabled` / `port`）与"真起了没有"。
+    ///
+    /// 界面**按这一格渲染**（起没起、起不来是为什么），不许拿 `settings.control` 自己推
+    /// "应该"在跑——要什么是用户的事，起没起是事实（`mcp::Status` 的注释里有同一条）。
+    /// 形状就是 `mcp::Status`，与 `capabilities` 一样原样透传：**没有第二份状态**。
+    pub control: crate::mcp::Status,
 }
 
 pub type ProviderKeyStatusDto = BTreeMap<String, bool>;
@@ -151,6 +169,8 @@ pub fn snapshot(state: &AppState) -> SnapshotDto {
         devices: devices_dto(core.devices),
         usage: core.usage,
         notices: core.notices,
+        capabilities: core.capabilities,
+        control: state.control.status(),
     }
 }
 
@@ -236,6 +256,22 @@ mod tests {
             },
             usage: UsageLedger::default(),
             notices: vec![],
+            // 芯的缺省事实（`HostFacts::uninjected`）：档位是 Linux 桌面，四个"要外壳接上
+            // 才有"的位报 `not_wired`。产品路径上事实由外壳注入，这里只是让 DTO 有值可测。
+            capabilities: CapabilityReport::of(
+                &vox_core::capability::HostFacts::uninjected(),
+                vox_core::settings::ModelProvider::Aliyun,
+                vox_core::settings::ModelProvider::Aliyun,
+            ),
+            // 控制面的观察值：默认档 = 开关关着、没监听、没失败过。
+            control: crate::mcp::Status {
+                enabled: false,
+                port: 0,
+                running: false,
+                bound_port: None,
+                error: None,
+                state_file: "/tmp/voxbridge-test/control.json".to_string(),
+            },
         }
     }
 
@@ -266,6 +302,8 @@ mod tests {
             "devices",
             "usage",
             "notices",
+            "capabilities",
+            "control",
         ];
         for key in expected_keys {
             assert!(json.get(key).is_some(), "顶层缺字段: {key}");
@@ -387,6 +425,48 @@ mod tests {
         }
     }
 
+    /// 能力位报告透传到前端：四个键（`tier` / `host` / `speak` / `listen`）一字不差，
+    /// 每位都是 `{enabled, reason}`，关着的必带 reason（芯的 `is_consistent` 不变量）。
+    #[test]
+    fn capabilities_report_is_passed_through() {
+        let dto = make_dto(true, None);
+        let json = serde_json::to_value(&dto).unwrap();
+        let caps = json.get("capabilities").expect("顶层缺 capabilities 字段");
+
+        for key in ["tier", "host", "speak", "listen"] {
+            assert!(caps.get(key).is_some(), "capabilities 缺字段: {key}");
+        }
+        // 档位是**名字**，不是宿主机位表（`host` 那一格才是位表）。
+        assert_eq!(caps["tier"], Value::String("linux_desktop".to_string()));
+
+        let host = caps["host"].as_object().expect("host 应是位表对象");
+        assert_eq!(host.len(), vox_core::capability::Capability::HOST.len());
+        for (bit, status) in host {
+            let enabled = status["enabled"].as_bool().expect("位要有 enabled");
+            assert_eq!(
+                enabled,
+                status["reason"].is_null(),
+                "{bit}：开着就不许有 reason，关着必须给 reason"
+            );
+        }
+        // 缺省事实（没注入）下这四位如实报假，且 reason 是 `not_wired`——界面靠它说
+        // "这个平台还没接上"，不是"这台设备做不到"。
+        assert_eq!(
+            host["virtual_mic"],
+            serde_json::json!({ "enabled": false, "reason": "not_wired" })
+        );
+        // 档位上限里的采集位照旧为真：位表不是"全都假"。
+        assert_eq!(
+            host["mic"],
+            serde_json::json!({ "enabled": true, "reason": null })
+        );
+
+        for section in ["speak", "listen"] {
+            let bits = caps[section].as_object().expect("provider 位表应是对象");
+            assert_eq!(bits.len(), vox_core::capability::Capability::PROVIDER.len());
+        }
+    }
+
     /// devices 子对象里叫 `apps` 不叫 `audio_apps`。
     #[test]
     fn devices_uses_apps_not_audio_apps() {
@@ -401,5 +481,70 @@ mod tests {
         );
         assert!(devices.get("inputs").is_some());
         assert!(devices.get("outputs").is_some());
+    }
+
+    /// 控制面那两格：`settings.control`（要什么）与 `control`（起没起）。
+    ///
+    /// 界面靠后者说"没在跑"（不许拿设置自己推），所以字段名与取值都要钉住：
+    /// `running` / `bound_port` 是事实，`enabled` / `port` 是后端**按下去的那一档**。
+    #[test]
+    fn control_settings_and_status_are_both_exposed() {
+        let mut dto = make_dto(false, None);
+        dto.settings.control.enabled = true;
+        dto.settings.control.port = 47123;
+        dto.control = crate::mcp::Status {
+            enabled: true,
+            port: 47123,
+            running: true,
+            bound_port: Some(47123),
+            error: None,
+            state_file: "/cfg/control.json".to_string(),
+        };
+        let json = serde_json::to_value(&dto).unwrap();
+
+        // 设置那一半：开关、端口、四个授权位、去抖间隔——设置页那一屏要读写它们。
+        let control = &json["settings"]["control"];
+        for key in [
+            "enabled",
+            "port",
+            "allow_microphone",
+            "allow_system_audio",
+            "allow_audible_output",
+            "allow_config_write",
+            "transcript_notify_ms",
+        ] {
+            assert!(control.get(key).is_some(), "settings.control 缺字段: {key}");
+        }
+        assert_eq!(control["enabled"], Value::Bool(true));
+        assert_eq!(
+            control["transcript_notify_ms"],
+            Value::from(vox_core::settings::DEFAULT_TRANSCRIPT_NOTIFY_MS)
+        );
+
+        // 观察那一半：六个字段一字不差。
+        let status = &json["control"];
+        for key in [
+            "enabled",
+            "port",
+            "running",
+            "bound_port",
+            "error",
+            "state_file",
+        ] {
+            assert!(status.get(key).is_some(), "control 缺字段: {key}");
+        }
+        assert_eq!(status["running"], Value::Bool(true));
+        assert_eq!(status["bound_port"], Value::from(47123));
+
+        // 没在跑时 `bound_port` / `error` 是**显式 null**，不是字段消失。
+        let mut idle = make_dto(false, None);
+        idle.control.bound_port = None;
+        let json = serde_json::to_value(&idle).unwrap();
+        assert!(
+            json["control"]["bound_port"].is_null(),
+            "没在跑时 bound_port 要显式 null"
+        );
+        assert!(json["control"]["error"].is_null());
+        assert_eq!(json["control"]["running"], Value::Bool(false));
     }
 }

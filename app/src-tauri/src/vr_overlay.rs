@@ -14,6 +14,7 @@ use openvr::pose::Matrix3x4;
 use openvr::tracked_device_index;
 use openvr::{ApplicationType, Context, Overlay};
 use parking_lot::Mutex;
+use vox_core::capability::CapabilityStatus;
 use vox_core::ports::{SubtitleFrame, SubtitleLine};
 use vox_core::runtime::Runtime;
 use vox_core::subtitle::Track;
@@ -31,6 +32,38 @@ const OVERLAY_NAME: &str = "VoxBridge Listen Subtitles\0";
 static STOP: AtomicBool = AtomicBool::new(false);
 static THREAD: Mutex<Option<std::thread::JoinHandle<()>>> = Mutex::new(None);
 
+/// 线程起没起来（`start` / `stop` 写）。
+static RUNNING: AtomicBool = AtomicBool::new(false);
+
+/// Overlay 真的建出来了没有（`run` 里 `Backend::connect()` 成功才置位，掉线就清）。
+///
+/// 这是 `vr_captions` 这一位的定义者（§2.5.4）：位为真凭的是**真的连上了 OpenVR**，
+/// 而不是"这个构建编了 feature"。
+static CONNECTED: AtomicBool = AtomicBool::new(false);
+
+/// OpenVR 运行期在不在 + HMD 在不在。`run()` 等的是同一对探针，[`status()`] 也用它们
+/// 区分"这台机器没有头显"（`unsupported`）与"有头显但还没连上"（`busy`）。
+pub fn hmd_ready() -> bool {
+    openvr::is_runtime_installed() && openvr::is_hmd_present()
+}
+
+/// `vr_captions` 这一位现在该不该开着（§2.5.4）。
+///
+/// **不**看 `settings.vr_overlay_enabled`：位是"能不能"，那个开关是"要不要"（§2.6 R5）。
+///
+/// 判据本体在装配层的纯函数 `platform::vr_captions_status_for` 里（四件事实 → 位）：
+/// 那个函数在任何平台上都编得到、也被单测钉住；这里只负责把三个探针读出来
+/// （`RUNNING` / `CONNECTED` 两个原子 + 运行期与头显探针），`built` 恒为真——
+/// 这个模块只在编了 `steamvr-overlay` 时才存在。
+pub fn status() -> CapabilityStatus {
+    crate::platform::vr_captions_status_for(
+        true,
+        RUNNING.load(Ordering::Acquire),
+        CONNECTED.load(Ordering::Acquire),
+        hmd_ready(),
+    )
+}
+
 pub fn start(runtime: Runtime) {
     stop();
     STOP.store(false, Ordering::Release);
@@ -38,6 +71,7 @@ pub fn start(runtime: Runtime) {
         .name("vox-vr-overlay".into())
         .spawn(move || run(runtime))
         .ok();
+    RUNNING.store(handle.is_some(), Ordering::Release);
     *THREAD.lock() = handle;
 }
 
@@ -46,6 +80,9 @@ pub fn stop() {
     if let Some(handle) = THREAD.lock().take() {
         let _ = handle.join();
     }
+    // 线程停了就什么都没连着：位必须跟着翻假（§2.5.4）。
+    RUNNING.store(false, Ordering::Release);
+    CONNECTED.store(false, Ordering::Release);
 }
 
 struct Backend {
@@ -105,13 +142,14 @@ fn run(runtime: Runtime) {
             continue;
         }
 
-        if !openvr::is_runtime_installed() || !openvr::is_hmd_present() {
+        if !hmd_ready() {
             if let Some(active) = backend.as_mut() {
                 active.hide();
             }
             backend = None;
             renderer = None;
             last_hash = None;
+            CONNECTED.store(false, Ordering::Release);
             std::thread::sleep(RETRY_INTERVAL);
             continue;
         }
@@ -122,6 +160,8 @@ fn run(runtime: Runtime) {
                     renderer = Renderer::new(&settings, DPI, vox_overlay_win::font_factory()).ok();
                     backend = Some(active);
                     last_hash = None;
+                    // 真的建出 Overlay 了：这是 `vr_captions` 为真的唯一凭据。
+                    CONNECTED.store(true, Ordering::Release);
                 }
                 Err(error) => {
                     tracing::warn!(%error, "VoxBridge SteamVR Overlay 连接失败");

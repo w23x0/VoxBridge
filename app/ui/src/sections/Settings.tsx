@@ -1,5 +1,7 @@
 /** 设置：系统启动行为、激活模式与快捷键。虚拟麦克风管理区见 CableManager。 */
 
+import { hostBit } from "../capabilities";
+import { CapabilityNote } from "../components/Capability";
 import { useT } from "../i18n/context";
 import { useStore } from "../store";
 import type { ActivationMode, Hotkey } from "../types";
@@ -15,6 +17,8 @@ export function SettingsPage() {
   const speak = settings.speak;
   const listenHotkey = settings.listen.hotkey;
   const loading = snapshot === null;
+  /** 全局热键这一位：位为假时整块热键设置不渲染（按不到的热键不许摆出来，R5）。 */
+  const hotkeys = hostBit(snapshot, "global_hotkey");
 
   const activationOptions = [
     { value: "toggle", label: t("settings.activationToggle") },
@@ -68,44 +72,51 @@ export function SettingsPage() {
           }
         />
 
-        <SettingsItem
-          title={t("settings.speakHotkey")}
-          control={
-            <HotkeyEditor
-              id="dd-speak-key"
-              label={t("settings.speakHotkeyAria")}
-              hotkey={speak.hotkey}
-              onChange={(hotkey) => patch({ speak: { hotkey } })}
-            />
-          }
-        />
-
-        <SettingsItem
-          title={t("settings.listenHotkey")}
-          control={
-            <Toggle
-              checked={listenHotkey !== null}
-              label={t("settings.enableListenHotkey")}
-              onChange={(enabled) =>
-                patch({ listen: { hotkey: enabled ? DEFAULT_LISTEN_HOTKEY : null } })
+        {loading || hotkeys.enabled ? (
+          <>
+            <SettingsItem
+              title={t("settings.speakHotkey")}
+              control={
+                <HotkeyEditor
+                  id="dd-speak-key"
+                  label={t("settings.speakHotkeyAria")}
+                  hotkey={speak.hotkey}
+                  onChange={(hotkey) => patch({ speak: { hotkey } })}
+                />
               }
             />
-          }
-        />
 
-        {listenHotkey ? (
-          <SettingsItem
-            title={t("settings.listenHotkeyCombo")}
-            control={
-              <HotkeyEditor
-                id="dd-listen-key"
-                label={t("settings.listenHotkeyAria")}
-                hotkey={listenHotkey}
-                onChange={(hotkey) => patch({ listen: { hotkey } })}
+            <SettingsItem
+              title={t("settings.listenHotkey")}
+              control={
+                <Toggle
+                  checked={listenHotkey !== null}
+                  label={t("settings.enableListenHotkey")}
+                  onChange={(enabled) =>
+                    patch({ listen: { hotkey: enabled ? DEFAULT_LISTEN_HOTKEY : null } })
+                  }
+                />
+              }
+            />
+
+            {listenHotkey ? (
+              <SettingsItem
+                title={t("settings.listenHotkeyCombo")}
+                control={
+                  <HotkeyEditor
+                    id="dd-listen-key"
+                    label={t("settings.listenHotkeyAria")}
+                    hotkey={listenHotkey}
+                    onChange={(hotkey) => patch({ listen: { hotkey } })}
+                  />
+                }
               />
-            }
-          />
-        ) : null}
+            ) : null}
+          </>
+        ) : (
+          /* 位为假：热键编辑器整个不渲染，只留这一句 reason（R1/R9）。 */
+          <CapabilityNote bit="global_hotkey" />
+        )}
       </div>
     </>
   );

@@ -29,7 +29,7 @@ function Svg({ size = 24, children, ...rest }: IconProps & { children: React.Rea
   );
 }
 
-/* ---- 侧栏九页 ---------------------------------------------------- */
+/* ---- 侧栏各页 ---------------------------------------------------- */
 
 export const IconHome = (p: IconProps) => (
   <Svg {...p}>
@@ -87,6 +87,14 @@ export const IconVrc = (p: IconProps) => (
     <circle cx="9" cy="9" r="1" />
     <circle cx="15" cy="9" r="1" />
     <path d="M8 14h8" />
+  </Svg>
+);
+
+export const IconAgent = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M7 9.5 10 12l-3 2.5" />
+    <path d="M12.5 15h4" />
   </Svg>
 );
 

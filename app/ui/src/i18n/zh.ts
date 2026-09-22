@@ -15,6 +15,7 @@ const zh = {
     providers: "模型服务商",
     subtitle: "字幕外观",
     vrchat: "VRChat",
+    agent: "Agent 控制面",
     settings: "设置",
     usage: "用量",
     about: "关于",
@@ -339,10 +340,94 @@ const zh = {
     connectFailed: "连接后端失败：{error}",
   },
 
+  /**
+   * 能力位文案：位名 + reason + `(位, reason)` 特例（见 `src/capabilities.ts`）。
+   *
+   * 三条纪律（S0 §2.6）：R2 每句说清"为什么不行 + 要做什么 + 做完去哪"；
+   * R9 架构内功能一律写"这台设备做不到"，**不许**写"没有这个功能"；
+   * 新增位 / reason 时 zh + en 一起加（ja 已冻结，缺的键回落到本文件）。
+   */
+  capabilities: {
+    title: "设备能力",
+    /** 位为假时那句说明的模板：`{位名}：{reason}`。 */
+    note: "{bit}：{reason}",
+    tierName: {
+      windows: "Windows 桌面",
+      linux_desktop: "Linux 桌面",
+      android: "Android 手机",
+      linux_headless: "Linux 无屏",
+    },
+    bit: {
+      mic: "麦克风采集",
+      programTap: "抓程序声音",
+      virtualMic: "虚拟麦克风",
+      captions: "字幕",
+      globalHotkey: "全局热键",
+      tray: "托盘图标",
+      backgroundService: "后台常驻",
+      vrCaptions: "头显字幕",
+      netIn: "从网络收声",
+      netOut: "往网络发声",
+      fileConfig: "配置文件控制面",
+    },
+    reason: {
+      unsupported: "这台设备做不到：当前这套组合里没有这条路。",
+      notInstalled: "还用不了：需要先装虚拟声卡驱动，装好后回到这一页。",
+      permission: "需要先授权：在系统里放行这一项（如把用户加进 input 组、允许录音或叠加窗），然后重启本应用。",
+      notBuilt: "这个构建里没编进去：构建时没开对应的 cargo feature，换一份带它的构建才有。",
+      notWired: "这台设备做得到，只是装配层还没把它接上——接线后这一位会自己转真，不用改设置。",
+      pendingReboot: "驱动已经装了或卸了，但需要重启系统才生效。",
+      busy: "暂时用不了：设备正被别的程序占着，等它释放后会自动恢复。",
+    },
+    specific: {
+      trayUnsupported:
+        "托盘图标不会显示：这台机器上没有托盘宿主（GNOME 默认不带，装上 AppIndicator / KStatusNotifier 扩展才会出现）。在那之前关闭窗口只会最小化，不会收进托盘。",
+      hotkeyPermission:
+        "全局热键需要先授权：把当前用户加进 input 组（`usermod -aG input $USER`）后重新登录，再重启本应用。",
+      programTapUnsupported:
+        "这台设备做不到：这一档宿主没有按程序取音的路（无屏档不做本机抓取，手机上的通话类音频结构上拿不到）。改用麦克风采集，或换一台桌面机器。",
+      virtualMicNotInstalled:
+        "还用不了：需要先装虚拟声卡驱动（VB-CABLE），装好后回到这一页——别的程序才能在录音设备里看到它。",
+    },
+  },
+
+  /**
+   * Agent 控制面（S1）：设置页那一屏的文案。
+   *
+   * `status*` 那几句说的是**事实**（`snapshot.control` 的观察值），不是"设置里写了什么"——
+   * 没在监听就直说没在监听和为什么，不许拿开关自己推"应该在跑"。
+   */
+  agent: {
+    title: "Agent 控制面",
+    enabled: "总开关",
+    enabledDesc:
+      "允许外部 Agent（MCP / CLI）连上这台机器。关着时不监听、也不写凭据文件；下面四个授权位一位都不生效。",
+    port: "监听端口",
+    portDesc: "只绑 127.0.0.1。0 = 由系统分配（默认）；小于 1024 的端口归 0。",
+    credentials: "凭据文件",
+    credentialsDesc: "Agent 的端口与 token 在这个文件里（只有本机属主能读）。",
+    status: "状态",
+    statusLoading: "读取中",
+    statusApplying: "正在按新设置起停…",
+    statusOff: "没在监听（总开关关着）",
+    statusRunning: "运行中：127.0.0.1:{port}",
+    statusFailed: "起不来：{error}",
+    statusUnknown: "起不来（没拿到原因）",
+    allowMicrophone: "允许使用麦克风",
+    allowMicrophoneDesc: "Agent 可以开麦克风采集（让它自己听、自己译）。",
+    allowSystemAudio: "允许抓取程序声音",
+    allowSystemAudioDesc: "Agent 可以录某个程序的声音。",
+    allowAudibleOutput: "允许放出声音",
+    allowAudibleOutputDesc: "Agent 可以往可听输出放音——这些声音人会听见。",
+    allowConfigWrite: "允许修改配置",
+    allowConfigWriteDesc: "Agent 可以改这台机器的端点配置（目标语言、音色这一类）。",
+    notify: "字幕通知间隔",
+    notifyDesc: "字幕变化按这个间隔收敛成一次通知（毫秒，50–5000）。",
+  },
+
   controls: {
     dropdownPlaceholder: "请选择",
   },
-
   format: {
     never: "从未",
     justNow: "刚刚",

@@ -9,21 +9,35 @@
 import { DEFAULT_SETTINGS, cloneSettings } from "../defaults";
 import type { PipelineName, PipelineState, Track } from "../types";
 import * as catalog from "../catalog";
+import { HOST_CAPABILITIES, UNAVAILABLE_REASONS } from "../capabilities";
 import type {
   AudioApp,
+  Capabilities,
+  ControlStatus,
   GateStatus,
+  HostCapability,
   LatencyMetric,
   LatencySnapshot,
   Notice,
   PipelineSnapshot,
   Snapshot,
   SettingsPatch,
+  UnavailableReason,
   UsageLedger,
   VoxEvent,
 } from "../types.snapshot";
 import type { VoxApi } from "../api";
 import { STATE_LABEL, isRunning } from "../pipeline";
-import { LISTEN_SCRIPT, MOCK_APPS, MOCK_INPUTS, MOCK_OUTPUTS, SPEAK_SCRIPT, mockUsage } from "./data";
+import {
+  LISTEN_SCRIPT,
+  MOCK_APPS,
+  MOCK_INPUTS,
+  MOCK_OUTPUTS,
+  SPEAK_SCRIPT,
+  mockCapabilities,
+  mockUsage,
+  type MockHost,
+} from "./data";
 import { mergePatch, normalizeSettings } from "./merge";
 import { FakeGate, FakeVoice } from "./signal";
 import { FakeTyper } from "./typer";
@@ -51,6 +65,13 @@ export function createMockApi(): VoxApi {
     | "not_installed"
     | "not_applicable" = "installed";
   let virtualCable16ChStatus: "visible" | "hidden" | "absent" = "hidden";
+  /**
+   * 假后端的宿主档位与"关掉的位"（S0 §2.5.0 第 1–2 步的模拟）。
+   * URL 开关（`?host=` / `?off=` / `?virtual_mic=` / `?on=`）见 `seed()`。
+   */
+  let host: MockHost = "windows";
+  let offOverride: Partial<Record<HostCapability, UnavailableReason>> = {};
+  let onBits: readonly HostCapability[] = [];
   let cableBlockers = [MOCK_APPS[1]].filter((app): app is AudioApp => app !== undefined);
   let micActive = false;
   let usage: UsageLedger = mockUsage();
@@ -62,6 +83,15 @@ export function createMockApi(): VoxApi {
   let holdUntil = 0;
   let holdNextAt = 0;
   let oscRunning = false;
+  /**
+   * 控制面起不来的那一档（`?control=busy`）：真后端里这是 `serve()` 的 `EADDRINUSE`，
+   * 假后端造一句同样意思的话，好让"起不来时界面怎么显示"这条路点得通。
+   */
+  let controlFail = false;
+  /** 端口是系统分配（`control.port === 0`）时，假后端"绑上"的那个号。 */
+  const MOCK_BOUND_PORT = 47123;
+  /** 握手文件路径：真后端是 `<app_config_dir>/control.json`，假后端给个同形状的。 */
+  const MOCK_STATE_FILE = "~/.config/VoxBridge/control.json";
 
   const lanes: Record<PipelineName, Lane> = {
     speak: mkLane(SPEAK_SCRIPT, "speak"),
@@ -252,6 +282,12 @@ export function createMockApi(): VoxApi {
       notify("warning", "请先配置 API 密钥", pipeline);
       return;
     }
+    // 位为假 ⇒ 这条腿在这台机器上根本装不起来（真后端是装配期的 `MissingInput`）：
+    // 假后端也照实拒绝，不然界面会显示"运行中"，而位说这台设备做不到。
+    if (pipeline === "listen" && !report().host.program_tap.enabled) {
+      notify("warning", "这台设备做不到抓程序声音", pipeline);
+      return;
+    }
     if (pipeline === "listen" && !settings.listen.target) {
       notify("warning", "请先选择监听程序", pipeline);
       return;
@@ -272,6 +308,59 @@ export function createMockApi(): VoxApi {
     ensureTimer();
   }
 
+  /**
+   * 这台机器上报"关掉的位"（`HostFacts.off` 的模拟）。
+   *
+   * - `vr_captions`：这份构建默认没开 `steamvr-overlay`（`?on=vr_captions` 可以按开）；
+   * - Windows 的 `virtual_mic` 只认安装器探测（`win.rs::virtual_mic_ensure` 同款）——
+   *   点一次"卸载"它就该翻假，点"安装"又翻真；
+   * - `?off=` 覆盖在上面（`?on=` 再抹掉）——测试要能造出任意的 `(位, reason)`。
+   */
+  function offBits(): Partial<Record<HostCapability, UnavailableReason>> {
+    const off: Partial<Record<HostCapability, UnavailableReason>> = { vr_captions: "not_built" };
+    if (host === "windows") {
+      if (virtualCableStatus === "installed") delete off.virtual_mic;
+      else if (virtualCableStatus === "not_installed") off.virtual_mic = "not_installed";
+      else off.virtual_mic = "pending_reboot";
+    }
+    Object.assign(off, offOverride);
+    for (const bit of onBits) delete off[bit];
+    return off;
+  }
+
+  /** 这份快照里那份能力位报告（档位 + off + 两条腿的 provider）。 */
+  function report(): Capabilities {
+    return mockCapabilities({
+      host,
+      off: offBits(),
+      speak: settings.speak.provider,
+      listen: settings.listen.provider,
+    });
+  }
+
+  /**
+   * 控制面现在的样子（Rust `mcp::Status` 的假版本）。
+   *
+   * **按设置推 + 一个"起不来"的开关**：假后端没有真监听，起没起只能这么演。
+   * 真后端那一边是"句柄在不在"（`ControlPlane` 手里的 `Option<ServerHandle>`），
+   * 界面两条路读到的都是同一个形状。
+   */
+  function controlStatus(): ControlStatus {
+    const wanted = settings.control;
+    const running = wanted.enabled && !controlFail;
+    return {
+      enabled: wanted.enabled,
+      port: wanted.port,
+      running,
+      bound_port: running ? (wanted.port !== 0 ? wanted.port : MOCK_BOUND_PORT) : null,
+      error:
+        wanted.enabled && !running
+          ? "监听 127.0.0.1 失败：地址已被占用（Address already in use）"
+          : null,
+      state_file: MOCK_STATE_FILE,
+    };
+  }
+
   function currentSnapshot(): Snapshot {
     return {
       settings: cloneSettings(settings),
@@ -290,23 +379,54 @@ export function createMockApi(): VoxApi {
       },
       usage,
       notices: [...notices],
+      capabilities: report(),
+      control: controlStatus(),
     };
   }
 
   /**
    * 假后端默认起在「已经在用」的状态：有密钥、选好了监听程序、两条常驻管线在跑。
    * 不然一进来什么都不动，看不出电平条和字幕长什么样。
-   * 想看空状态（未填密钥、没选程序）加 ?cold=1；想看 Linux 的虚拟麦克风形态
-   * （不装驱动、只给设备名引导）加 ?platform=linux。
+   *
+   * URL 开关（都只在 mock 里）：
+   * - `?cold=1` 空状态（未填密钥、没选程序）；
+   * - `?host=windows|linux|android|embedded` 换宿主档位（`?platform=linux` 是等价旧写法，
+   *   README 里用过）——四档的位表不同，界面该按位降级；
+   * - `?off=<位>:<reason>,...` 把这台机器上某几位按下来（任意 `(位, reason)` 组合）；
+   * - `?on=<位>,...` 反过来把某几位按开（例如 `?on=vr_captions` = 这份构建编了头显字幕）；
+   * - `?virtual_mic=not_wired` 是 `off=virtual_mic:not_wired` 的简写（接线前的中间态最常用）；
+   * - `?control=busy` 让控制面"起不来"（端口被占的那一档）：总开关开着也报没在跑 + 原因。
    */
   function seed(): void {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("platform") === "linux") {
-      // Linux：PipeWire 原生就有虚拟 sink，状态是 not_applicable。
+    const rawHost = params.get("host") ?? (params.get("platform") === "linux" ? "linux" : "windows");
+    host = rawHost === "linux" || rawHost === "android" || rawHost === "embedded" ? rawHost : "windows";
+
+    const off: Partial<Record<HostCapability, UnavailableReason>> = {};
+    for (const entry of params.get("off")?.split(",") ?? []) {
+      const [bit, reason] = entry.split(":");
+      if (
+        HOST_CAPABILITIES.includes(bit as HostCapability) &&
+        UNAVAILABLE_REASONS.includes(reason as UnavailableReason)
+      ) {
+        off[bit as HostCapability] = reason as UnavailableReason;
+      }
+    }
+    const virtualMic = params.get("virtual_mic") as UnavailableReason | null;
+    if (virtualMic && UNAVAILABLE_REASONS.includes(virtualMic)) off.virtual_mic = virtualMic;
+    offOverride = off;
+    onBits = (params.get("on")?.split(",") ?? []).filter((bit): bit is HostCapability =>
+      HOST_CAPABILITIES.includes(bit as HostCapability),
+    );
+
+    if (host !== "windows") {
+      // 只有 Windows 那份构建有"装驱动"这一步：别的档位没有装/卸/多声道那一套。
       virtualCableStatus = "not_applicable";
       virtualCableInstalled = false;
       virtualCable16ChStatus = "absent";
     }
+    // 控制面起不来那一档：给设置页一条"起不来"的路走（`?control=busy`）。
+    controlFail = params.get("control") === "busy";
     if (params.get("cold") === "1") return;
     for (const provider of catalog.providerIds()) {
       apiKeys[provider] = true;
@@ -322,7 +442,8 @@ export function createMockApi(): VoxApi {
       });
     }
     setState("speak", "active");
-    setState("listen", "active");
+    // 抓程序这一位为假（手机 / 无屏档）就不起听人说话：位说做不到，界面也不该显示"运行中"。
+    if (report().host.program_tap.enabled) setState("listen", "active");
     ensureTimer();
   }
 

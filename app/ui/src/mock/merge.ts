@@ -8,11 +8,14 @@ import {
   CHAR_FADE_RANGE,
   CHAR_TTL_RANGE,
   clamp,
+  CONTROL_PORT_MIN,
   DIM_ALPHA_RANGE,
   FONT_SIZE_RANGE,
   GATE_THRESHOLD_RANGE,
+  TRANSCRIPT_NOTIFY_MS_RANGE,
 } from "../defaults";
 import * as catalog from "../catalog";
+import { UI_LANG_CYCLE, type UiLang } from "../i18n/types";
 import type { Settings } from "../types";
 
 /** 整块替换而不是递归合并的键：语义上是「这一份就是全部」。 */
@@ -54,8 +57,9 @@ function normalizeDevice(value: string | null | undefined): string | null {
 export function normalizeSettings(settings: Settings): Settings {
   const s = structuredClone(settings);
 
-  // 界面语言只认白名单；手改配置、拼错一律回退中文（与 Rust Settings::normalize 一致）。
-  if (s.ui_language !== "zh-CN" && s.ui_language !== "en") {
+  // 界面语言只认白名单；手改配置、拼错一律回退中文（与 Rust `Settings::normalize` /
+  // `UI_LANGUAGES` 一致：三语 zh-CN / ja-JP / en）。
+  if (!UI_LANG_CYCLE.includes(s.ui_language as UiLang)) {
     s.ui_language = "zh-CN";
   }
 
@@ -119,6 +123,20 @@ export function normalizeSettings(settings: Settings): Settings {
     s.subtitle.geometry.width = Math.max(160, Math.round(s.subtitle.geometry.width));
     s.subtitle.geometry.height = Math.max(60, Math.round(s.subtitle.geometry.height));
   }
+
+  // 控制面（与 Rust `Settings::normalize` 同一条）：端口落在内核保留段（<1024）就归 0
+  // （0 = 由系统分配），去抖间隔夹进允许范围。授权位是布尔，不用夹。
+  if (s.control.port !== 0 && s.control.port < CONTROL_PORT_MIN) {
+    s.control.port = 0;
+  }
+  s.control.port = Math.round(clamp(s.control.port, 0, 65535));
+  s.control.transcript_notify_ms = Math.round(
+    clamp(
+      s.control.transcript_notify_ms,
+      TRANSCRIPT_NOTIFY_MS_RANGE.min,
+      TRANSCRIPT_NOTIFY_MS_RANGE.max,
+    ),
+  );
 
   return s;
 }

@@ -115,6 +115,29 @@ export interface SubtitleSettings {
   geometry: Geometry | null;
 }
 
+/**
+ * Rust: `ControlSettings`（Agent 控制面 / MCP）。
+ *
+ * 名字逐字对齐 `crates/vox-core/src/settings.rs`，`vox-mcp` 的 `Grants` 按名字读它。
+ * 默认**全关**：老配置文件里没有这一段，读出来也是全关（fail-closed），不是"缺字段 = 允许"。
+ */
+export interface ControlSettings {
+  /** 控制面总开关。关着时服务不监听、四个授权位也一位都不开。 */
+  enabled: boolean;
+  /** 监听端口；`0` = 由系统分配（默认）。小于 1024 的会被芯归 0（保留段）。 */
+  port: number;
+  /** 允许 Agent 用麦克风。 */
+  allow_microphone: boolean;
+  /** 允许 Agent 抓某个程序的声音。 */
+  allow_system_audio: boolean;
+  /** 允许 Agent 往可听输出放音。 */
+  allow_audible_output: boolean;
+  /** 允许控制面改用户配置。 */
+  allow_config_write: boolean;
+  /** 字幕订阅的通知去抖间隔（毫秒）。 */
+  transcript_notify_ms: number;
+}
+
 export interface Settings {
   version: number;
   speak: SpeakSettings;
@@ -124,4 +147,6 @@ export interface Settings {
   start_minimized: boolean;
   /** 界面显示语言（UI locale）：`zh-CN` / `en`。与翻译目标/源语言无关。 */
   ui_language: string;
+  /** Agent 控制面的开关与授权位。 */
+  control: ControlSettings;
 }

@@ -10,6 +10,8 @@
  */
 
 import * as catalog from "../catalog";
+import { capabilityNote, hostBit } from "../capabilities";
+import { CapabilityNote } from "../components/Capability";
 import { useLang } from "../i18n/context";
 import { recentFirst, useRecentValues } from "../lib/recent";
 import { useStore } from "../store";
@@ -88,6 +90,15 @@ export function PipelineCard({ pipeline }: { pipeline: HomePipeline }) {
 
   const appOptions = buildAppOptions(apps, target, t);
 
+  /**
+   * 抓程序这一位为假时那句说明（位为真、或快照还没到 = `null`）。
+   *
+   * `program_tap` 为假 ⇒ 这条腿在这台设备上开不了：选择器**整个不渲染**（R1：不静默撤掉
+   * 入口，要给一句说明），启动键也跟着禁用（否则点下去只会在装配时撞 `MissingInput`）。
+   */
+  const tapNote =
+    pipeline === "listen" && snapshot ? capabilityNote(t, "program_tap", hostBit(snapshot, "program_tap")) : null;
+
   const card = CARDS.find((c) => c.id === pipeline);
   if (!card) return null;
   const Icon = card.icon;
@@ -100,6 +111,8 @@ export function PipelineCard({ pipeline }: { pipeline: HomePipeline }) {
   /** 开不了的原因。null 表示能开。 */
   const blocked = ((): string | null => {
     if (!snapshot) return t("pipeline.openFailReason");
+    // 抓程序这一位为假：说清"这台设备做不到"（R9），这句就是下面那一行说明。
+    if (tapNote) return tapNote;
     // 对外说话关掉「翻译」= 直通原声，不走云端，也就不需要 API 密钥。
     const needsKey = pipeline === "listen" || speak.translate;
     if (needsKey && !snapshot.api_keys[activeProvider]) {
@@ -152,7 +165,7 @@ export function PipelineCard({ pipeline }: { pipeline: HomePipeline }) {
         </div>
       </div>
 
-      {!running && blocked ? (
+      {!running && blocked && !tapNote ? (
         <div className="hint hint-warn" style={{ marginTop: 10 }}>
           {blocked}
         </div>
@@ -423,51 +436,58 @@ export function PipelineCard({ pipeline }: { pipeline: HomePipeline }) {
 
       {pipeline === "listen" ? (
         <div className="pipeline-advanced" style={{ marginTop: 10 }}>
-          <label className="stat-label" htmlFor="dd-home-listen-target">
-            {t("pipeline.listenTarget")}
-          </label>
-          <div className="row" style={{ alignItems: "stretch", marginTop: 6 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <Dropdown
-                id="dd-home-listen-target"
-                label={t("pipeline.listenTargetAria")}
-                value={target?.executable ?? ""}
-                options={appOptions}
-                placeholder={t("pipeline.listenTargetPlaceholder")}
-                disabled={!snapshot || appOptions.length === 0}
-                onChange={onPickApp}
-              />
-            </div>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              aria-label={t("pipeline.rescanApps")}
-              data-focus-item
-              onClick={() => void api.refreshDevices()}
-            >
-              <IconRefresh size={15} />
-            </button>
-          </div>
-          {appOptions.length === 0 || !target ? (
-            <div className="hint hint-warn" style={{ marginTop: 6 }}>
-              {appOptions.length === 0 ? t("pipeline.appNoAudioFound") : t("pipeline.appSelectApp")}
-            </div>
-          ) : null}
-          <div className="row" style={{ justifyContent: "space-between", marginTop: 10 }}>
-            <span className="stat-label">{t("pipeline.includeSubprocess")}</span>
-            <Toggle
-              checked={target?.include_process_tree ?? true}
-              disabled={!target}
-              label={t("pipeline.includeSubprocess")}
-              onChange={(include) => {
-                if (target) {
-                  patch({
-                    listen: { target: { ...target, include_process_tree: include } },
-                  });
-                }
-              }}
-            />
-          </div>
+          {tapNote ? (
+            /* 位为假：选择器 / 子进程开关 / 重扫按钮整块不渲染，只留这一句说明（R1/R9）。 */
+            <CapabilityNote bit="program_tap" />
+          ) : (
+            <>
+              <label className="stat-label" htmlFor="dd-home-listen-target">
+                {t("pipeline.listenTarget")}
+              </label>
+              <div className="row" style={{ alignItems: "stretch", marginTop: 6 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Dropdown
+                    id="dd-home-listen-target"
+                    label={t("pipeline.listenTargetAria")}
+                    value={target?.executable ?? ""}
+                    options={appOptions}
+                    placeholder={t("pipeline.listenTargetPlaceholder")}
+                    disabled={!snapshot || appOptions.length === 0}
+                    onChange={onPickApp}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  aria-label={t("pipeline.rescanApps")}
+                  data-focus-item
+                  onClick={() => void api.refreshDevices()}
+                >
+                  <IconRefresh size={15} />
+                </button>
+              </div>
+              {appOptions.length === 0 || !target ? (
+                <div className="hint hint-warn" style={{ marginTop: 6 }}>
+                  {appOptions.length === 0 ? t("pipeline.appNoAudioFound") : t("pipeline.appSelectApp")}
+                </div>
+              ) : null}
+              <div className="row" style={{ justifyContent: "space-between", marginTop: 10 }}>
+                <span className="stat-label">{t("pipeline.includeSubprocess")}</span>
+                <Toggle
+                  checked={target?.include_process_tree ?? true}
+                  disabled={!target}
+                  label={t("pipeline.includeSubprocess")}
+                  onChange={(include) => {
+                    if (target) {
+                      patch({
+                        listen: { target: { ...target, include_process_tree: include } },
+                      });
+                    }
+                  }}
+                />
+              </div>
+            </>
+          )}
         </div>
       ) : null}
 

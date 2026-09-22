@@ -10,15 +10,13 @@
  * 30px 等宽大数字(stat-value)，窄窗最容易文字撑破。这套脚本把
  * Usage/Subtitle 也纳入窄窗巡检 —— 老 QA-home 恰恰漏了这两页。
  *
- * 自包含：和 a11y.mjs 一样自己起 vite preview、用窄端口、结束自动清理。
+ * 自包含：和 a11y.mjs 一样自己起 vite preview（端口由内核分配、端上跑的得是这份 `dist`——
+ * 两道闸都在 `preview.mjs` 里），结束自动清理。
  * 用法：npm run build && npm run qa:narrow
  */
-import { spawn } from "node:child_process";
-import { createConnection } from "node:net";
 import { chromium } from "playwright";
 
-const PORT = 5186;
-const BASE = `http://127.0.0.1:${PORT}/?mock=1`;
+import { startPreview } from "./preview.mjs";
 
 /* 页面 id; label 仅用于报错阅读 */
 const ORDER = [
@@ -26,26 +24,12 @@ const ORDER = [
   ["providers", "模型服务商", "模型服务商"],
   ["subtitle", "字幕", "字幕外观"],
   ["vrchat", "VRChat", "VRChat"],
+  ["agent", "Agent 控制面", "Agent 控制面"],
   ["settings", "设置", "设置"],
   ["usage", "用量", "用量"],
   ["about", "关于", "关于"],
 ];
 
-function portOpen(port) {
-  return new Promise((resolve) => {
-    const s = createConnection({ port, host: "127.0.0.1" });
-    s.on("connect", () => (s.end(), resolve(true)));
-    s.on("error", () => resolve(false));
-    setTimeout(() => (s.destroy(), resolve(false)), 800);
-  });
-}
-async function waitPort(p, tries = 60) {
-  for (let i = 0; i < tries; i += 1) {
-    if (await portOpen(p)) return true;
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  return false;
-}
 async function launch() {
   for (const channel of ["chrome", "msedge", undefined]) {
     try {
@@ -110,11 +94,8 @@ async function checkPage(page, width, height, label) {
   for (const issue of issues) failures.push(`${label}@${width}x${height}:${issue}`);
 }
 
-const server = spawn(
-  process.platform === "win32" ? "npx.cmd" : "npx",
-  ["vite", "preview", "--port", String(PORT), "--strictPort", "--host", "127.0.0.1"],
-  { stdio: "ignore", shell: process.platform === "win32" },
-);
+const preview = await startPreview("qa:narrow");
+const BASE = `${preview.base}/?mock=1`;
 
 // 多档宽度：从初始窗到最小 640，卡 max-width 阈值(1024/768)两头。
 const widths = [
@@ -130,7 +111,6 @@ const widths = [
 ];
 
 try {
-  if (!(await waitPort(PORT))) throw new Error("preview 没起来，先 npm run build。");
   const browser = await launch();
 
   for (const { width, height } of widths) {
@@ -154,7 +134,7 @@ try {
   console.error(e.message);
   process.exitCode = 1;
 } finally {
-  server.kill();
+  preview.stop();
 }
 
 if (failures.length > 0) {

@@ -15,6 +15,10 @@ export const CHAR_TTL_RANGE = { min: 500, max: 20000 } as const;
 export const CHAR_FADE_RANGE = { min: 0, max: 5000 } as const;
 export const BACKGROUND_ALPHA_RANGE = { min: 0, max: 255 } as const;
 export const DIM_ALPHA_RANGE = { min: 0.05, max: 1 } as const;
+/** Rust: `CONTROL_PORT_MIN`——小于它的端口一律归 0（内核保留段，`Settings::normalize`）。 */
+export const CONTROL_PORT_MIN = 1024;
+/** Rust: `TRANSCRIPT_NOTIFY_MS_RANGE`。 */
+export const TRANSCRIPT_NOTIFY_MS_RANGE = { min: 50, max: 5000 } as const;
 
 export const DEFAULT_SETTINGS: Settings = {
   version: SETTINGS_VERSION,
@@ -66,6 +70,15 @@ export const DEFAULT_SETTINGS: Settings = {
   autostart: false,
   start_minimized: false,
   ui_language: "zh-CN",
+  control: {
+    enabled: false,
+    port: 0,
+    allow_microphone: false,
+    allow_system_audio: false,
+    allow_audible_output: false,
+    allow_config_write: false,
+    transcript_notify_ms: 250,
+  },
 };
 
 export function clamp(value: number, min: number, max: number): number {

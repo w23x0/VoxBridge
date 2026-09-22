@@ -45,6 +45,10 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 # OSC 是纯 UDP 发包，没有一行 Win32，两个平台共用。
 vox-osc = { path = "../../crates/vox-osc" }
 
+# 控制面（Agent 面）：MCP 2026-07-28 + 本机 Streamable HTTP。装配层只注入后端
+# （`LedgerBackend` + 用户开关）并起停，协议面一行都不碰（`src/mcp.rs`）。
+vox-mcp = { path = "../../crates/vox-mcp" }
+
 [target.'cfg(windows)'.dependencies]
 # `windows` 必须按 target 门控：它的 `windows-future` 子 crate 在非 Windows 上
 # 编不过（`windows_threading::submit` 不存在），会直接把 Linux 的 workspace 检查
@@ -53,6 +57,14 @@ windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Security_Cryptography",
     "Win32_System_SystemInformation",
+    # 进程句柄：`mcp.rs::process_alive`（OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION) /
+    # CloseHandle）与 `commands.rs::close_cable_blockers`（TerminateProcess /
+    # WaitForSingleObject / PROCESS_TERMINATE|PROCESS_SYNCHRONIZE）都在装配层直接调这些 Win32 API。
+    # **防御性声明**：今天就算撤掉这一行也能编过——`cargo` 的 feature unification 会把
+    # `vox-audio-win` 声明的同一个 feature 合进同一份依赖图，等于替这边开了。但装配层不该
+    # 依赖别人的 feature（那是隐式契约）：两份都撤时
+    # `cargo check --target x86_64-pc-windows-gnu --all-targets` 会以 E0432 失败。
+    "Win32_System_Threading",
     # 窗口最小尺寸强制：WM_GETMINMAXINFO 需要 MINMAXINFO/SetWindowLongPtrW；
     # GetDpiForWindow 用来把逻辑最小尺寸按当前 DPI 换算成物理像素。
     "Win32_UI_HiDpi",
