@@ -1,7 +1,7 @@
 //! 键名 ↔ Windows 虚拟键码（VK）。
 //!
 //! 这张表原来在内核的 `vox-core::catalog::key_vk` 里——那是内核唯一的平台泄漏
-//! （见 `docs/PLATFORM_LINUX.md` §6），现在搬到这里：内核只认键名，码表各平台自己管。
+//! （见 `docs/platform/LINUX.md` §6），现在搬到这里：内核只认键名，码表各平台自己管。
 //!
 //! A-Z / 0-9 的 VK 码正好等于 ASCII，所以字母数字不用查表。
 

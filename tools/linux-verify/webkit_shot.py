@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """用 WebKitGTK 渲染前端并存成 PNG —— 证明"界面到底画出来没有"。
 
-为什么需要它：`docs/PLATFORM_LINUX.md` 里那条"像素级确认"卡了很久。Linux 上是
+为什么需要它：`docs/platform/LINUX.md` 里那条"像素级确认"卡了很久。Linux 上是
 GNOME Wayland，rootless XWayland 下 `ffmpeg -f x11grab` 抓根窗口只有黑屏（X root 上
 没有合成结果），GNOME Shell 的 `org.gnome.Shell.Screenshot` 报 AccessDenied，portal
 截图要人工点同意。而 WebKitGTK 自己就有 `webkit_web_view_get_snapshot`，能把 WebView

@@ -3,7 +3,7 @@
 
 为什么需要它：本机没有 `xdotool` / `wmctrl`，而 XWayland 下 `XTest` 是哑的
 （`XTestFakeMotionEvent` 不动指针），`XSendEvent` 反而好使。用它验"关窗到底收进托盘
-还是最小化"（`docs/PLATFORM_LINUX.md` §9.7）：
+还是最小化"（`docs/platform/LINUX.md` §9.7）：
 
 ```bash
 ./target/debug/voxbridge &
