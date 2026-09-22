@@ -7,6 +7,9 @@
 > **A. 已拍板** —— 定了的，别再翻。
 > **B. 待拍板** —— 需要你回答的，每条给了背景/选项/代价/我的推荐。
 > **C. 后端契约** —— 前端和后端两拨人的接口约定，防止两边各写一套。
+>
+> 全项目方向的汇总、状态与**文档之间冲突的裁决**（冲突以时间较新者为准）在
+> `docs/architecture/DIRECTIONS.md`；本文只记"为什么这么定"。
 
 ---
 
@@ -59,8 +62,8 @@
     （已 gitignore、无密码），Secret 值就是文件原文那一整行 base64。
     因旧私钥无法在本机恢复使用，轮换到新密钥对：**≤0.1.3 的安装无法应用内
     升级到 0.1.4，需手动安装一次**；0.1.4 起自更新正常。
-15. **Linux 端开工**（2026-09-20）。平台范围从 PLATFORM_SCOPE 的"只做 Windows"改成
-    "Win 为主线 + Linux 并行"，执行方案与全部实测证据见 `docs/PLATFORM_LINUX.md`。
+15. **Linux 端开工**（2026-09-20）。平台范围从 `docs/platform/SCOPE.md` 的"只做 Windows"改成
+    "Win 为主线 + Linux 并行"，执行方案与全部实测证据见 `docs/platform/LINUX.md`。
     拍下来的三条：
     - **音频锚定 PipeWire**。依据：PipeWire 已是主流发行版的默认音频服务
       （Fedora 34 → Pop!_OS 22.04 → Ubuntu 22.10 → Debian 12）。PipeWire 下
@@ -104,7 +107,7 @@ ONNX Runtime 或 tract + 外挂几十 MB 权重。
 降噪在这个项目里的首要任务是**让音量阀门判断准**，不是追求录音棚音质；而且
 真正的噪声抑制服务端模型自己也会做一遍。RNNoise 纯 Rust、权重内嵌、BSD-3 可商用、
 帧格式（48 kHz / 480 采样）跟麦克风原生格式天然对齐，性价比最高。
-文档已按 RNNoise 写好（`ARCHITECTURE.md` §9）。
+文档已按 RNNoise 写好（`docs/architecture/ARCHITECTURE.md` §9）。
 
 ---
 
@@ -411,11 +414,11 @@ b 的实现量很小：settings 里加一个 `Vec<(String, String)>`，
 | B9 | 🔴 默认模型流式字幕可能一直没生效，现在就加 `.text`+`stash` 支持吗？ | **已加入**；并尽快拿真 key 抓一次报文 |
 | B10 | 官方热词表（术语表）这版做不做？ | **这版不做，但现在先在 settings 里占好字段** |
 | B11 | 老模型 `qwen3-livetranslate-flash-realtime-2025-09-22` 还留吗？ | **删掉**（它语音语言表只有 18 种且不是子集，留着就是坑） |
-| B13 | Discord 增强适配：第一期做到「按人独立」（Bot）还是「频道混译」？opus/Discord 框架怎么选？ | **（未拍板）** 预研在 `DISCORD_PROTOCOL.md`，六个 Q 全待你答 |
+| B13 | Discord 增强适配：第一期做到「按人独立」（Bot）还是「频道混译」？opus/Discord 框架怎么选？ | **（未拍板）** 预研在 `docs/protocols/DISCORD_PROTOCOL.md`，六个 Q 全待你答 |
 
 ### B12.（🔴 窗口边缘待真机）大圆角没生效 & 最小高度锁不到 38
 
-这两项**没有解决**，已单开 `docs/WINDOW_BEHAVIOR.md` 追踪完整现状与验证动作。
+这两项**没有解决**，已单开 `docs/platform/WINDOW_BEHAVIOR.md` 追踪完整现状与验证动作。
 一句话：真机发现**窗口没显示 12px 大圆角，而是默认小弧度**——"黑角月牙缝"很可能
 是因为大圆角根本没渲染而不出现的，不是被修好了。`#root` 的 12px 圆角
 （`tokens.css`）在真机大概率没作用到窗口上。最小高度 38 已加两层钳制
@@ -427,7 +430,7 @@ b 的实现量很小：settings 里加一个 `Vec<(String, String)>`，
 ### B13. Discord 专属增强适配（**第二阶段预研，尚未拍板**）
 
 > 初心是让 VoxBridge「和 Discord 高度配合」。完整摊开了方向、能力边界、延迟与工程代价，
-> **没有结论**，详见 [`docs/DISCORD_PROTOCOL.md`](DISCORD_PROTOCOL.md)。
+> **没有结论**，详见 [`docs/protocols/DISCORD_PROTOCOL.md`](../protocols/DISCORD_PROTOCOL.md)。
 
 **背景**
 现有「听人说话」用进程环回抓 `Discord.exe` 整棵进程树，只能拿到**混合了所有人的**混音，
@@ -438,7 +441,7 @@ b 的实现量很小：settings 里加一个 `Vec<(String, String)>`，
 - 「频道所有说话混一股翻译成一条」（环回接近够用，但不分人）；还是
 - 「按用户独立分派、每人各自 translate」。（**只有 Bot 能做**——你已经明确这个方向。）
 
-**关键工程决策点（全部 ⚠️ 待定，见 `DISCORD_PROTOCOL.md`）**
+**关键工程决策点（全部 ⚠️ 待定，见 `docs/protocols/DISCORD_PROTOCOL.md`）**
 - **D1 opus 解码**：Discord 语音是分用户的 20ms opus 帧。要不要**引 `opus` crate**（打破
   「vox-dsp 几乎无外部编解码依赖」的现状）？还是自作解码（数周级工作量）？
 - **D2 Discord 协议层**：直接引 `serenity`/`songbird`/`twilight`（现成但体积大，且要验

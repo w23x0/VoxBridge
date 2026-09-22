@@ -2,7 +2,7 @@
 
 > 本文件记录两个互相纠缠、且**尚未在真机确认解决**的窗口问题：
 > ① 大圆角没生效  ② 最小高度锁不住 38。
-> 口径与 `DECISIONS.md` 一致：**代码与这里打架时以代码为准**；这里只记"当前代码长什么样"和"真机观测到的事实"，**不写结论性"已修复"**，因为两件事都还没经真窗拖拽验证。
+> 口径与 `docs/architecture/DECISIONS.md` 一致：**代码与这里打架时以代码为准**；这里只记"当前代码长什么样"和"真机观测到的事实"，**不写结论性"已修复"**，因为两件事都还没经真窗拖拽验证。
 
 ---
 
@@ -71,5 +71,5 @@
 3. 两条**都只有真机测试能定性**，`npm run verify`（纯前端断言）测不到窗口边框/圆角/最小尺寸，不能当验证。
 
 ## 参考
-- 骨架相关：`docs/DECISIONS.md` 第 13 条（UI 对齐 glassui）。
+- 骨架相关：`docs/architecture/DECISIONS.md` 第 13 条（UI 对齐 glassui）。
 - 涉及文件：`app/ui/src/styles/{tokens,shell}.css`、`app/ui/index.html`、`app/src-tauri/src/{winminmax.rs,lib.rs,tauri.conf.json}`。

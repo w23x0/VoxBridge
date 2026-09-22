@@ -148,7 +148,7 @@ let scaled = if clipped < 0.0 { clipped * 32768.0 } else { clipped * 32767.0 };
 | 字段 | 类型 | 值 | 说明 |
 | --- | --- | --- | --- |
 | `translation.language` | 字符串 | `"ja"` | 目标语言代码，**默认 `en`**。这是翻译的开关 |
-| `translation.corpus.phrases` | 对象 | 见下 | **热词表**：原文词 → 指定译法。我们**没用**，见 `DECISIONS.md` B10 |
+| `translation.corpus.phrases` | 对象 | 见下 | **热词表**：原文词 → 指定译法。我们**没用**，见 `docs/architecture/DECISIONS.md` B10 |
 | `input_audio_transcription.language` | 字符串 | `"zh"` | **源语言**。⭐ **不填 = 服务端自动识别**（官方原话见 §10.1） |
 | `input_audio_transcription.model` | 字符串 | `"qwen3-asr-flash-realtime"` | 源文 ASR 模型。不填就不出源文转写 |
 | `sample_rate` | 整数 | `8000` \| `16000` | **输入**采样率，默认 `16000`。我们不发，吃默认值正好 |
@@ -178,7 +178,7 @@ LiveTranslate **没有 `instructions` 字段**（官方确认），别发。
 
 **源语言这件事**：我们全程不发 `input_audio_transcription.language`，
 所以走的是自动识别。官方明确支持显式指定，所以"给不给用户选源语言"
-是个真选项，不是技术限制——见 `DECISIONS.md` B5。
+是个真选项，不是技术限制——见 `docs/architecture/DECISIONS.md` B5。
 
 ### 4.3 声音复刻
 
@@ -241,7 +241,7 @@ en zh ru fr de pt es it id ko ja vi th ar yue hi el tr
 - 选老模型 + 目标语言 `yue` → 我们判断"不支持"，白白降级成纯文字。
 
 日常路径踩不到（默认模型是 3.5，界面 13 种语言里也没有 `sv`/`yue`），
-但这是个真缺陷，见 `DECISIONS.md` B11。
+但这是个真缺陷，见 `docs/architecture/DECISIONS.md` B11。
 
 ---
 
@@ -336,7 +336,7 @@ done 事件同理，而且**又换了一个字段名**：
 累加状态只有一份（`Decoder::parts`），谁也别再自己攒一份。
 
 **所以前端/字幕层收到 `subtitle_delta` 时，`text` 是完整的一句，
-直接整句替换，不要 append。** 这条在 `DECISIONS.md` 的后端契约里也钉了一遍。
+直接整句替换，不要 append。** 这条在 `docs/architecture/DECISIONS.md` 的后端契约里也钉了一遍。
 
 ### 5.4 坑 3：done 事件里的文字**可能是空的**
 
@@ -396,7 +396,7 @@ value.get("response").and_then(|r| r.get("usage"))
 ```
 
 我们现在只记三个总数。**如果音频 token 和文字 token 单价不同，
-按总数估的钱就是错的**——见 `DECISIONS.md` 待拍板 B8。
+按总数估的钱就是错的**——见 `docs/architecture/DECISIONS.md` 待拍板 B8。
 注意 `output_tokens_details` 里的 `audio_tokens` **可能整个缺失**
 （纯文字回复时），别假设它一定在。
 
@@ -577,7 +577,7 @@ arrearage            insufficientquota      allocatedquotaexceeded
   想做"识别错了给用户提示"的话，材料是有的。
 
 ⚠️ 仍未确认：短句 / 中日混说时的识别准确率。这个只能实测，文档不会写。
-决策见 `DECISIONS.md` B5。
+决策见 `docs/architecture/DECISIONS.md` B5。
 
 ### 10.2 ⚠️ 一个 key 能同时开几条 WS —— 官方**没有**并发条数限制
 
@@ -634,7 +634,7 @@ arrearage            insufficientquota      allocatedquotaexceeded
 ⚠️ **但发现一个真缺陷**：这 29 个只对 3.5 成立，老模型
 `qwen3-livetranslate-flash-realtime-2025-09-22` 只支持 18 种，
 而且**不是子集**（多了 `yue`/`el`，少了一堆）。我们只有一份全局列表。
-详见 §4.5，决策见 `DECISIONS.md` B11。
+详见 §4.5，决策见 `docs/architecture/DECISIONS.md` B11。
 
 ### 10.5 ✅ 错误事件和 usage 的官方字段名 —— 已确认
 
@@ -645,7 +645,7 @@ arrearage            insufficientquota      allocatedquotaexceeded
   除了三个总数，官方还有 **`input_tokens_details` / `output_tokens_details`**，
   里面分 `text_tokens` / `audio_tokens`——**我们没读**。
   又因为音频和文字的计费口径不同（音频按秒折算 token），
-  只记总数**可能算不准钱**。详见 §5.6，决策见 `DECISIONS.md` B8。
+  只记总数**可能算不准钱**。详见 §5.6，决策见 `docs/architecture/DECISIONS.md` B8。
 
 ### 10.6 ⚠️ 端点地址 —— 我们用的和官方现在写的不一样
 

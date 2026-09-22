@@ -1,12 +1,16 @@
 # VRChat OSC 对外说话增强（预研方案 · 未拍板）
 
 > **状态：探索性方案文档，不是任何拍板结果。**
+> **代码已落地（2026-09-21）**：`crates/vox-osc/` + `osc_start` / `osc_update` / `osc_stop` /
+> `osc_send_chatbox` / `osc_set_avatar` 五个命令 + `app/ui/src/sections/Vrchat.tsx` 已在。
+> 但**方案本身仍未拍板**，下方 §5 的决策点与 §6「预想，没动代码」的措辞已过期 ——
+> 现状以 [`docs/architecture/DIRECTIONS.md`](../architecture/DIRECTIONS.md) §7 为准。
 > 本文把「在 VRChat 里，用 VRChat 官方 **OSC（OpenSoundControl）** 协议，把 VoxBridge 的
 > **对外说话**（译文语音 + 字幕）同步进 VRChat」的方向、能力边界、工程代价、卡住的决策点全部摊开。
-> **所有带 ⚠️ 的条目都待你确认。** 拍板结果写进 [`DECISIONS.md`](DECISIONS.md) B 区，
+> **所有带 ⚠️ 的条目都待你确认。** 拍板结果写进 [`docs/architecture/DECISIONS.md`](../architecture/DECISIONS.md) B 区，
 > 代码落地后以代码为准。
 >
-> 定位：**外部模块**（参考 `CONTRIBUTING.md` 的扩展点范式与 `DISCORD_PROTOCOL.md`），
+> 定位：**外部模块**（参考 `CONTRIBUTING.md` 的扩展点范式与 `docs/protocols/DISCORD_PROTOCOL.md`），
 > **不碰**麦克风 / VB-CABLE / 环回 / 协议内部。
 > 姊妹模块：现有 `vox-window-ocr-win`（OCR）是「**读** VRChat 输入框」，本模块是「**写** 进 VRChat」。
 
@@ -140,7 +144,7 @@
 
 > OSC 到底收不收得到、friendlyName 白名单怎么走，**静态文档答不了**，要真机：
 > VRChat 开着、OSC 开、然后本机发一条 ChatBox 抓包看 VRC 收不收。这条是**影响可见功能**
-> 的待办，优先级最高（对照 `DECISIONS.md` B9 的「真 key 抓一次报文」）。
+> 的待办，优先级最高（对照 `docs/architecture/DECISIONS.md` B9 的「真 key 抓一次报文」）。
 
 ---
 
@@ -196,4 +200,4 @@
   认同吗，还是铺两个？
 - [ ] **Q6 真机 POC**：先发一条 ChatBox + 设一个参数验证收不收（对应 5.6），真机对一遍？
 
-→ **结论之前都不写代码。** 你一拍其中任一条，我写进 `DECISIONS.md` B 区并打日期。
+→ **结论之前都不写代码。** 你一拍其中任一条，我写进 `docs/architecture/DECISIONS.md` B 区并打日期。

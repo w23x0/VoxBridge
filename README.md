@@ -26,7 +26,7 @@ Built with **Tauri 2 + React 19 + Rust**. The UI handles config and status; audi
 Prereqs, both platforms: Node.js `^20.19.0` or `>=22.12.0`, Rust stable, and an API key (or the frontend Mock, which needs none).
 
 - **Windows**: Windows 11 x64, VS Build Tools (C++ desktop), WebView2, target `x86_64-pc-windows-msvc`. OpenVR bindings are vendored under `vendor/openvr_sys`; LLVM/Clang is not required for the regular build.
-- **Linux**: `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `libpipewire-0.3-dev`, `clang` + `libclang-dev` (bindgen for `libspa-sys`), `patchelf` (AppImage), plus `build-essential`/`pkg-config`. Full list and the reason for each: [`docs/PLATFORM_LINUX.md`](docs/PLATFORM_LINUX.md) §7.
+- **Linux**: `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `libpipewire-0.3-dev`, `clang` + `libclang-dev` (bindgen for `libspa-sys`), `patchelf` (AppImage), plus `build-essential`/`pkg-config`. Full list and the reason for each: [`docs/platform/LINUX.md`](docs/platform/LINUX.md) §7.
 
 ```powershell
 cd app\ui
@@ -98,7 +98,7 @@ VoxBridge/
 ├─ app/
 │  ├─ src-tauri/       # Tauri layer: commands, tray, persistence, per-platform `platform/` split
 │  └─ ui/              # React settings UI + browser Mock
-├─ docs/               # ARCHITECTURE, DECISIONS, PROTOCOLs, CATALOG, PLATFORM_*
+├─ docs/               # index: docs/README.md (architecture/ platform/ protocols/ research/ plans/)
 └─ README.md
 ```
 
@@ -115,12 +115,14 @@ Both pipelines run independently; `vox-core::Runtime` is the single source of tr
 
 ## Contributing
 
-VoxBridge is deliberately conservative: core scope is fixed. External modules are the open extension point — see **[`CONTRIBUTING.md`](CONTRIBUTING.md)** — including the planned Discord out-of-process module (`docs/DISCORD_PROTOCOL.md`, second phase, undecided).
+VoxBridge is deliberately conservative: core scope is fixed. External modules are the open extension point — see **[`CONTRIBUTING.md`](CONTRIBUTING.md)** — including the planned Discord out-of-process module (`docs/protocols/DISCORD_PROTOCOL.md`, second phase, undecided).
 
 ## Docs
 
-`docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/PLATFORM_SCOPE.md`, `docs/PLATFORM_LINUX.md`,
-`docs/QWEN_PROTOCOL.md`, `docs/GEMINI_PROTOCOL.md`, `docs/PROVIDER_CATALOG.md`, `docs/DISCORD_PROTOCOL.md`.
+Index: **[`docs/README.md`](docs/README.md)** — every document with a one-line summary, a status marker, and the reading order.
+
+`docs/architecture/DIRECTIONS.md` (all directions + conflict resolution), `docs/architecture/ARCHITECTURE.md`, `docs/architecture/DECISIONS.md`, `docs/platform/SCOPE.md`, `docs/platform/LINUX.md`,
+`docs/protocols/QWEN_PROTOCOL.md`, `docs/protocols/GEMINI_PROTOCOL.md`, `docs/protocols/PROVIDER_CATALOG.md`, `docs/protocols/DISCORD_PROTOCOL.md`.
 
 ## License
 

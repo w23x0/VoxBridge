@@ -49,7 +49,7 @@ jobs:
   # `flags`/`modifier`），bindgen 按旧头生成 → 7 个编译错误（实测 v0.2.0 那次）。
   # 24.04 的 PipeWire 是 1.0.5，正好对上项目锚定的"PipeWire 1.0+"。
   # 代价：产物 glibc 基线是 2.39（Ubuntu 24.04+/Fedora 40+/Debian 13+）。想覆盖
-  # 22.04 的话，得在容器里装新头文件或降 pipewire-rs 版本，见 docs/PLATFORM_LINUX.md §9。
+  # 22.04 的话，得在容器里装新头文件或降 pipewire-rs 版本，见 docs/platform/LINUX.md §9。
   publish-tauri-linux:
     permissions:
       contents: write

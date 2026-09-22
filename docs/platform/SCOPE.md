@@ -1,6 +1,6 @@
 # 平台范围决策
 
-> 口径与 `DECISIONS.md` 一致：**代码与本文件打架时以代码为准**，然后回头把这里改对。
+> 口径与 `docs/architecture/DECISIONS.md` 一致：**代码与本文件打架时以代码为准**，然后回头把这里改对。
 >
 > 本文件只回答一个问题：**VoxBridge 跑在哪些平台、什么时候做。**
 > 技术细节（音频/悬浮窗/热键的跨平台实现路径）也记在这里，因为它们直接决定"什么时候做"的答案。
@@ -15,8 +15,8 @@
 ## A. 已拍板
 
 > ⚠️ **2026-09-20 变更**：下面第 1、2 条（"只做 Windows"、"跨平台延后不设时间表"）
-> **已被推翻**。Linux 端已开工，锚定范围、实施步骤与实测证据见 `docs/PLATFORM_LINUX.md`
-> 和 `DECISIONS.md` A15。本节其余内容（尤其是 §B 的成本分析、§C 的调研沉淀）仍然有效，
+> **已被推翻**。Linux 端已开工，锚定范围、实施步骤与实测证据见 `docs/platform/LINUX.md`
+> 和 `docs/architecture/DECISIONS.md` A15。本节其余内容（尤其是 §B 的成本分析、§C 的调研沉淀）仍然有效，
 > 只是 §C1 的"通用 Linux"目标已正式下调为"主流现代发行版默认配置（PipeWire 必需）"。
 
 1. **目前只做 Windows，主线是打磨 Win。** Win 已能用、用户已在那；
@@ -30,7 +30,7 @@
 4. **现有架构本就为跨平台留路，这不是事后补票。** `vox-core` 平台无关
    （不 `use windows`、不碰 Tauri）、`ports.rs` 用 trait 抽象外壳能力
    （采集/播放/热键/字幕/密钥/时钟）、`vox-dsp` 与 `vox-net` 纯 Rust 零平台依赖。
-   `ARCHITECTURE.md` 第 2 条原话："想搬到 macOS/Linux，只需要重写外壳那几个 crate。"
+   `docs/architecture/ARCHITECTURE.md` 第 2 条原话："想搬到 macOS/Linux，只需要重写外壳那几个 crate。"
    这是开工前设计文档里就定的，不是事后补救。
    ——记这条是为了防止以后误以为"跨平台是历史欠债"，从而冲动重写。
 
@@ -78,6 +78,10 @@ DPAPI/Keychain、按进程环回 —— 这些是**操作系统 API 的差异**�
 
 ## C. 未来起点（哪天捡起 Linux 时从这里开始）
 
+> ⚠️ **2026-09-21 更新**：本节里关于 **macOS 的路线与决策点全部作废**（用户拍板：macOS 不做，
+> 含 iOS / iPadOS / visionOS），保留作为调研沉淀。平台形态与"每类平台一般怎么做"的汇总
+> 已搬到 `docs/architecture/DIRECTIONS.md` §2.5。§C 其余内容（Linux 岔路、crate 映射、虚拟麦）仍然有效。
+
 > 这一节是调研沉淀，**不是行动项**。它存在的意义是：以后想做时，不用从零再调研一遍，
 > 也不用重新踩同一批坑。读了这一节就知道第一个该拍什么、剩下的岔路怎么收敛。
 
@@ -107,7 +111,8 @@ DPAPI/Keychain、按进程环回 —— 这些是**操作系统 API 的差异**�
 ├─ Windows ✅（单一路径，已实现）
 │   音频→WASAPI   UI→Win32   密钥→DPAPI   分发→NSIS
 │
-├─ macOS 🟡（单一路径，未实现，无岔路）
+├─ macOS ❌（2026-09-21 拍板：**不做**，连 iOS / visionOS 一起；
+│        下面关于 macOS 的调研仅作沉淀，不再当待办）
 │   音频→CoreAudio  UI→AppKit/NSWindow  密钥→Keychain  分发→dmg+公证
 │   难点：进程级抓取（需 tap）+ Hardened Runtime 公证
 │
@@ -221,7 +226,7 @@ PulseAudio / ALSA 下只能降级整机环回或做不了。
 
 ## 参考与关联
 
-- 架构与分层原则：`docs/ARCHITECTURE.md` §2（轻内核 + Windows 外壳）、§5（外壳 crate 职责）。
-- 已拍板记录：`docs/DECISIONS.md`（口径与本文件一致；本文件只管"平台范围"）。
-- 进程环回的版本门槛（Win 侧已有决策）：`docs/DECISIONS.md` B2、`crates/vox-audio-win/src/osver.rs`。
-- VB-CABLE 现状（Win）：`docs/DECISIONS.md` A4、`crates/vox-audio-win/src/cable.rs`。
+- 架构与分层原则：`docs/architecture/ARCHITECTURE.md` §2（轻内核 + Windows 外壳）、§5（外壳 crate 职责）。
+- 已拍板记录：`docs/architecture/DECISIONS.md`（口径与本文件一致；本文件只管"平台范围"）。
+- 进程环回的版本门槛（Win 侧已有决策）：`docs/architecture/DECISIONS.md` B2、`crates/vox-audio-win/src/osver.rs`。
+- VB-CABLE 现状（Win）：`docs/architecture/DECISIONS.md` A4、`crates/vox-audio-win/src/cable.rs`。

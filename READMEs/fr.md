@@ -67,7 +67,7 @@ VoxBridge/
 ├─ app/
 │  ├─ src-tauri/       # couche Tauri : commandes, tray, persistance, DPAPI
 │  └─ ui/              # UI de réglages React + Mock navigateur
-├─ docs/               # ARCHITECTURE, DECISIONS, PROTOCOLs, CATALOG
+├─ docs/               # index: docs/README.md (architecture/ platform/ protocols/ research/ plans/)
 └─ README.md
 ```
 
@@ -81,11 +81,11 @@ Les deux pipelines tournent indépendamment ; `vox-core::Runtime` est l'unique s
 
 ## Contribuer
 
-VoxBridge reste volontairement conservateur : le périmètre cœur est fixé. Les modules externes sont le point d'extension ouvert — voir **[`../CONTRIBUTING.md`](../CONTRIBUTING.md)** — y compris le module Discord hors-processus prévu (`docs/DISCORD_PROTOCOL.md`, phase 2, non décidé).
+VoxBridge reste volontairement conservateur : le périmètre cœur est fixé. Les modules externes sont le point d'extension ouvert — voir **[`../CONTRIBUTING.md`](../CONTRIBUTING.md)** — y compris le module Discord hors-processus prévu (`docs/protocols/DISCORD_PROTOCOL.md`, phase 2, non décidé).
 
 ## Documentation
 
-`docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/PLATFORM_SCOPE.md`, `docs/PLATFORM_LINUX.md`, `docs/QWEN_PROTOCOL.md`, `docs/GEMINI_PROTOCOL.md`, `docs/PROVIDER_CATALOG.md`, `docs/DISCORD_PROTOCOL.md`.
+`docs/architecture/ARCHITECTURE.md`, `docs/architecture/DECISIONS.md`, `docs/platform/SCOPE.md`, `docs/platform/LINUX.md`, `docs/protocols/QWEN_PROTOCOL.md`, `docs/protocols/GEMINI_PROTOCOL.md`, `docs/protocols/PROVIDER_CATALOG.md`, `docs/protocols/DISCORD_PROTOCOL.md`.
 
 ## Licence
 

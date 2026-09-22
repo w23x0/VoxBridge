@@ -70,7 +70,7 @@ VoxBridge/
 ├─ app/
 │  ├─ src-tauri/       # Tauri 层：命令、托盘、持久化、DPAPI
 │  └─ ui/              # React 设置界面 + 浏览器 Mock
-├─ docs/               # 架构、决策、协议、catalog
+├─ docs/               # 索引：docs/README.md（架构/平台/协议/调研/计划）
 └─ README.md
 ```
 
@@ -84,11 +84,11 @@ VoxBridge/
 
 ## Contributing
 
-VoxBridge 刻意保持保守：核心范围固定，**外挂模块**是开放的扩展点——详见 **[`../CONTRIBUTING.md`](../CONTRIBUTING.md)**，包括计划中的 Discord 独立进程模块（`docs/DISCORD_PROTOCOL.md`，二期，尚未拍板）。
+VoxBridge 刻意保持保守：核心范围固定，**外挂模块**是开放的扩展点——详见 **[`../CONTRIBUTING.md`](../CONTRIBUTING.md)**，包括计划中的 Discord 独立进程模块（`docs/protocols/DISCORD_PROTOCOL.md`，二期，尚未拍板）。
 
 ## Docs
 
-`docs/ARCHITECTURE.md`、`docs/DECISIONS.md`、`docs/PLATFORM_SCOPE.md`、`docs/PLATFORM_LINUX.md`、`docs/QWEN_PROTOCOL.md`、`docs/GEMINI_PROTOCOL.md`、`docs/PROVIDER_CATALOG.md`、`docs/DISCORD_PROTOCOL.md`。
+`docs/architecture/ARCHITECTURE.md`、`docs/architecture/DECISIONS.md`、`docs/platform/SCOPE.md`、`docs/platform/LINUX.md`、`docs/protocols/QWEN_PROTOCOL.md`、`docs/protocols/GEMINI_PROTOCOL.md`、`docs/protocols/PROVIDER_CATALOG.md`、`docs/protocols/DISCORD_PROTOCOL.md`。
 
 ## License
 

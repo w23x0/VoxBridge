@@ -1,3 +1,5 @@
+> 状态：已完成（2026-09-21）｜ 正文“下一步”已落地：`app/ui/src/lib/focus.ts` 已是物理列槽模型（`pickBestSlotNearest` / `bestSlot`），见 `docs/architecture/DIRECTIONS.md` §7；整份交接单作废 ｜ 保留作留痕，别照它施工。
+
 # 交接 / 转交提示词 · VoxBridge 首页布局 + 焦点聚焦
 
 > 本文件是交给"续接上下文"的交接单。当前会话已近上下文上限，可能被压缩/重开。

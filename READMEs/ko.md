@@ -67,7 +67,7 @@ VoxBridge/
 ├─ app/
 │  ├─ src-tauri/       # Tauri 계층: 명령, 트레이, 영속화, DPAPI
 │  └─ ui/              # React 설정 UI + 브라우저 Mock
-├─ docs/               # ARCHITECTURE, DECISIONS, PROTOCOLs, CATALOG
+├─ docs/               # index: docs/README.md (architecture/ platform/ protocols/ research/ plans/)
 └─ README.md
 ```
 
@@ -81,11 +81,11 @@ VoxBridge/
 
 ## 기여 (Contributing)
 
-VoxBridge는 의도적으로 보수적으로 유지되며, 핵심 범위는 고정되어 있습니다. 외부 모듈이 열린 확장 지점입니다 — **[`../CONTRIBUTING.md`](../CONTRIBUTING.md)**를 참고하세요 — 계획된 Discord 아웃오브프로세스 모듈(`docs/DISCORD_PROTOCOL.md`, 2단계·미정)도 여기에 포함됩니다.
+VoxBridge는 의도적으로 보수적으로 유지되며, 핵심 범위는 고정되어 있습니다. 외부 모듈이 열린 확장 지점입니다 — **[`../CONTRIBUTING.md`](../CONTRIBUTING.md)**를 참고하세요 — 계획된 Discord 아웃오브프로세스 모듈(`docs/protocols/DISCORD_PROTOCOL.md`, 2단계·미정)도 여기에 포함됩니다.
 
 ## 문서
 
-`docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/PLATFORM_SCOPE.md`, `docs/PLATFORM_LINUX.md`, `docs/QWEN_PROTOCOL.md`, `docs/GEMINI_PROTOCOL.md`, `docs/PROVIDER_CATALOG.md`, `docs/DISCORD_PROTOCOL.md`.
+`docs/architecture/ARCHITECTURE.md`, `docs/architecture/DECISIONS.md`, `docs/platform/SCOPE.md`, `docs/platform/LINUX.md`, `docs/protocols/QWEN_PROTOCOL.md`, `docs/protocols/GEMINI_PROTOCOL.md`, `docs/protocols/PROVIDER_CATALOG.md`, `docs/protocols/DISCORD_PROTOCOL.md`.
 
 ## 라이선스
 

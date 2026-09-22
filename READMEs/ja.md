@@ -67,7 +67,7 @@ VoxBridge/
 ├─ app/
 │  ├─ src-tauri/       # Tauri レイヤー: コマンド、トレイ、永続化、DPAPI
 │  └─ ui/              # React 設定 UI + ブラウザ Mock
-├─ docs/               # ARCHITECTURE、DECISIONS、PROTOCOL、CATALOG
+├─ docs/               # 索引：docs/README.md（architecture/ platform/ protocols/ research/ plans/）
 └─ README.md
 ```
 
@@ -81,11 +81,11 @@ VoxBridge/
 
 ## 貢献 (Contributing)
 
-VoxBridge は意図的に保守的で、コアスコープは固定されています。外部モジュールが拡張のための公開ポイントです — **[`../CONTRIBUTING.md`](../CONTRIBUTING.md)** を参照してください — また、計画中の Discord アウトプロセスモジュール（`docs/DISCORD_PROTOCOL.md`、第 2 期・未定）も含まれます。
+VoxBridge は意図的に保守的で、コアスコープは固定されています。外部モジュールが拡張のための公開ポイントです — **[`../CONTRIBUTING.md`](../CONTRIBUTING.md)** を参照してください — また、計画中の Discord アウトプロセスモジュール（`docs/protocols/DISCORD_PROTOCOL.md`、第 2 期・未定）も含まれます。
 
 ## ドキュメント
 
-`docs/ARCHITECTURE.md`、`docs/DECISIONS.md`、`docs/PLATFORM_SCOPE.md`、`docs/PLATFORM_LINUX.md`、`docs/QWEN_PROTOCOL.md`、`docs/GEMINI_PROTOCOL.md`、`docs/PROVIDER_CATALOG.md`、`docs/DISCORD_PROTOCOL.md`。
+`docs/architecture/ARCHITECTURE.md`、`docs/architecture/DECISIONS.md`、`docs/platform/SCOPE.md`、`docs/platform/LINUX.md`、`docs/protocols/QWEN_PROTOCOL.md`、`docs/protocols/GEMINI_PROTOCOL.md`、`docs/protocols/PROVIDER_CATALOG.md`、`docs/protocols/DISCORD_PROTOCOL.md`。
 
 ## ライセンス
 

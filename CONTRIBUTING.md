@@ -6,13 +6,13 @@ Your time is best spent **outside the core** — see below.
 
 ## Scope guardrail (read before coding)
 
-- Core pipelines, providers, protocol JSON shapes, and the event channel are **decided** — see `docs/DECISIONS.md`.
-- When docs and code disagree, **the code wins** and `DECISIONS.md` gets corrected to match.
+- Core pipelines, providers, protocol JSON shapes, and the event channel are **decided** — see `docs/architecture/DECISIONS.md`.
+- When docs and code disagree, **the code wins** and `docs/architecture/DECISIONS.md` gets corrected to match.
 - Contributions that silently change fixed scope are the one thing a collaborator must not do freeform.
 
 ## Where to help — the open extension point
 
-VoxBridge treats **external modules** as its open surface. The planned Discord module (`docs/DISCORD_PROTOCOL.md`) is the concrete example: a self-contained crate (`crates/vox-discord/`) that only talks to existing `vox-net` and the single event channel — it **does not** touch the mic / VB-CABLE / loopback / protocol internals.
+VoxBridge treats **external modules** as its open surface. The planned Discord module (`docs/protocols/DISCORD_PROTOCOL.md`) is the concrete example: a self-contained crate (`crates/vox-discord/`) that only talks to existing `vox-net` and the single event channel — it **does not** touch the mic / VB-CABLE / loopback / protocol internals.
 
 That's the bar: if your idea fits as an out-of-process module on the existing edge, it's welcome. Anything that rewires the core needs a decision first.
 
@@ -36,11 +36,11 @@ npm run dev                  # UI only: http://127.0.0.1:5183/?mock=1
 - Frontend/backend fields are `snake_case` — no camelCase aliases.
 - Every status flows over one event channel: `voxbridge://event`.
 - WebSocket JSON shapes live only in `crates/vox-core/src/cloud/protocol.rs`.
-- `vox-core` stays free of Tauri, Win32/PipeWire, tokio, and audio devices — platform abilities come in as traits. Platform shells live in `vox-*-win` / `vox-*-linux`; see [`docs/PLATFORM_LINUX.md`](docs/PLATFORM_LINUX.md).
+- `vox-core` stays free of Tauri, Win32/PipeWire, tokio, and audio devices — platform abilities come in as traits. Platform shells live in `vox-*-win` / `vox-*-linux`; see [`docs/platform/LINUX.md`](docs/platform/LINUX.md).
 - Provider metadata is edited in `catalog/*.json` (or the Rust build checks/`catalog_updater`), never hard-coded.
 - API keys go through `SecretStore` only (DPAPI); never in config, logs, or git.
 
-These are the ground rules from `docs/ARCHITECTURE.md` and `docs/DECISIONS.md` — read both before touching code.
+These are the ground rules from `docs/architecture/ARCHITECTURE.md` and `docs/architecture/DECISIONS.md` — read both before touching code.
 
 ## Commit message format
 
@@ -59,10 +59,10 @@ Keep history tidy; one logical change per commit.
 
 ## Docs
 
-- `docs/ARCHITECTURE.md` — layering, directory roles, thread topology
-- `docs/DECISIONS.md` — decided behavior + the open decision list
-- `docs/QWEN_PROTOCOL.md`, `docs/GEMINI_PROTOCOL.md` — WS protocol specs
-- `docs/PROVIDER_CATALOG.md` — how to keep provider metadata current
-- `docs/DISCORD_PROTOCOL.md` — the second-phase Discord module design (open)
+- `docs/architecture/ARCHITECTURE.md` — layering, directory roles, thread topology
+- `docs/architecture/DECISIONS.md` — decided behavior + the open decision list
+- `docs/protocols/QWEN_PROTOCOL.md`, `docs/protocols/GEMINI_PROTOCOL.md` — WS protocol specs
+- `docs/protocols/PROVIDER_CATALOG.md` — how to keep provider metadata current
+- `docs/protocols/DISCORD_PROTOCOL.md` — the second-phase Discord module design (open)
 
 Thank you for shipping this forward.

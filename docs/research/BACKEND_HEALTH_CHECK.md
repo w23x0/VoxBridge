@@ -1,3 +1,5 @@
+> 状态：已完成（2026-09-21）｜ 条目已全部落地（WASAPI 样板抽到 `crates/vox-audio-win/src/capture/shared.rs`、`ProcGuard` 消失、`build.rs` 合成 `MiniCatalog`、`vox-audio-win/src/resample.rs` 改成 `Resample` trait 等，逐条清单见 `docs/architecture/DIRECTIONS.md` §7；仅 §4.2 一条按本文自评“收益小，可不动”）｜ 保留作留痕，别照它施工。
+
 # VoxBridge 后端 Rust 代码体检报告
 
 **扫描范围**：`crates/vox-core`、`vox-net`、`vox-dsp`、`vox-audio-win`、`vox-input-win`、`vox-overlay-win` 全部 `.rs`，加 `app/src-tauri/src/` 装配层。只读不编译。
@@ -6,7 +8,7 @@
 1. 跨平台设计是刻意的——内核用 trait 抽象，不直接调平台 API；
 2. -win crate 不做假实现，没 cfg 桩是故意的；
 3. 降噪用 RNNoise 而非 DeepFilterNet（已拍板 DECISIONS.md B1）；
-4. 当前只做 Windows 单端，跨平台已明确延后（docs/PLATFORM_SCOPE.md）。
+4. 当前只做 Windows 单端，跨平台已明确延后（docs/platform/SCOPE.md）。
 
 ---
 

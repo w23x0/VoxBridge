@@ -10,7 +10,7 @@
 
 > **平台口径（2026-09-20）**：本文写于只有 Windows 的时候，正文里"Windows 外壳"的说法
 > 现在指**平台外壳**——Windows 是 `vox-*-win`，Linux 是 `vox-*-linux`（见
-> `docs/PLATFORM_LINUX.md`）。内核、端口 trait、线程拓扑、数据流这些与平台无关的部分
+> `docs/platform/LINUX.md`）。内核、端口 trait、线程拓扑、数据流这些与平台无关的部分
 > 仍然逐条有效。
 
 一个桌面实时语音翻译器（Windows / Linux），不绑定任何游戏或软件。两个能力：
@@ -67,11 +67,14 @@ VoxBridge/
 │  ├─ gemini.json             # Gemini Live Translation 元数据
 │  └─ gpt.json                # GPT Realtime Translate 元数据
 ├─ docs/
-│  ├─ ARCHITECTURE.md          # 本文档
-│  ├─ QWEN_PROTOCOL.md         # qwen WS 协议实测规格（从旧 cloud.py + 官方文档整理）
-│  ├─ DECISIONS.md             # 拍板记录
-│  ├─ PROVIDER_CATALOG.md      # 服务商能力表维护流程
-│  └─ …（平台/协议/诊断类文档，共 14 份，按需查阅）
+│  ├─ README.md                # 文档索引（每份一句话 + 状态标记 + 先读哪几份）
+│  ├─ STRUCTURE.md             # 放置规则（文件该放哪、命名、生命周期）
+│  ├─ architecture/            # 本文档 ARCHITECTURE.md + DECISIONS.md + DIRECTIONS.md
+│  ├─ platform/                # SCOPE.md / LINUX.md / WINDOW_BEHAVIOR.md
+│  ├─ protocols/               # QWEN_PROTOCOL.md / GEMINI_PROTOCOL.md / PROVIDER_CATALOG.md /
+│  │                           # VRC_OSC_PROTOCOL.md / DISCORD_PROTOCOL.md
+│  ├─ plans/                   # 施工设计稿（architect 产物，编号 S0/S1/…）
+│  └─ research/                # 过期调研沉淀（体检报告 / 交接单，已加状态头）
 ├─ crates/
 │  ├─ vox-core/                # 【内核】平台无关，零重依赖
 │  ├─ vox-net/                 # WS 传输实现（tokio + tokio-tungstenite）
@@ -85,7 +88,7 @@ VoxBridge/
 │  └─ vox-osc/                 # VRChat OSC 发送（纯 std，两个平台共用）
 │  （另有平台中立的 vox-overlay-core：画布/布局/帧合成，两个平台共用）
 ├─ tools/
-│  └─ linux-verify/            # Linux 界面像素级验证脚本（见 PLATFORM_LINUX.md）
+│  └─ linux-verify/            # Linux 界面像素级验证脚本（见 docs/platform/LINUX.md）
 └─ app/
    ├─ src-tauri/               # 【外壳】Tauri 主程序，装配一切
    └─ ui/                      # 设置界面前端
@@ -118,7 +121,7 @@ tracing / parking\_lot，**既没有 tokio 也没有 tokio-tungstenite**，
 | `hotkey.rs` | 热键的数据结构：修饰键 + 键名、合法性校验、冲突检测、非法值回退。**键名 ↔ VK 那张表不在这里，在 `catalog.rs`** |
 | `latency.rs` | 实时链路的延迟统计：连接/首字/首声/首播/整轮等指标各留最近 64 个样本，对外只暴露 last / p50 / p95。只存时间与计数，不存音频或字幕内容 |
 | `cloud/mod.rs` | `Transport` trait + 会话状态机：握手、上传音频、热更新、断线重连退避、致命错误判定 |
-| `cloud/protocol.rs` | 协议的 serde 类型。收发的 JSON 长什么样只写在这一个文件里。详见 `QWEN_PROTOCOL.md` |
+| `cloud/protocol.rs` | 协议的 serde 类型。收发的 JSON 长什么样只写在这一个文件里。详见 `docs/protocols/QWEN_PROTOCOL.md` |
 | `usage.rs` | token 累计（总计/输入/输出，今日/本月，按模型分）+ 持久化 + 重置。**顶层文件，不在 `cloud/` 下面** |
 | `subtitle.rs` | 字幕模型：逐字流入、每字自己的 TTL 和淡出进度、双行（对外/听人）分色 |
 | `pipeline/mod.rs` | 流水线的执行骨架：`PipelineEngine`（管线程）+ `Deps`（外壳注入的一整套工厂）+ `Plan`（把两条流水线的差别压成一张作业单，骨架只认作业单）。节奏常量都在这里：采集块 `INPUT_BLOCK_MS = 20`、输入队列深度 `INPUT_QUEUE_SIZE = 8`（约 160 ms）、主循环一拍 `POLL_MS = 5`（也是 Stop 握手的最坏响应时间）、阀门状态限流 `GATE_THROTTLE_MS = 200`、降噪生效率 `DENOISE_RATE = 48_000` |
@@ -144,7 +147,7 @@ tracing / parking\_lot，**既没有 tokio 也没有 tokio-tungstenite**，
 
 （以上六条是旧版踩出来的坑，新版不许踩回去。）
 
-## 5. 平台外壳（Windows 为主，Linux 见 PLATFORM_LINUX.md）
+## 5. 平台外壳（Windows 为主，Linux 见 docs/platform/LINUX.md）
 
 头两个 crate 其实**跟 Windows 无关**（纯 Rust，能跟着内核一起搬平台），
 列在这里只是因为它们是「外壳侧实现」而不是内核。
@@ -192,7 +195,7 @@ tracing / parking\_lot，**既没有 tokio 也没有 tokio-tungstenite**，
 
 ## 7. 已拍板
 
-> 拍板记录连同**待拍板清单**已经整理进 `DECISIONS.md`，那份是权威版本。
+> 拍板记录连同**待拍板清单**已经整理进 `docs/architecture/DECISIONS.md`，那份是权威版本。
 > 下面这份留作速查。
 
 1. 项目落在 `C:\Users\Wang\Desktop\VoxBridge\`，`VRCQ\` 原样保留只作参考。
@@ -242,5 +245,5 @@ RNNoise 这边：
 对我们的场景够了：麦克风原生就是 48 kHz，帧长天然对齐，且降噪的首要目的是
 **让音量阀门判断准**，不是追求录音棚音质。
 
-> 这项替换属于**事后补票**，见 `DECISIONS.md` 的待拍板清单第 1 条。
+> 这项替换属于**事后补票**，见 `docs/architecture/DECISIONS.md` 的待拍板清单第 1 条。
 <!-- 精简：237 行 → 229 行；2026-09-21 补齐失实计数后 245 行 -->

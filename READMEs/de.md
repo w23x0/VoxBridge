@@ -67,7 +67,7 @@ VoxBridge/
 ├─ app/
 │  ├─ src-tauri/       # Tauri-Ebene: Befehle, Tray, Persistenz, DPAPI
 │  └─ ui/              # React-Einstellungs-UI + Browser-Mock
-├─ docs/               # ARCHITECTURE, DECISIONS, PROTOCOLs, CATALOG
+├─ docs/               # index: docs/README.md (architecture/ platform/ protocols/ research/ plans/)
 └─ README.md
 ```
 
@@ -81,11 +81,11 @@ Beide Pipelines laufen unabhängig; `vox-core::Runtime` ist die einzige Wahrheit
 
 ## Beitragen
 
-VoxBridge ist bewusst konservativ: der Kern-Umfang ist fest. Externe Module sind der offene Erweiterungspunkt — siehe **[`../CONTRIBUTING.md`](../CONTRIBUTING.md)** — einschließlich des geplanten externen Discord-Moduls (`docs/DISCORD_PROTOCOL.md`, Phase 2 · unentschieden).
+VoxBridge ist bewusst konservativ: der Kern-Umfang ist fest. Externe Module sind der offene Erweiterungspunkt — siehe **[`../CONTRIBUTING.md`](../CONTRIBUTING.md)** — einschließlich des geplanten externen Discord-Moduls (`docs/protocols/DISCORD_PROTOCOL.md`, Phase 2 · unentschieden).
 
 ## Doku
 
-`docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/PLATFORM_SCOPE.md`, `docs/PLATFORM_LINUX.md`, `docs/QWEN_PROTOCOL.md`, `docs/GEMINI_PROTOCOL.md`, `docs/PROVIDER_CATALOG.md`, `docs/DISCORD_PROTOCOL.md`.
+`docs/architecture/ARCHITECTURE.md`, `docs/architecture/DECISIONS.md`, `docs/platform/SCOPE.md`, `docs/platform/LINUX.md`, `docs/protocols/QWEN_PROTOCOL.md`, `docs/protocols/GEMINI_PROTOCOL.md`, `docs/protocols/PROVIDER_CATALOG.md`, `docs/protocols/DISCORD_PROTOCOL.md`.
 
 ## Lizenz
 

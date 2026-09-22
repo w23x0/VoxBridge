@@ -1,13 +1,13 @@
 # Linux 适配方案
 
-> 口径与 `DECISIONS.md`、`PLATFORM_SCOPE.md` 一致：**代码与本文件打架时以代码为准**，
+> 口径与 `docs/architecture/DECISIONS.md`、`docs/platform/SCOPE.md` 一致：**代码与本文件打架时以代码为准**，
 > 然后回头把这里改对。
 >
 > 本文件回答三件事：**Linux 端怎么做、先做什么、哪一步会卡住。**
 > 所有结论都带证据：本机实测（Ubuntu 26.04 / GNOME Wayland / PipeWire 1.6.2，
 > 2026-09-20）或代码位置 `path:line`。
 >
-> `PLATFORM_SCOPE.md` §C 是"哪天捡起 Linux 时"的调研沉淀；**本文件是执行方案**，
+> `docs/platform/SCOPE.md` §C 是"哪天捡起 Linux 时"的调研沉淀；**本文件是执行方案**，
 > 两者不一致时以本文件为准（§C 的粗略判断有三处已被代码核对推翻，见 §3.3）。
 
 ---
@@ -26,7 +26,7 @@
 | 全局热键 | 锚定 **evdev**（`input` 组**通常不需要**——logind 的 uaccess ACL 会给活跃会话开权限）；GNOME 不支持 GlobalShortcuts portal | §2.4 |
 | 密钥 | Secret Service（本机 `org.freedesktop.secrets` 在线） | §1 |
 | VB-CABLE | `crates/vox-audio-win/src/cable.rs` 那 1362 行**整段删掉**，换成一个 PipeWire 虚拟 sink | §2.2 §5.1 |
-| 编译 | 开工时**连 `cargo check` 都过不了**（装配层 `#![cfg(windows)]` + 无条件依赖 Win crate）→ **已打通**：`cargo test --workspace` 374 passed | §3.1 §8 |
+| 编译 | 开工时**连 `cargo check` 都过不了**（装配层 `#![cfg(windows)]` + 无条件依赖 Win crate）→ **已打通**：`cargo test --workspace` 全绿（计数见 `docs/architecture/DIRECTIONS.md` §10.7） | §3.1 §8 |
 
 顺序是 P0 编译打通 → P1 音频 → P2 悬浮窗与密钥 → P3 热键 → P4 打包与 CI，四步都做完了（§8）。
 
@@ -107,7 +107,7 @@ Wayland **原生**（`GDK_BACKEND=wayland`）：xdg-shell 里根本没有"客户
 "置顶"这两个协议，GNOME 不认 wlr-layer-shell。→ 结论：**GNOME Wayland 下悬浮窗必须走
 XWayland**（`GDK_BACKEND=x11`，对 GTK 是进程级变量，所以整个应用都得跑在 XWayland 上）。
 
-> 与 `PLATFORM_SCOPE.md` C6 的判断一致（"先试 Tauri 透明窗"），但实测把"先试"变成了
+> 与 `docs/platform/SCOPE.md` C6 的判断一致（"先试 Tauri 透明窗"），但实测把"先试"变成了
 > "只有 XWayland 这条路"，并给出可执行的验证方式。
 
 ### 2.4 全局热键：只有 evdev 一条路
@@ -155,12 +155,12 @@ evdev 顺带解决两件事：键盘侧键（`BTN_SIDE`/`BTN_EXTRA`，对应 Win
 `Runtime::set_secret_store` / `set_hotkey_host` + `AppState.{registry,overlay}`。
 内核一行不改就能换后端 —— 这是这个项目原本就留好的路，不是事后补票。
 
-### 3.3 `PLATFORM_SCOPE.md` §C 的三处偏差（以代码为准）
+### 3.3 `docs/platform/SCOPE.md` §C 的三处偏差（以代码为准）
 
 1. §C2 说"Linux 要新增三个 crate"——**对**，但 §C 没提 `vox-osc-win` 也白挂了 `cfg(windows)`；
 2. §C9 把"最低内核/glibc"当成 `osver.rs` 的对应物——**不对**。`osver.rs` 管的是
    "系统支不支持进程环回"，Linux 侧唯一有意义的门槛是 **PipeWire 在不在、能不能建虚拟 sink**；
-3. §C6/`ARCHITECTURE.md` §5 说悬浮窗是"永久鼠标穿透、不含拖动交互"——**代码不是这样**：
+3. §C6/`docs/architecture/ARCHITECTURE.md` §5 说悬浮窗是"永久鼠标穿透、不含拖动交互"——**代码不是这样**：
    `vox-overlay-win` 会根据有没有字幕切 `WS_EX_TRANSPARENT`，并且**实现了完整的拖动/缩放**
    （`WM_NCHITTEST`）。Linux 侧要按**代码**的方针设计（可交互窗 + 可选穿透），别按文档。
 
@@ -294,7 +294,7 @@ for note in platform::startup_notes() { runtime.notify(…); }     // linux: Pip
    `on_chunk` 会加锁 + 分配 `AudioChunk`，在实时线程里干这个是自找优先级反转。
    Windows 侧也是自己起的普通线程在采集。
 
-**线程模型**（对应 `ARCHITECTURE.md` §6 的"采集线程 / 播放渲染线程"）：
+**线程模型**（对应 `docs/architecture/ARCHITECTURE.md` §6 的"采集线程 / 播放渲染线程"）：
 每个 `CaptureSource` / `PlaybackSink` 起一个**自己的 PipeWire 主循环线程**
 （`pw::MainLoop` + `Context`），窗口与内核不碰它。
 `stop()` 必须：销毁 stream → 让主循环退出 → **join 该线程** → 才返回。
@@ -388,7 +388,7 @@ KDE/wlroots → 以后可加 `gtk-layer-shell`；纯 Wayland 且没有 XWayland 
 | `sys/clock.rs` | `GetLocalTime` | **已落地**：`chrono::Local`（`platform/linux/clock.rs`），`now_ms` 仍走单调 `Instant` |
 | `sys/fatal.rs` | `MessageBoxW` | stderr + GTK 对话框（GTK 已在依赖里） |
 | `winminmax.rs` | `WM_GETMINMAXINFO` 子类化 | **删**；`tauri.conf.json` 已有 `minWidth/minHeight`，Linux 上 `set_min_size` 就够 |
-| `commands.rs` 6 个 VB-CABLE 命令 | 下载/UAC/静默安装/阻塞进程 | **已落地**：Windows 实现收进 `#[cfg(windows)] mod cable_admin`，同名命令在 Linux 上回"此平台不需要装虚拟声卡"；前端拿 `virtual_cable_status == "not_applicable"` 就该整块隐藏 VB-CABLE 管理页（UI 侧待做） |
+| `commands.rs` 6 个 VB-CABLE 命令 | 下载/UAC/静默安装/阻塞进程 | **已落地**：Windows 实现收进 `#[cfg(windows)] mod cable_admin`，同名命令在 Linux 上回"此平台不需要装虚拟声卡"；前端拿 `virtual_cable_status == "not_applicable"` 就该整块隐藏 VB-CABLE 管理页（**已落地**：`app/ui/src/sections/CableManager.tsx` 的 `manageable` 判据——`not_applicable` 时整块走"没有装卸这一步"的分支；该字段今天只决定这一页摆哪些管理动作，"能不能用"一律读 `virtual_mic` 能力位） |
 | `dto.rs::devices_dto` | 探 VB-CABLE / 16 声道状态 | Linux 返回虚拟麦状态 |
 | `state.rs` | `OverlayHandle = Arc<vox_overlay_win::Overlay>` | 改成 `cfg` 别名指向 Linux 实现 |
 | 托盘 / 单实例 / 自启 | Tauri 插件 | 跨平台，配置微调；GNOME 需要 appindicator 扩展（**本机已启用**） |
@@ -437,8 +437,11 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profil
 cd app/ui && npm ci
 ```
 
-本机（Ubuntu 26.04）这些**已经装好并验证过**：`cargo test --workspace` → **295 passed / 0 failed**，
-`app/ui` 的 `npm run verify`（typecheck + prod build + a11y + 窄窗 QA + 虚拟麦检查）全绿。
+本机（Ubuntu 26.04）这些**已经装好并验证过**：`cargo test --workspace` → 全绿（计数见
+`docs/architecture/DIRECTIONS.md` §10.7），
+`app/ui` 的 `npm run verify` 全绿（链以 `app/ui/package.json` 的 `verify` 为准；写稿当时 9 步：
+`build` → `check:classes` → `check:preview` → `a11y` → `qa:narrow` → `check:cable` →
+`check:capabilities` → `check:agent` → `qa:home`）。
 
 **测试环境的一个坑**：本机 PipeWire 图里 **Sources = 0（没接麦克风）**，"对外说话"整条链路
 没法用真麦测。验证办法：用 §2.2 的 null sink + `pw-loopback` 造一个合成源喂正弦/语音，
@@ -484,17 +487,15 @@ sudo apt install -y python3-gi-cairo gir1.2-webkit2-4.1 imagemagick
 | **P3 热键** | `vox-input-linux` evdev + 权限缺失提示 | 按住说话/开关两种模式在真机上生效，键盘与鼠标侧键都能绑 |
 | **P4 打包与 CI** | `tauri.linux.conf.json` + release job | `npm run tauri:build` 出 deb/AppImage，装完能启动 |
 
-顺序不能改：P0 是所有事的前提；P1 风险最高（进程环回是 `PLATFORM_SCOPE` §C5 里排第一的难点），
+顺序不能改：P0 是所有事的前提；P1 风险最高（进程环回是 `docs/platform/SCOPE.md` §C5 里排第一的难点），
 所以先做。
 
 **已落地（P0–P4 全部完成）**：
 
 ```
 Linux   : cargo check --workspace                       → 通过（含装配层）
-Linux   : cargo test --workspace                        → 374 passed / 0 failed
-          （vox-core 219、voxbridge 53、vox-overlay-core 45、vox-dsp 26、vox-net 8、
-            vox-input-linux 9、vox-input-win 8、vox-audio-linux 5、vox-overlay-linux 5、
-            vox-osc 3）
+Linux   : cargo test --workspace                        → 全绿（本块是 P0–P4 当轮的实测快照；计数与
+            逐 crate 明细随时点变化，当前数字一律见 docs/architecture/DIRECTIONS.md §10.7）
 Linux   : cargo clippy --workspace --all-targets        → 新增代码零警告（vox-core/vox-net
             的 3 条是既有的，不在本轮范围内）
 Linux   : ./target/debug/voxbridge（GDK_BACKEND=x11）    → 真机启动成功：窗口 960x640、
@@ -577,7 +578,7 @@ PipeWire 图的实际状态一致）。这同时证明了三件事：NVIDIA + We
    结论：**PipeWire 满不满足是唯一真门槛**（不满足就明确报错，不做整机环回降级）；
    会话层（Wayland vs X11）**不额外写分支**——evdev 热键两者都通，悬浮窗同一份 GTK 代码
    在 X11 会话里就是原生 X11、在 Wayland 会话里靠 XWayland，只有"纯 Wayland 且没有
-   XWayland"才降级成窗口内字幕。`PLATFORM_SCOPE.md` §C1 记的原始目标"通用 Linux
+   XWayland"才降级成窗口内字幕。`docs/platform/SCOPE.md` §C1 记的原始目标"通用 Linux
    （含老发行版 / ALSA）"**正式下调**，理由：那是 N×M 组合，且 ALSA 下"按进程抓音"
    根本不存在。
 2. **更新器**：tauri updater 在 Linux **只支持 AppImage**。现状是三种包都发，
@@ -637,8 +638,8 @@ PipeWire 图的实际状态一致）。这同时证明了三件事：NVIDIA + We
 
 ## 参考与关联
 
-- 平台范围与调研沉淀：`docs/PLATFORM_SCOPE.md`（§C 与本文件冲突处以本文件为准）
-- 架构与分层：`docs/ARCHITECTURE.md` §2 / §5 / §6
-- 拍板记录：`docs/DECISIONS.md`
+- 平台范围与调研沉淀：`docs/platform/SCOPE.md`（§C 与本文件冲突处以本文件为准）
+- 架构与分层：`docs/architecture/ARCHITECTURE.md` §2 / §5 / §6
+- 拍板记录：`docs/architecture/DECISIONS.md`
 - 端口契约：`crates/vox-core/src/ports.rs`
 

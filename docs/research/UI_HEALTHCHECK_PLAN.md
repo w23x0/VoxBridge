@@ -1,3 +1,5 @@
+> 状态：已完成（2026-09-21）｜ 第一批 T1–T9、D1、D2、R1、R2 已落地，仅 R3（拆 `App.tsx` 的 `document.keydown` 大闭包）从未开工、本文要求单独点头——见 `docs/architecture/DIRECTIONS.md` §6.2 / §7 ｜ 保留作留痕，别照它施工 ｜ **第二十轮状态注（2026-09-22）**：§验收 的 `npm run verify` 链**已扩展**，写稿当时 5 步、现为 9 步，**以 `app/ui/package.json` 的 `verify` 为准**（下文链枚举已按此改写；本文件其余内容仍按写稿当时时点阅读）。
+
 # VoxBridge 前端代码体检 · 执行方案
 
 > 来源：2026-08-22 对 `app/ui/src/` 的代码体检。
@@ -17,7 +19,7 @@
 ## 验收（子代理作业完成的硬门槛）
 
 - 根目录 `app/ui` 下跑 `npm run verify`，必须**全绿**。
-  - 它串了：`build`（`tsc --noEmit` + `vite build`）→ `check:classes`（类名白名单校验）→ `a11y` → `qa:narrow` → `check:cable`。
+  - 它串了（**权威源**：`app/ui/package.json` 的 `verify`；写稿当时 5 步，现为 9 步）：`build`（`tsc --noEmit` + `vite build`）→ `check:classes`（类名白名单校验）→ `check:preview` → `a11y` → `qa:narrow` → `check:cable` → `check:capabilities` → `check:agent` → `qa:home`。
   - **重点**：`check:classes` 会校验用到的 CSS 类都在白名单内；删组件时要同步删对应 CSS，否则 `check:classes` 可能报「未使用类」或相反。
 - 不允许出现新的 `any`、不允许 `@ts-ignore`/`@ts-expect-error`（除非原代码已有且本次未触及）。
 - 不允许改 `types.ts` / `types.snapshot.ts` 的字段名（snake_case 照抄 Rust serde）。
