@@ -1,0 +1,20 @@
+[workspace]
+
+[package]
+name = "voxbench"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vox-dsp = { path = "../../crates/vox-dsp" }
+vox-core = { path = "../../crates/vox-core" }
+# 显式钉住，跟仓库 Cargo.lock 里锁定的版本一致（rubato 0.16.2 / nnnoiseless 0.5.2）。
+rubato = "=0.16.2"
+nnnoiseless = "=0.5.2"
+
+# 跟仓库 [profile.release] 对齐：lto="thin" + codegen-units=1。
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+debug = false
