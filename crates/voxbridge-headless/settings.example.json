@@ -1,0 +1,11 @@
+{
+  "speak": {
+    "target_language": "ja"
+  },
+  "listen": {
+    "target": {
+      "executable": "Discord",
+      "display_name": "Discord"
+    }
+  }
+}
