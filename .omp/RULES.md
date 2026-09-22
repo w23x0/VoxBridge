@@ -1,6 +1,8 @@
 # VoxBridge 硬规矩（每次都生效）
 
 1. **未经用户明确要求，不 `git commit`、不 `git push`、不改远端**。
+   - **例外（用户已授权，2026-09-22）**：本项目当前允许**每轮收口时分组提交并推送**（core / mcp / headless / net / app / docs+tools 分组）；
+     授权撤销前，收口提交属允许动作，但**推送前仍要确认门全绿**（`cargo fmt --all --check` + `cargo test --workspace` + `cargo clippy --workspace --all-targets`）。
 2. 回复用户用**中文**；文档用中文；代码标识符/注释可英文。
 3. **代码与文档冲突时以代码为准**，然后回头改文档（不是改代码去迁就文档）。
 4. **不许留 TODO / 占位 / 假实现 / 空函数钩子**；做不完就明说缺什么前提，不要塞半成品。

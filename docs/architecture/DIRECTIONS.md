@@ -750,6 +750,19 @@ clippy **0 warning**、`npm run verify` 全绿——链见 `app/ui/package.json`
 **未装之前，S2 只能做不依赖 SDK 的部分——目前为零**：`crates/vox-audio-android/`（手机音频外壳）、`app/android/`（Tauri Android 工程）与任何实机验证，每一步都要先过 NDK 这一关。
 平台侧结论（能做什么 / 做不到什么 / 怎么落地）见 `docs/platform/ANDROID.md`。
 
+### 10.8 收尾拍板（2026-09-22 会话结束）
+
+| # | 事项 | 拍板 | 备注 |
+| --- | --- | --- | --- |
+| 1 | Android NDK 装不装 | **装，但下次会话执行**（本次不装） | 本机现状：`~/Android/Sdk`、`adb`、JDK 17 都在；缺 **NDK** + `aarch64-linux-android` / `x86_64-linux-android` target + `cargo-ndk`。装法：`sdkmanager --install "ndk;<版本>"` + `rustup target add …` + `cargo install cargo-ndk`。装完 S2 才能真开工（Tauri v2 Android 外壳 + Oboe + 前台服务，编译级可验） |
+| 2 | 下一步优先哪条 | **下次再看** | 候选：S3 后半（清单→作业单打通 / 无屏档网络音频入口）· 手机 S2（依赖 #1）· 插件宿主 · 先清 6 条复核星号 |
+| 3 | 提交策略 | **每轮收口可提交并推送**（已获授权） | 见 `.omp/RULES.md` #1 的修订；分组提交（core / mcp / headless / net / app / docs+tools） |
+
+**本次收尾的基线**：HEAD = `0b0c555`（已推送 `origin/master`），工作区干净；
+`cargo test --workspace` = **601 passed / 0 failed / 5 ignored**、`cargo clippy --workspace --all-targets` 0 warning、`cargo fmt --all --check` 干净。
+
+**下一轮的入口**：`.omp/agents/` 六个角色 + `.omp/RULES.md`；施工单 `docs/plans/{S0-COMPOSITION-MANIFEST,S1-AGENT-FACE,S3-NET-AUDIO}.md`；进度台账 §10.7。
+
 ---
 
 ## 参考与关联
