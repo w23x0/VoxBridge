@@ -17,8 +17,8 @@
 //!   不许冒出假"错误"。
 //! - 没连上时来的音频**立刻丢**，绝不排队。
 
-mod listen;
-mod speak;
+pub(crate) mod listen;
+pub(crate) mod speak;
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
@@ -27,13 +27,18 @@ use std::time::{Duration, Instant};
 
 use parking_lot::{Condvar, Mutex};
 
+use crate::capability::HostFacts;
 use crate::cloud::protocol::{pcm16_to_float, OUTPUT_SAMPLE_RATE};
 use crate::cloud::{self, HotChange, Incoming, ServerEvent, Session, SessionParams, Transport};
+use crate::composition::{
+    Composition, Input, Op, Output, PlaybackRole, COMPOSITION_SCHEMA_VERSION,
+};
 use crate::event::{Notice, Pipeline, PipelineState};
 use crate::gate::{ActivationGate, GateConfig, GateState};
 use crate::latency::LatencyTracker;
 use crate::ports::{
-    AudioChunk, CaptureSource, CaptureTarget, Denoise, PlaybackSink, PortResult, Resample,
+    AudioChunk, CaptureSource, CaptureTarget, Denoise, PlaybackSink, PortError, PortResult,
+    Resample,
 };
 use crate::runtime::{PipelineCommand, PipelineControl, Runtime, SessionConfig};
 
@@ -101,13 +106,74 @@ pub(crate) struct Plan {
 }
 
 impl Plan {
-    /// 按 `SessionConfig` 派活。语言/音色这些已经在 `Runtime::session_config` 里
-    /// 按流水线定好了，这里只管把平台侧的活儿排出来。
-    pub(crate) fn build(config: &SessionConfig) -> PortResult<Self> {
-        match config.pipeline {
-            Pipeline::Speak => Ok(speak::plan(config)),
-            Pipeline::Listen => listen::plan(config),
+    /// 按 `SessionConfig` + **这台机器的事实**派活：先造清单（[`Composition::of`]，位为假的格子
+    /// 在这一步被关掉），再由清单推出作业单（[`Plan::from`]）。
+    ///
+    /// 语言 / 音色这些已经在 `Runtime::session_config` 里按流水线定好了，这里只管把平台侧的
+    /// 活儿排出来。`facts` 只影响两处：哪一格进不进清单、虚拟麦的缺省设备。
+    pub(crate) fn build(config: &SessionConfig, facts: &HostFacts) -> PortResult<Self> {
+        Self::from(&Composition::of(config, facts)?)
+    }
+
+    /// 清单 → 作业单。**`Plan` 只能这么造**：清单是唯一的装配描述，没有第二条派生路径。
+    pub(crate) fn from(composition: &Composition) -> PortResult<Self> {
+        if composition.schema_version != COMPOSITION_SCHEMA_VERSION {
+            return Err(PortError::new(format!(
+                "清单版本不认识：这份是 {}，本芯只认 {COMPOSITION_SCHEMA_VERSION}。",
+                composition.schema_version
+            )));
         }
+        if let Err(errors) = composition.validate() {
+            return Err(PortError::new(format!("清单不合法：{errors:?}")));
+        }
+        let target = match composition.r#in.first() {
+            Some(Input::Mic { device, .. }) => CaptureTarget::Microphone(device.clone()),
+            Some(Input::ProcessLoopback {
+                executable,
+                include_tree,
+                ..
+            }) => CaptureTarget::ProcessLoopback {
+                executable: executable.clone(),
+                include_tree: *include_tree,
+            },
+            // 网络进 / 宿主喂进来的声音：清单先占名，实现归 S3。
+            Some(Input::NetIn { .. } | Input::HostFeed { .. }) => {
+                return Err(PortError::new(
+                    "清单里的输入还没实现（net_in / host_feed 归 S3）。",
+                ));
+            }
+            None => return Err(PortError::new("清单里没有输入：这台设备的采集能力位关着。")),
+        };
+        let session = composition.session.as_ref();
+        Ok(Self {
+            target,
+            denoise: composition.ops.iter().any(|op| matches!(op, Op::Denoise)),
+            // 直通 = 没有云端会话。
+            passthrough: session.is_none(),
+            // 主播放出口 = 非回听的那条 `playback`；清单里没有它 = 这条会话不出声（纯文字）。
+            playback_device: composition.out.iter().find_map(|output| match output {
+                Output::Playback { role, device, .. } if *role != PlaybackRole::Monitor => {
+                    Some(device.clone())
+                }
+                _ => None,
+            }),
+            monitor_translation: composition.out.iter().any(|output| {
+                matches!(
+                    output,
+                    Output::Playback {
+                        role: PlaybackRole::Monitor,
+                        ..
+                    }
+                )
+            }),
+            hot_update: session.is_some_and(|session| session.hot_update),
+            // 直通清单里没有 `session`，而 `Plan.params` 在直通时**是死格**：不连云端就不发报文、
+            // 不记用量，采样率也只由 provider 决定。这里给一份空参数，而不是回头偷偷读 `config`
+            // ——`Plan` 只由清单构造。
+            params: session
+                .map(|session| session.params.clone())
+                .unwrap_or_else(|| SessionParams::text_only(String::new(), String::new())),
+        })
     }
 }
 
@@ -159,7 +225,7 @@ impl PipelineEngine {
             retire(stale);
         }
 
-        let plan = match Plan::build(&config) {
+        let plan = match Plan::build(&config, &self.runtime.host_facts()) {
             Ok(plan) => plan,
             Err(err) => {
                 self.runtime
@@ -1501,6 +1567,7 @@ impl Worker {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use crate::composition::HostKind;
     use crate::event::{Event, Severity};
     use crate::latency::LatencySnapshot;
     use crate::ports::{CaptureFormat, Clock, PortError, SecretStore};
@@ -1868,6 +1935,9 @@ pub(crate) mod tests {
         fn build(rate: u32) -> Self {
             let clock = Arc::new(TestClock::new());
             let runtime = Runtime::new(Settings::default(), Arc::clone(&clock) as Arc<dyn Clock>);
+            // 外壳装配时会注入事实（`lib.rs` 第 13 步）；缺省那份是 fail-closed 的，
+            // 不注入就等于"这台机器什么都没接上"。夹具里的 mic / 播放汇都接好了。
+            runtime.set_host_facts(HostFacts::all_wired(HostKind::Windows));
             runtime.set_secret_store(Arc::new(MemoryStore::default()));
             runtime.set_api_key("sk-test");
 

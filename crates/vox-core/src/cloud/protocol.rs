@@ -43,6 +43,7 @@ pub fn auth_header_value(api_key: &str) -> String {
 
 /// 声音复刻的采样频次。协议里是字符串，设置里存的是次数。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum CloneFrequency {
     /// 只用第一段声音复刻。
@@ -70,7 +71,11 @@ impl CloneFrequency {
 }
 
 /// 一次会话的协议参数。跟 `runtime::SessionConfig` 的区别是这里只留协议关心的东西。
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// 它同时是组合清单里 `session.params` 那一格（所以要有 `Serialize` / `Deserialize`：
+/// 清单是数据，要能存能传——报文体仍然是各协议自己手工拼的，这份 derive 不参与拼报文）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct SessionParams {
     pub model_name: String,
     pub target_language: String,

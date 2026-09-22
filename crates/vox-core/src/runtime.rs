@@ -20,6 +20,7 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+use crate::capability::{Capability, CapabilityReport, HostFacts};
 use crate::catalog::{self, ActivationMode};
 use crate::event::{Event, Notice, Pipeline, PipelineState};
 use crate::gate::{GateConfig, GateStatus};
@@ -140,6 +141,11 @@ pub struct Snapshot {
     pub api_key_configured: bool,
     pub api_keys_configured: BTreeMap<ModelProvider, bool>,
     pub devices: DeviceSnapshot,
+    /// **有效能力位**：界面按 `(位, reason)` 降级，出口（S1 的 `describe`）读同一份。
+    ///
+    /// 这是"位 = 事实"的唯一出口：外壳注入事实 → 芯算一次 → 快照与 `Composition::missing_on`
+    /// 用的是同一个结果，不另立第二份。
+    pub capabilities: CapabilityReport,
     /// 两条流水线都开了，提醒戴耳机。
     pub headphones_advised: bool,
     pub notices: Vec<Notice>,
@@ -173,6 +179,9 @@ pub struct DeviceSnapshot {
     pub inputs: Vec<DeviceInfo>,
     pub outputs: Vec<DeviceInfo>,
     pub audio_apps: Vec<AudioApp>,
+    /// VB-CABLE 的**安装器状态**（只服务 Windows 的下载 / 安装 UI）。
+    /// "虚拟麦能不能用"看能力位 `Capability::VirtualMic`，不看这个字段——见
+    /// `ports.rs::DeviceRegistry::virtual_cable_installed`。
     pub virtual_cable_installed: bool,
 }
 
@@ -184,6 +193,9 @@ struct State {
     usage: UsageLedger,
     api_keys: BTreeMap<ModelProvider, String>,
     devices: DeviceSnapshot,
+    /// 这台机器报上来的宿主事实。外壳装配时注入（没注入时用 fail-closed 的缺省口径：
+    /// 没接上的那几位报 `off(not_wired)`，见 `HostFacts::uninjected`）。
+    facts: HostFacts,
     /// 热键推断出来的"正在说话"。
     mic_active: bool,
     notices: Vec<Notice>,
@@ -249,6 +261,9 @@ impl Runtime {
                     usage: UsageLedger::default(),
                     api_keys: BTreeMap::new(),
                     devices: DeviceSnapshot::default(),
+                    // 外壳还没注入事实：缺省 fail-closed，没接上的那几位报 `off`
+                    // （见 `HostFacts::uninjected`）。
+                    facts: HostFacts::uninjected(),
                     mic_active: false,
                     notices: Vec::new(),
                 }),
@@ -274,6 +289,40 @@ impl Runtime {
     pub fn set_hotkey_host(&self, host: Arc<dyn HotkeyHost>) {
         *self.inner.hotkeys.lock() = Some(host);
         self.rebind_hotkeys();
+    }
+
+    /// 注入**宿主事实**（外壳装配时调一次；这台机器的事实变了——设备轮询发现麦克风被占、
+    /// 虚拟麦节点掉了——就再调一次）。
+    ///
+    /// 与 `set_control` / `set_hotkey_host` / `set_secret_store` 同款：外壳只报事实，
+    /// **位由芯算**（档位上限 − 关掉的），算出来的那份就是快照与清单共用的那一份。
+    pub fn set_host_facts(&self, facts: HostFacts) {
+        // 上限是硬的：`off` 里出现档位上限之外的位 = 外壳 bug，不是"新能力"。
+        let excess: Vec<&'static str> =
+            facts.excess_off_bits().iter().map(Capability::id).collect();
+        self.inner.state.write().facts = facts;
+        if !excess.is_empty() {
+            // 放开状态锁之后再发（监听器可能回头读快照）。
+            self.notify(Notice::warning(format!(
+                "外壳报了能力位上限之外的关闭项（已忽略）：{}",
+                excess.join(", ")
+            )));
+        }
+    }
+
+    /// 这台机器报上来的事实。
+    pub fn host_facts(&self) -> HostFacts {
+        self.inner.state.read().facts.clone()
+    }
+
+    /// **有效能力位报告**：快照里那份就是它，`Composition::missing_on` 吃的也是它。
+    pub fn capabilities(&self) -> CapabilityReport {
+        let s = self.inner.state.read();
+        CapabilityReport::of(
+            &s.facts,
+            s.settings.speak.provider,
+            s.settings.listen.provider,
+        )
     }
 
     /// 注入密钥仓库，顺手把存着的密钥读进来。
@@ -353,6 +402,11 @@ impl Runtime {
                 .is_some_and(|k| !k.is_empty()),
             api_keys_configured,
             devices: s.devices.clone(),
+            capabilities: CapabilityReport::of(
+                &s.facts,
+                s.settings.speak.provider,
+                s.settings.listen.provider,
+            ),
             headphones_advised: speak_running && listen_running,
             notices: s.notices.clone(),
         }
@@ -360,6 +414,42 @@ impl Runtime {
 
     pub fn settings(&self) -> Settings {
         self.inner.state.read().settings.clone()
+    }
+
+    /// **只读投影**：这台机器按 `pipeline` 现在会派出去的 [`SessionConfig`]（不改任何状态）。
+    ///
+    /// 控制面（S1 的 `compose_endpoint` / `describe_endpoint`）拿它去算清单，因为清单只有一条
+    /// 派生路径（`Composition::of`），**不许**自己从 [`Settings`] 再映射一份。这里给的就是
+    /// [`Runtime::start`] 下发的**同一份**：`session_id` 是这条流水线当前的会话号（没在跑 = 0），
+    /// 阀门初始状态是当前的开麦标志；`api_key` 取账本里存着的（没有 = 空串）——要不要密钥
+    /// 由调用方自己判（S1 的 `missing_api_key`）。
+    pub fn session_config(&self, pipeline: Pipeline) -> SessionConfig {
+        let s = self.inner.state.read();
+        let provider = match pipeline {
+            Pipeline::Speak => s.settings.speak.provider,
+            Pipeline::Listen => s.settings.listen.provider,
+        };
+        Self::derive_session_config(
+            &s.settings,
+            pipeline,
+            s.pipeline(pipeline).session_id,
+            s.api_keys.get(&provider).cloned().unwrap_or_default(),
+            s.mic_active,
+        )
+    }
+
+    /// **纯函数投影**：任意一份 [`Settings`] + 流水线 → 这条流水线会派出去的 [`SessionConfig`]。
+    /// 不加锁、不碰账本，所以"还没落盘的设置"也问得出来（S1 的 `compose_endpoint` dry-run 拿它算
+    /// "照这份设置重新派生出来的清单长什么样"，做"提交的清单 == 应用后重新派生的清单"这条核对）。
+    ///
+    /// 与 [`Runtime::session_config`] 是**同一个映射**（都走 `derive_session_config`），只差三格
+    /// **会话态**（不是设置）：`session_id = 0`（没有会话）、`api_key` 空串（密钥不出账本）、
+    /// `gate_active = false`（阀门开合是账本状态，这里没有账本）。清单投影（[`Composition::of`]）
+    /// 一格都不读这三个——它读的全是从 `Settings` 派生的那些格。
+    ///
+    /// [`Composition::of`]: crate::composition::Composition::of
+    pub fn session_config_for(settings: &Settings, pipeline: Pipeline) -> SessionConfig {
+        Self::derive_session_config(settings, pipeline, 0, String::new(), false)
     }
 
     pub fn pipeline_state(&self, pipeline: Pipeline) -> PipelineState {
@@ -501,7 +591,7 @@ impl Runtime {
                 // 换服务商/模型必须重连，语言/音色可以热更新。
                 if new.speak.provider != old.speak.provider
                     || new.speak.model_name != old.speak.model_name
-                    || (!catalog::supports_hot_update_language(new.speak.provider)
+                    || (!catalog::supports(new.speak.provider, Capability::HotUpdateLanguage)
                         && new.speak.target_language != old.speak.target_language)
                 {
                     events.push(Event::Notice {
@@ -685,8 +775,13 @@ impl Runtime {
             status.gate = None;
 
             // 阀门初始状态跟着配置一起下发。（坑 1）
-            let config =
-                Self::session_config(&s.settings, pipeline, session_id, api_key, s.mic_active);
+            let config = Self::derive_session_config(
+                &s.settings,
+                pipeline,
+                session_id,
+                api_key,
+                s.mic_active,
+            );
             command = PipelineCommand::Start(Box::new(config));
             events.push(Event::PipelineState {
                 pipeline,
@@ -697,7 +792,10 @@ impl Runtime {
         self.emit(events);
     }
 
-    fn session_config(
+    /// `Settings` + 流水线 → 这条流水线要用的 [`SessionConfig`]。**唯一的映射**：
+    /// [`Runtime::start`] / 只读访问器 [`Runtime::session_config`] / 纯函数
+    /// [`Runtime::session_config_for`] 都走这里。
+    fn derive_session_config(
         settings: &Settings,
         pipeline: Pipeline,
         session_id: u64,
@@ -1110,6 +1208,7 @@ impl Runtime {
 mod tests {
     use super::*;
     use crate::gate::{GateKind, GateState};
+    use crate::settings::ListenTarget;
     use crate::usage::Stamp;
 
     struct TestClock;
@@ -1144,6 +1243,75 @@ mod tests {
         fn drain(&self) -> Vec<PipelineCommand> {
             std::mem::take(&mut *self.commands.lock())
         }
+    }
+
+    #[test]
+    fn the_read_only_projection_is_what_start_hands_the_engine() {
+        let mut settings = Settings::default();
+        // 听人说话要先选程序才起得来（`start` 里那道兜底）。
+        settings.listen.target = Some(ListenTarget {
+            executable: "Discord.exe".to_string(),
+            display_name: "Discord".to_string(),
+            include_process_tree: true,
+        });
+        let rt = Runtime::new(settings, Arc::new(TestClock));
+        let rec = Arc::new(Recorder::default());
+        rt.set_control(rec.clone());
+        rt.set_api_key("sk-test");
+
+        // 没在跑也问得出来（控制面就是拿它算清单的）：会话号是 0，别的按当前设置给。
+        let idle = rt.session_config(Pipeline::Speak);
+        assert_eq!(idle.session_id, 0);
+        assert_eq!(idle.model_name, rt.settings().speak.model_name);
+
+        // 两条腿各开一次：访问器给的那份必须与 `start` 真下发给引擎的那份**逐字相同**——
+        // 控制面按它算出来的清单，得就是这条会话实际在跑的东西。
+        for pipeline in [Pipeline::Speak, Pipeline::Listen] {
+            rt.start(pipeline);
+            let dispatched = rec
+                .drain()
+                .into_iter()
+                .find_map(|command| match command {
+                    PipelineCommand::Start(config) => Some(*config),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("{pipeline:?} 的 start 该下发 Start"));
+            assert_eq!(rt.session_config(pipeline), dispatched, "{pipeline:?}");
+            rt.stop(pipeline);
+            rec.drain();
+        }
+    }
+
+    #[test]
+    fn the_pure_projection_is_the_same_mapping_without_the_session_state() {
+        let (rt, _rec) = fixture();
+
+        // 纯函数**不碰账本**：任意一份设置都派生出它的会话配置（`compose_endpoint` 的 dry-run
+        // 就是拿它算"照这份还没落盘的设置，清单会变成什么样"）。
+        let mut draft = rt.settings();
+        draft.speak.target_language = "en".to_string();
+        let projected = Runtime::session_config_for(&draft, Pipeline::Speak);
+        assert_eq!(projected.target_language, "en", "改了的格要跟着走");
+        assert_eq!(projected.gate, Runtime::gate_for(&draft), "阀门由设置折算");
+        assert_eq!(rt.settings().speak.target_language, "ja", "不能顺手改账本");
+
+        let listen = Runtime::session_config_for(&draft, Pipeline::Listen);
+        assert_eq!(
+            listen.target_language,
+            crate::catalog::LISTEN_TARGET_LANGUAGE
+        );
+        assert!(!listen.denoise, "听的那条不降噪");
+
+        // 与访问器是**同一个映射**：把三格会话态（会话号 / 密钥 / 阀门开合）压到中性值，
+        // 两份必须逐字段相同——否则 dry-run 算出来的清单与真会跑的那条会对不上。
+        rt.set_mic_active(false);
+        let mut from_ledger = rt.session_config(Pipeline::Speak);
+        from_ledger.session_id = 0;
+        from_ledger.api_key = String::new();
+        assert_eq!(
+            Runtime::session_config_for(&rt.settings(), Pipeline::Speak),
+            from_ledger
+        );
     }
 
     /// 建一个已填密钥、已注入控制面的账本。

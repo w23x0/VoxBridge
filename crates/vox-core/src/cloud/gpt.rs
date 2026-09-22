@@ -8,6 +8,7 @@
 use base64::Engine as _;
 use serde_json::{json, Map, Value};
 
+use crate::capability::Capability;
 use crate::catalog;
 use crate::settings::ModelProvider;
 
@@ -36,7 +37,9 @@ pub fn session_update(params: &SessionParams) -> String {
     output.insert("language".to_string(), json!(params.target_language));
     audio.insert("output".to_string(), Value::Object(output));
 
-    if catalog::supports_source_language(ModelProvider::Gpt) && params.source_language.is_some() {
+    if catalog::supports(ModelProvider::Gpt, Capability::SourceLanguage)
+        && params.source_language.is_some()
+    {
         audio.insert(
             "input".to_string(),
             json!({
@@ -50,13 +53,13 @@ pub fn session_update(params: &SessionParams) -> String {
     let mut session = Map::new();
     session.insert("audio".to_string(), Value::Object(audio));
 
-    if catalog::supports_voice_selection(ModelProvider::Gpt) {
+    if catalog::supports(ModelProvider::Gpt, Capability::VoiceSelection) {
         if let Some(voice) = &params.voice {
             session.insert("voice".to_string(), json!(voice));
         }
     }
 
-    if catalog::supports_voice_clone(ModelProvider::Gpt) {
+    if catalog::supports(ModelProvider::Gpt, Capability::VoiceClone) {
         if let Some(freq) = params.clone_frequency {
             session.insert("voice_clone".to_string(), json!(freq.as_str()));
         }

@@ -66,6 +66,12 @@ pub enum CaptureTarget {
         executable: String,
         include_tree: bool,
     },
+    /// 网络对端（媒体面）。`pipe` 是清单里那个逻辑名（v1 只有 `"default"`）。
+    ///
+    /// 实现方不属于任何平台采集 crate：它是 `vox-net` 媒体面监听侧的采集源
+    /// （`vox_net::media::MediaListener::capture`）。设备采集实现遇到这个变体
+    /// **必须报错**，不许把它当成默认设备（那是静默换源）。
+    Net { pipe: String },
 }
 
 /// 采集源。`start` 之后音频块通过回调推给内核，`stop` 要能保证回调不再触发。
@@ -166,7 +172,15 @@ pub trait DeviceRegistry: Send + Sync {
     fn output_devices(&self) -> PortResult<Vec<DeviceInfo>>;
     /// 正在放声音的程序列表。
     fn audio_apps(&self) -> PortResult<Vec<AudioApp>>;
-    /// VB-CABLE 装了没。
+    /// VB-CABLE **装了没** —— 只描述**安装器状态**，不回答"虚拟麦能不能用"。
+    ///
+    /// "能不能用"的唯一真相是能力位 [`Capability::VirtualMic`](crate::capability::Capability::VirtualMic)：
+    /// 它由外壳注入的 [`HostFacts`](crate::capability::HostFacts) 算出来，由"真的把这条路打开的那段
+    /// 代码"负责（装驱动 / 建节点 / 拿到句柄）。这个字段只留着给 Windows 下载 / 安装 VB-CABLE
+    /// 的那套 UI 用（"要不要提示用户去装"），**不许**拿它当能力判据。
+    ///
+    /// 两处口径差别特别注意：装了 ≠ 能用（装了也可能没被选中 / 节点掉了）；没装 ≠ 不能用
+    /// （Linux 上压根没有"装"这一步，这条恒为 `false`，而虚拟麦照样能在）。
     fn virtual_cable_installed(&self) -> bool;
 }
 

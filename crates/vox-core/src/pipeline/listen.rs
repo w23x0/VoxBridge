@@ -7,40 +7,118 @@
 //! - 中文语音走系统默认输出（耳机），不能推 VB-CABLE，不然对方会听到自己的译文。
 //! - 不认 `HotUpdate`：听的方向永远译成中文。
 
+use crate::capability::{effective, Capability, HostFacts};
 use crate::cloud::SessionParams;
-use crate::ports::{CaptureTarget, PortError};
+use crate::composition::{
+    Composition, EdgeSource, Input, Op, Output, PlaybackRole, RateRef, SessionSpec,
+    COMPOSITION_SCHEMA_VERSION,
+};
+use crate::pipeline::INPUT_BLOCK_MS;
+use crate::ports::PortError;
 use crate::runtime::SessionConfig;
+use crate::subtitle::Track;
+// 生产路径把采集目标写在清单里（`Input::…`）；`CaptureTarget` 只剩测试在直接比。
+#[cfg(test)]
+use crate::ports::CaptureTarget;
 
+#[cfg(test)]
 use super::Plan;
 
-pub(crate) fn plan(config: &SessionConfig) -> Result<Plan, PortError> {
+/// Listen 的清单实例（§2.3.1）：本机派生，位为假的格子不进清单。
+///
+/// 它**不吃虚拟麦缺省**：这条腿的角色恒 [`PlaybackRole::Speaker`]，理由见模块头第三条。
+pub(crate) fn composition(
+    config: &SessionConfig,
+    facts: &HostFacts,
+) -> Result<Composition, PortError> {
     // 没选程序就没法抓环回。账本在 `start()` 里已经挡了一道，这里是兜底。
     let target = config
         .loopback_target
         .as_ref()
         .ok_or_else(|| PortError::new("还没选择监听程序。"))?;
 
-    Ok(Plan {
-        target: CaptureTarget::ProcessLoopback {
+    let bits = effective(facts);
+    let mut inputs = Vec::new();
+    // 这台设备抓不了指定程序（Android 通话类结构性拿不到、老 Windows 没有进程环回）→
+    // 这一格进不了清单。腿仍在架构里：它在这档宿主上的形态另外定（§2.3.2）。
+    if bits.contains(Capability::ProgramTap) {
+        inputs.push(Input::ProcessLoopback {
             executable: target.executable.clone(),
             // 浏览器那种多进程的，声音常在子进程里，得连带抓。
             include_tree: target.include_process_tree,
-        },
-        denoise: false,
-        passthrough: false,
-        playback_device: config.voice.as_ref().map(|_| config.output_device.clone()),
-        monitor_translation: false,
-        hot_update: false,
-        params: SessionParams {
-            model_name: config.model_name.clone(),
-            target_language: config.target_language.clone(),
-            voice: config.voice.clone(),
-            // 听别人说话没有"复刻我的音色"这回事。
-            clone_frequency: None,
-            // 源语言；None = 服务端自动识别。
-            source_language: config.source_language.clone(),
-        },
+            block_ms: INPUT_BLOCK_MS,
+        });
+    }
+
+    let mut out = Vec::new();
+    // 中文语音走系统默认输出（耳机）：**不能**推虚拟麦，不然对方会听到自己的译文。
+    // 所以这一格恒 `Speaker`，既不看 `virtual_mic` 位，也不吃虚拟麦缺省设备。
+    if config.voice.is_some() {
+        out.push(Output::Playback {
+            role: PlaybackRole::Speaker,
+            device: config.output_device.clone(),
+            source: EdgeSource::Session,
+        });
+    }
+    // 字幕出口只在有屏幕的档位存在；"要不要显示"是视图开关，不进清单。
+    if bits.contains(Capability::Captions) {
+        out.push(Output::Captions {
+            track: Track::Listen,
+            source: EdgeSource::Session,
+        });
+    }
+
+    let shell = facts.host.shell();
+    Ok(Composition {
+        schema_version: COMPOSITION_SCHEMA_VERSION,
+        host: facts.host,
+        r#in: inputs,
+        // 不装降噪：环回的数字源本来就干净（`config.denoise` 对这条腿不生效，与现状一致）。
+        ops: vec![
+            Op::Mono,
+            Op::Gate {
+                config: config.gate,
+            },
+            Op::Resample {
+                from: RateRef::Capture,
+                to: RateRef::Session,
+            },
+        ],
+        out,
+        // 同 Speak：这三格跟着 `facts.host` 走（`HostKind::shell`）。
+        life: shell.life,
+        ui: shell.ui,
+        control: shell.control.to_vec(),
+        session: Some(SessionSpec {
+            provider: config.provider,
+            // 听的方向永远译成中文，不许热改。
+            hot_update: false,
+            uplink_rate: RateRef::Session,
+            downlink_rate: RateRef::Playback,
+            params: SessionParams {
+                model_name: config.model_name.clone(),
+                target_language: config.target_language.clone(),
+                voice: config.voice.clone(),
+                // 听别人说话没有"复刻我的音色"这回事。
+                clone_frequency: None,
+                // 源语言；None = 服务端自动识别。
+                source_language: config.source_language.clone(),
+            },
+        }),
     })
+}
+
+/// 单测用的作业单：**位全开**时的派生物（模拟一台已经装配好、事实也注入过的桌面机）。
+///
+/// 产品路径是 `Plan::build(&config, &runtime.host_facts())`，而缺省事实是 fail-closed 的
+/// （`HostFacts::uninjected`）；这里只是给"手上只有一份 `SessionConfig`"的单元测试一个入口。
+#[cfg(test)]
+pub(crate) fn plan(config: &SessionConfig) -> Result<Plan, PortError> {
+    use crate::composition::HostKind;
+    Plan::from(&composition(
+        config,
+        &HostFacts::all_wired(HostKind::Windows),
+    )?)
 }
 
 #[cfg(test)]

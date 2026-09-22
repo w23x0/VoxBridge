@@ -6,6 +6,9 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::capability::{Capability, CapabilitySet};
+use crate::settings::ModelProvider;
+
 // --- 模型 ------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -56,20 +59,30 @@ pub fn provider_by_id(id: &str) -> Option<crate::settings::ModelProvider> {
         .find(|provider| provider.as_id() == id)
 }
 
-pub fn supports_voice_selection(provider: crate::settings::ModelProvider) -> bool {
-    provider_info(provider).capabilities.voice_selection
+/// provider 会什么。名字与能力位表一致（`crate::capability::Capability`）。
+///
+/// **只有 `catalog/*.json` 的 `capabilities` 里那 4 个布尔有值**；待补的 4 位
+/// （`usage_reporting` / `speech_activity` / `turn_end` / `source_transcript`）只占名、恒 `false`
+/// ——未拍板的方向不落数据文件，否则等于提前把没定的东西变成契约。
+pub fn provider_capabilities(provider: ModelProvider) -> CapabilitySet {
+    let caps = provider_info(provider).capabilities;
+    let mut set = CapabilitySet::empty();
+    for (on, bit) in [
+        (caps.voice_selection, Capability::VoiceSelection),
+        (caps.voice_clone, Capability::VoiceClone),
+        (caps.source_language, Capability::SourceLanguage),
+        (caps.hot_update_language, Capability::HotUpdateLanguage),
+    ] {
+        if on {
+            set = set.union(CapabilitySet::single(bit));
+        }
+    }
+    set
 }
 
-pub fn supports_voice_clone(provider: crate::settings::ModelProvider) -> bool {
-    provider_info(provider).capabilities.voice_clone
-}
-
-pub fn supports_source_language(provider: crate::settings::ModelProvider) -> bool {
-    provider_info(provider).capabilities.source_language
-}
-
-pub fn supports_hot_update_language(provider: crate::settings::ModelProvider) -> bool {
-    provider_info(provider).capabilities.hot_update_language
+/// 点名查询：这家 provider 有没有这一位。取代原来的 4 个 `supports_*` 自由函数。
+pub fn supports(provider: ModelProvider, bit: Capability) -> bool {
+    provider_capabilities(provider).contains(bit)
 }
 
 // --- 激活方式 --------------------------------------------------------------

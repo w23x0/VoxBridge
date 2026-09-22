@@ -10,6 +10,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+use crate::capability::Capability;
 use crate::catalog::{
     self, ActivationMode, DEFAULT_MODEL_NAME, DEFAULT_TARGET_LANGUAGE, DEFAULT_VOICE,
 };
@@ -23,8 +24,12 @@ pub const UI_LANGUAGES: [&str; 3] = ["zh-CN", "ja-JP", "en"];
 /// 默认界面语言。
 pub const DEFAULT_UI_LANGUAGE: &str = "zh-CN";
 
+/// 字幕订阅通知的默认去抖间隔（毫秒）：逐 token 的字幕 delta 按它收敛成一次通知。
+pub const DEFAULT_TRANSCRIPT_NOTIFY_MS: u32 = 250;
+
 /// 实时翻译服务商。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ModelProvider {
     #[default]
@@ -67,6 +72,8 @@ pub struct Settings {
     /// 界面显示语言（UI locale），二选一：`zh-CN` / `en`。
     /// 与翻译功能的目标/源语言无关——那是业务翻译语种，不是界面语言。
     pub ui_language: String,
+    /// Agent 控制面（MCP / CLI）的开关与授权位。
+    pub control: ControlSettings,
 }
 
 impl Default for Settings {
@@ -80,6 +87,48 @@ impl Default for Settings {
             autostart: false,
             start_minimized: false,
             ui_language: DEFAULT_UI_LANGUAGE.to_string(),
+            control: ControlSettings::default(),
+        }
+    }
+}
+
+/// Agent 控制面（MCP / CLI）的设置：**默认全关**。
+///
+/// 控制面是"把这台设备交给 Agent"的开关，所以装完不开，必须用户主动打开
+/// （S1 §2.5.2 的闸门①：用户位默认全 `false`，`vox-mcp` 的 `Grants` 每次调用前读这里）。
+/// 字段名逐字对齐 S1 §2.5.2，`vox-mcp` 按名字读它，**不许**在外壳里另立一份。
+///
+/// 老配置文件没有这一段：`#[serde(default)]` 让它读出来就是"全关"（fail-closed），
+/// 而不是"缺字段 = 允许"。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ControlSettings {
+    /// 控制面总开关。
+    pub enabled: bool,
+    /// 监听端口；`0` = 每次启动由系统分配（默认，也是唯一安全的缺省）。
+    pub port: u16,
+    /// 允许 Agent 用麦克风（`Permission::Microphone`）。
+    pub allow_microphone: bool,
+    /// 允许 Agent 抓某个程序的声音（`Permission::SystemAudio`）。
+    pub allow_system_audio: bool,
+    /// 允许 Agent 往可听输出放音（`Permission::AudibleOutput`）。
+    pub allow_audible_output: bool,
+    /// 允许控制面改用户配置（`compose_endpoint` 的写权限）。
+    pub allow_config_write: bool,
+    /// 字幕订阅的通知去抖间隔（毫秒）。
+    pub transcript_notify_ms: u32,
+}
+
+impl Default for ControlSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: 0,
+            allow_microphone: false,
+            allow_system_audio: false,
+            allow_audible_output: false,
+            allow_config_write: false,
+            transcript_notify_ms: DEFAULT_TRANSCRIPT_NOTIFY_MS,
         }
     }
 }
@@ -164,7 +213,7 @@ pub struct ListenSettings {
     pub voice: String,
     pub hotkey: Option<Hotkey>,
     /// 源语言代码；`None` = 服务端自动识别（默认）。选过就用它锁死识别，
-    /// 否则自动识别在短句/混说时可能认错语种（见 DECISIONS.md B5）。
+    /// 否则自动识别在短句/混说时可能认错语种（见 docs/architecture/DECISIONS.md B5）。
     pub source_language: Option<String>,
 }
 
@@ -282,6 +331,12 @@ pub const CHAR_TTL_RANGE: (u32, u32) = (500, 20_000);
 pub const CHAR_FADE_RANGE: (u32, u32) = (0, 5_000);
 pub const DIM_ALPHA_RANGE: (f32, f32) = (0.05, 1.0);
 
+/// 控制面端口的合法下界：`0`（每次启动随机）或 ≥ 它（非特权端口）。特权端口（< 1024）
+/// 绑不上，也不该由配置文件随手指定；上界就是 `u16` 的 65535。
+pub const CONTROL_PORT_MIN: u16 = 1024;
+/// 字幕通知的去抖间隔允许范围（毫秒）：下限防"等于没去抖"，上限防"字幕卡半拍"。
+pub const TRANSCRIPT_NOTIFY_MS_RANGE: (u32, u32) = (50, 5_000);
+
 impl Settings {
     /// 从 JSON 读，坏了就退回默认（不让一个坏配置卡住启动）。
     pub fn from_json(text: &str) -> Self {
@@ -338,7 +393,7 @@ impl Settings {
             .voice_by_language
             .insert(speak.target_language.clone(), speak.voice.clone());
         speak.voice_clone_frequency = speak.voice_clone_frequency.filter(|f| *f > 0);
-        if !catalog::supports_voice_clone(speak.provider) {
+        if !catalog::supports(speak.provider, Capability::VoiceClone) {
             speak.voice_clone_frequency = None;
         }
         speak.gate_threshold = clamp_f32(speak.gate_threshold, GATE_THRESHOLD_RANGE);
@@ -368,7 +423,7 @@ impl Settings {
             .source_language
             .take()
             .filter(|lang| catalog::language_label(lang).is_some());
-        if !catalog::supports_source_language(listen.provider) {
+        if !catalog::supports(listen.provider, Capability::SourceLanguage) {
             listen.source_language = None;
         }
 
@@ -395,6 +450,15 @@ impl Settings {
             geo.width = geo.width.max(160);
             geo.height = geo.height.max(60);
         }
+
+        // Agent 控制面：授权位是布尔，不用夹；只有端口与去抖间隔要拽回合法范围。
+        let control = &mut self.control;
+        if control.port != 0 && control.port < CONTROL_PORT_MIN {
+            control.port = 0;
+        }
+        control.transcript_notify_ms = control
+            .transcript_notify_ms
+            .clamp(TRANSCRIPT_NOTIFY_MS_RANGE.0, TRANSCRIPT_NOTIFY_MS_RANGE.1);
     }
 
     /// 切目标语言：带回该语言上次用的音色。
@@ -637,6 +701,70 @@ mod tests {
         s.ui_language = "ja-JP".into();
         s.normalize();
         assert_eq!(s.ui_language, "ja-JP", "白名单内的语言码保留");
+    }
+
+    #[test]
+    fn control_starts_disabled_and_old_configs_stay_disabled() {
+        // 控制面默认全关：装完不开，必须用户主动打开（S1 §2.5.2 闸门①）。
+        let control = ControlSettings::default();
+        assert!(!control.enabled);
+        assert!(!control.allow_microphone);
+        assert!(!control.allow_system_audio);
+        assert!(!control.allow_audible_output);
+        assert!(!control.allow_config_write);
+        assert_eq!(control.port, 0, "缺省不占端口，由系统分配");
+        assert_eq!(control.transcript_notify_ms, DEFAULT_TRANSCRIPT_NOTIFY_MS);
+        assert_eq!(Settings::default().control, control);
+
+        // 老配置文件里根本没有 `control` 这一段：读出来就是全关（fail-closed），
+        // 而不是"缺字段 = 允许"。
+        assert_eq!(
+            Settings::from_json(r#"{"version":2,"speak":{"enabled":true}}"#).control,
+            ControlSettings::default(),
+        );
+
+        // 只写了一半的段：给了的留住，没给的按默认补齐——授权位一个都不许自己开。
+        let partial =
+            Settings::from_json(r#"{"version":2,"control":{"port":47123,"enabled":true}}"#);
+        assert_eq!(
+            partial.control,
+            ControlSettings {
+                enabled: true,
+                port: 47123,
+                ..ControlSettings::default()
+            },
+        );
+    }
+
+    #[test]
+    fn control_port_and_notify_interval_get_clamped() {
+        let mut s = Settings::default();
+        s.control.port = 80;
+        s.control.transcript_notify_ms = 0;
+        s.normalize();
+        assert_eq!(s.control.port, 0, "特权端口绑不上，回退成系统分配");
+        assert_eq!(
+            s.control.transcript_notify_ms, TRANSCRIPT_NOTIFY_MS_RANGE.0,
+            "间隔太小等于没去抖"
+        );
+
+        s.control.port = 47123;
+        s.control.transcript_notify_ms = 99_999;
+        s.normalize();
+        assert_eq!(s.control.port, 47123, "合法端口要留住");
+        assert_eq!(s.control.transcript_notify_ms, TRANSCRIPT_NOTIFY_MS_RANGE.1);
+    }
+
+    #[test]
+    fn control_settings_survive_a_round_trip() {
+        let mut original = Settings::default();
+        original.control.enabled = true;
+        original.control.port = 47123;
+        original.control.allow_microphone = true;
+        original.control.allow_config_write = true;
+        original.control.transcript_notify_ms = 500;
+        original.normalize();
+        assert_eq!(Settings::from_json(&original.to_json()), original);
     }
 
     #[test]

@@ -280,7 +280,10 @@ impl Session {
         if !self.handshaken {
             return None;
         }
-        if !crate::catalog::supports_hot_update_language(self.provider) {
+        if !crate::catalog::supports(
+            self.provider,
+            crate::capability::Capability::HotUpdateLanguage,
+        ) {
             return None;
         }
         match self.provider {

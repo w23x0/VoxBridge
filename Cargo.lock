@@ -5800,6 +5800,7 @@ version = "0.2.1"
 dependencies = [
  "base64 0.22.1",
  "parking_lot",
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "tracing",
@@ -5836,10 +5837,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "vox-mcp"
+version = "0.2.1"
+dependencies = [
+ "base64 0.22.1",
+ "getrandom 0.3.4",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "vox-core",
+]
+
+[[package]]
 name = "vox-net"
 version = "0.2.1"
 dependencies = [
  "futures-util",
+ "parking_lot",
  "rustls",
  "tokio",
  "tokio-tungstenite",
@@ -5910,12 +5924,31 @@ dependencies = [
  "vox-dsp",
  "vox-input-linux",
  "vox-input-win",
+ "vox-mcp",
  "vox-net",
  "vox-osc",
  "vox-overlay-linux",
  "vox-overlay-win",
  "windows 0.62.2",
  "zbus",
+]
+
+[[package]]
+name = "voxbridge-headless"
+version = "0.2.1"
+dependencies = [
+ "chrono",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "vox-audio-linux",
+ "vox-core",
+ "vox-dsp",
+ "vox-mcp",
+ "vox-net",
 ]
 
 [[package]]

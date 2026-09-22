@@ -21,6 +21,7 @@ const DIM_FADE_MS: u64 = 300;
 
 /// 哪条流水线的字幕。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum Track {
     /// 对外说话（暖白）。

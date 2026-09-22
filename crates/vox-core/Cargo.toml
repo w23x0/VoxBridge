@@ -5,6 +5,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# 打开后两类类型多一份 `JsonSchema` derive（不写第二份 schema，serde 形态就是线上形状）：
+# ① 组合清单（`Composition` 的 serde 形态**就是** S1 `compose_endpoint` 的 `inputSchema`）；
+# ② 能力位（`CapabilityReport` / `HostFacts`，S1 `describe_endpoint` 的 `capabilities` 那一格）。
+# 默认关：芯的默认依赖表不变（`cargo tree -p vox-core` 里没有 schemars）；`vox-mcp` 打开它。
+# 版本已拍：锁 0.8.22（树里那对 `schemars` / `schemars_derive` 现成，零新增包）。
+json-schema = ["dep:schemars"]
+
 [build-dependencies]
 serde.workspace = true
 serde_json.workspace = true
@@ -15,3 +23,5 @@ serde_json.workspace = true
 base64.workspace = true
 tracing.workspace = true
 parking_lot.workspace = true
+# 可选：只在 `json-schema` feature 下引用（`cfg_attr(feature = "json-schema", ...)`）。
+schemars = { version = "0.8.22", optional = true }

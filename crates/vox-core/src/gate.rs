@@ -14,6 +14,7 @@
 
 /// 门的种类。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum GateKind {
     Manual,
@@ -22,6 +23,7 @@ pub enum GateKind {
 
 /// 一种激活门的完整参数。
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct GateConfig {
     pub kind: GateKind,
     /// Level 门使用；<= 0 表示全部放行。
