@@ -5,6 +5,7 @@
 桌面 + 将要扩展到手机/嵌入式的**实时语音翻译器**。Rust 芯（平台无关）+ 每平台一个外壳 + Tauri/React 界面。
 两条流水线：**对外说话**（麦克风 → 译音进虚拟麦 + 字幕）、**听人说话**（抓某个程序的声音 → 中文语音 + 字幕）。
 当前发货：Windows（NSIS）、Linux（deb/rpm/AppImage）。**macOS/iOS 已拍"不做"**。
+**2026-09-26 起：直接做嵌入式（优先于手机），按 `docs/plans/S4-EMBEDDED-REFACTOR.md` 重构**（共享宿主层 + 算子链），方向见 `docs/architecture/DIRECTIONS.md` §10.9。
 
 ## 先读哪几份文档（按顺序）
 

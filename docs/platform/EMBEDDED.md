@@ -17,6 +17,12 @@
 > 排期见 `docs/architecture/DIRECTIONS.md` §10.2 的 **S3 嵌入式（小主板）**；清单实例见
 > `docs/plans/S0-COMPOSITION-MANIFEST.md` §2.4（端点最简实例）与 §2.5.1（位表"无屏 ARM64"列）。
 > **MCU 档已砍**，代价留档在本文件 §5。
+>
+> **状态注（2026-09-26，方向变更，原文不改口）**：嵌入式已改为**直接做、优先于手机**，并随 S4 重构推进
+> （`docs/architecture/DIRECTIONS.md` §10.9，施工稿 `docs/plans/S4-EMBEDDED-REFACTOR.md`）。本文有三处按新方向读：
+> ① §1/§3.2 "音频原样复用 PipeWire" → **ALSA 为嵌入式缺省、PipeWire 可选**；
+> ② §1 "端点形态 = `net_in → net_out`" → **组合式**：插了什么硬件报什么位，网络中继与"本地麦 + 喇叭"盒子是同一份二进制；
+> ③ §1/§3.5 控制面只在本机 → **无屏档可开局域网监听（配对码 + token）**。另：本文未涉及的**回声消除**见 S4 §2.2。
 
 ---
 
